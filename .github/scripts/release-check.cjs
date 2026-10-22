@@ -307,6 +307,7 @@ function runStaticChecks() {
       '.github/scripts/release-version-contract.cjs',
       '.github/scripts/release-version-contract.test.cjs',
       '.github/scripts/semantic-release.test.cjs',
+      '.github/scripts/fallback-navigation-smoke.php',
       '.github/scripts/docs-command-check.cjs',
       '.github/scripts/pr-validation.cjs',
       '.github/scripts/semantic-release.cjs',

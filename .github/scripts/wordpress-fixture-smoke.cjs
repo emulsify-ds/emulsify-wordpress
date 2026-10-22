@@ -528,10 +528,10 @@ if ( ! $found ) {
 }
 
 function configureDebugLog(wpPath) {
+  wp(wpPath, ['config', 'set', 'WP_DEBUG', 'true', '--raw']);
   const configPath = path.join(wpPath, 'wp-config.php');
   const config = fs.readFileSync(configPath, 'utf8');
   const debugConfig = `
-define( 'WP_DEBUG', true );
 define( 'WP_DEBUG_LOG', true );
 define( 'WP_DEBUG_DISPLAY', false );
 define( 'WP_ENVIRONMENT_TYPE', 'local' );
@@ -594,6 +594,24 @@ function createFixtureContent(wpPath) {
     '--comment_author_email=commenter@example.test',
     '--comment_approved=1',
   ]);
+
+  wp(wpPath, ['eval', String.raw`
+update_option( 'permalink_structure', '' );
+update_option( 'posts_per_page', 10 );
+for ( $number = 1; $number <= 11; $number++ ) {
+  $result = wp_insert_post( array(
+    'post_type' => 'post',
+    'post_status' => 'publish',
+    'post_title' => sprintf( 'PaginationProbe result %02d', $number ),
+    'post_content' => sprintf( 'PaginationProbe content %02d', $number ),
+    'post_date' => sprintf( '2001-01-%02d 12:00:00', $number ),
+  ), true );
+  if ( is_wp_error( $result ) ) {
+    fwrite( STDERR, $result->get_error_message() . "\n" );
+    exit( 1 );
+  }
+}
+`]);
 
   return { authorId, categoryId, pageId, postId };
 }
@@ -688,6 +706,45 @@ async function checkGeneratedAssets(baseUrl, themeSlug) {
   await checkGeneratedAsset(baseUrl, themeSlug, 'dist/components/smoke-acf/css/smoke-acf.css', '.smoke-acf');
 }
 
+async function checkSearchPagination(baseUrl) {
+  const firstPage = await checkRoute(baseUrl, {
+    name: 'search pagination page 1',
+    path: '/?s=PaginationProbe',
+    includes: ['Search results for PaginationProbe', 'PaginationProbe result 11'],
+  });
+  appendLog('search-pagination.html', firstPage);
+  const nextLink = firstPage.match(/<li\b[^>]*\bclass="[^"]*\bpagination__item--next\b[^"]*"[^>]*>\s*<a\b[^>]*\bhref="([^"]+)"/);
+  if (!nextLink) {
+    const navigation = firstPage.match(/<nav\b[^>]*>[\s\S]*?<\/nav>/g) || [];
+    throw new Error(`Search page 1 did not render a next pagination link. Navigation: ${navigation.join('\n') || '(none)'}`);
+  }
+
+  // Decode HTML attribute ampersands once, as the browser does. A double-escaped
+  // &#038; must remain a fragment in the URL so the regression cannot pass.
+  const href = nextLink[1].replace(/&(?:amp|#0*38|#x0*26);/gi, '&');
+  const nextUrl = new URL(href, baseUrl);
+  if (
+    nextUrl.origin !== baseUrl ||
+    nextUrl.searchParams.get('s') !== 'PaginationProbe' ||
+    nextUrl.searchParams.get('paged') !== '2' ||
+    nextUrl.hash !== ''
+  ) {
+    throw new Error(`Search pagination should retain its search and request page 2; received ${nextUrl.href}.`);
+  }
+
+  const secondPage = await checkRoute(baseUrl, {
+    name: 'search pagination page 2',
+    path: `${nextUrl.pathname}${nextUrl.search}`,
+    includes: ['Search results for PaginationProbe', 'PaginationProbe result 01'],
+  });
+  if (!/<span\b[^>]*\baria-current="page"[^>]*>\s*2\s*<\/span>/.test(secondPage)) {
+    throw new Error('Following the search pagination link did not render current page 2.');
+  }
+  if (secondPage.includes('PaginationProbe result 11')) {
+    throw new Error('Search page 2 incorrectly includes the first-page-only result.');
+  }
+}
+
 async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
   startServer(wpPath, port);
   await waitForServer(baseUrl);
@@ -713,6 +770,7 @@ async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
     await checkRoute(baseUrl, route);
   }
 
+  await checkSearchPagination(baseUrl);
   await checkGeneratedAssets(baseUrl, themeSlug);
 }
 
@@ -825,7 +883,7 @@ async function main() {
   await renderRoutes(wpPath, content, baseUrl, port, generatedChildSlug);
   stopServer();
 
-  log('Generated and activated a child theme, checked block discovery, loaded assets, and rendered home, page, single, archive, search, author, and 404 routes.');
+  log('Generated and activated a child theme, checked block discovery, loaded assets, rendered home, page, single, archive, search, author, and 404 routes, and followed search pagination to page 2.');
   dropDatabase(env);
 
   if (!keepFixture) {

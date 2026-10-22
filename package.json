@@ -46,6 +46,7 @@
     "smoke:core-block-twig": "php .github/scripts/core-block-twig-renderer-smoke.php",
     "smoke:editor-enhancements": "php .github/scripts/editor-enhancements-smoke.php",
     "smoke:editor-policy": "php .github/scripts/editor-policy-smoke.php",
+    "smoke:navigation": "php .github/scripts/fallback-navigation-smoke.php",
     "smoke:patterns": "php .github/scripts/pattern-registry-smoke.php",
     "smoke:starter-init": "node .github/scripts/wordpress-starter-init-smoke.cjs",
     "smoke:theme-filters": "php .github/scripts/theme-filters-smoke.php",

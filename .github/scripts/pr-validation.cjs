@@ -43,6 +43,7 @@ run('Run editor policy smoke test', 'npm', ['run', 'smoke:editor-policy']);
 run('Run pattern registry smoke test', 'npm', ['run', 'smoke:patterns']);
 run('Run parent theme filter smoke test', 'npm', ['run', 'smoke:theme-filters']);
 run('Run Twig autoescape smoke test', 'npm', ['run', 'smoke:twig-autoescape']);
+run('Run fallback navigation smoke test', 'npm', ['run', 'smoke:navigation']);
 run('Run Twig switch smoke test', 'npm', ['run', 'smoke:twig-switch']);
 run('Run Twig project namespace smoke test', 'npm', ['run', 'smoke:twig-project-namespace']);
 run('Install Whisk dependencies', 'npm', ['run', 'whisk:install']);
