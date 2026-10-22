@@ -12,6 +12,9 @@ themes that override `templates/partials/pagination.twig` should adopt these
 markup corrections and decode Timber's display-escaped URLs before passing
 them to `add_attributes`. The parent adds no frontend CSS.
 
+Child themes overriding `templates/partials/menu.twig` should also mark only
+links whose `item.current` flag is true with `aria-current="page"`.
+
 The release tooling change requires no runtime or generated child theme edits.
 Maintainers need a full Git checkout with tags to run release checks. Before
 publishing, prepare a release PR that updates root `package.json` and all derived

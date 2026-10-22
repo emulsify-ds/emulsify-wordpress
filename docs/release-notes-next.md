@@ -64,6 +64,8 @@ Title: `2.1.0`
 
 ### Fixed
 
+- Fallback menus set `aria-current="page"` only on the current menu item,
+  leaving its ancestors unmarked.
 - Fallback pagination marks only the actual current page, renders a translated
   ellipsis character as non-interactive text, and preserves multi-argument URLs
   in numbered, previous, and next links without double escaping.

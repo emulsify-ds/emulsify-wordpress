@@ -17,7 +17,8 @@
                 class: bem('link', [], 'menu'),
                 href: item.link|default('#'),
                 target: item.target|default(null),
-                rel: item.target|default(null) ? 'noopener' : null
+                rel: item.target|default(null) ? 'noopener' : null,
+                'aria-current': item.current|default(false) ? 'page' : null
             } %}
             <li {{ add_attributes(item_attributes) }}>
                 <a {{ add_attributes(link_attributes) }}>
