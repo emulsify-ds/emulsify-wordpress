@@ -38,10 +38,7 @@ function emulsify_attribute_helper_assert_same( string $label, $expected, $actua
  */
 function emulsify_register_smoke_twig_functions( \Twig\Environment $environment, Twig $helpers ): void {
 	foreach ( $helpers->functions( array() ) as $name => $definition ) {
-		$options = array(
-			'is_safe'       => $definition['is_safe'] ?? array(),
-			'needs_context' => $definition['needs_context'] ?? false,
-		);
+		$options = $definition['options'] ?? array();
 
 		$environment->addFunction( new \Twig\TwigFunction( $name, $definition['callable'], $options ) );
 	}

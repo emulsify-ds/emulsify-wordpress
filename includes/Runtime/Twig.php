@@ -130,15 +130,19 @@ final class Twig {
 	 */
 	public function functions( array $functions ): array {
 		$functions['bem'] = array(
-			'callable'      => array( $this, 'bem' ),
-			'needs_context' => true,
-			'is_safe'       => array( 'html' ),
+			'callable' => array( $this, 'bem' ),
+			'options'  => array(
+				'needs_context' => true,
+				'is_safe'       => array( 'html' ),
+			),
 		);
 
 		$functions['add_attributes'] = array(
-			'callable'      => array( $this, 'add_attributes' ),
-			'needs_context' => true,
-			'is_safe'       => array( 'html' ),
+			'callable' => array( $this, 'add_attributes' ),
+			'options'  => array(
+				'needs_context' => true,
+				'is_safe'       => array( 'html' ),
+			),
 		);
 
 		return $functions;

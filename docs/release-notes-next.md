@@ -64,6 +64,11 @@ Title: `2.1.0`
 
 ### Fixed
 
+- Fallback pagination marks only the actual current page, renders a translated
+  ellipsis character as non-interactive text, and preserves multi-argument URLs
+  in numbered, previous, and next links without double escaping.
+- Twig helper registration uses Timber's function options so rendered attribute
+  markup remains intact and helpers receive the intended Twig context.
 - Release tooling supports prepared releases after `2.0.0`, validates versions
   against stable Git tags, and prevents publishing metadata that differs from
   the version semantic-release computes. `release:check -- --skip-smoke` now

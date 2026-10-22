@@ -558,7 +558,7 @@ function runStaticChecks() {
     ensure(twig.includes("$options['autoescape'] = 'html'"), 'Timber integration should enable HTML autoescaping.');
     ensure(smoke.includes('{{ fields.heading }}'), 'Twig autoescape smoke should render a field value.');
     ensure(smoke.includes('<script>alert(1)</script>'), 'Twig autoescape smoke should use a hostile script fixture.');
-    ensure(smoke.includes("$definition['is_safe']"), 'Twig autoescape smoke should register helper safety metadata.');
+    ensure(smoke.includes("$definition['options']"), 'Twig autoescape smoke should register the same helper options as Timber.');
     return 'Twig HTML autoescaping is registered and covered by a behavioral smoke test.';
   });
 

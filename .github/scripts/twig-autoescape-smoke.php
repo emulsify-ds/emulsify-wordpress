@@ -58,10 +58,7 @@ foreach ( $integration->functions( array() ) as $name => $definition ) {
 		new \Twig\TwigFunction(
 			$name,
 			$definition['callable'],
-			array(
-				'is_safe'       => $definition['is_safe'] ?? array(),
-				'needs_context' => $definition['needs_context'] ?? false,
-			)
+			$definition['options'] ?? array()
 		)
 	);
 }
