@@ -1,16 +1,21 @@
-# 2.0.0 Release Notes Draft
+# 2.1.0 Release Notes Draft
 
-Status date: 2026-08-02
+Status date: 2026-10-22
 
 ## Version strategy
 
-Latest published tag: none on the stable line. The `release-2.x` branch prepares
-the first stable release as `2.0.0`.
+Latest published tag: `2.0.0`. This draft tracks the upcoming `2.1.0` release.
 
-Until the `2.0.0` tag exists, `release.config.js` forces the first `main` publish
-to a major release type and verifies the computed version is exactly `2.0.0`.
-After that tag exists, normal Conventional Commit analysis drives later releases
-and this file should be rewritten for the next version.
+Root `package.json` remains at the latest stable version until a release PR
+bumps it and every derived version surface together. The version contract
+accepts the latest stable tag or an untagged next patch, minor, or major, and
+requires full Git history and tags. It rejects already-tagged draft versions
+and stale claims about the latest release.
+
+The guarded runner skips publishing when no new version is prepared. Once a
+release PR prepares `2.1.0`, semantic-release must compute exactly `2.1.0` from
+Conventional Commits before it can publish the committed theme headers, ZIP,
+and generated-theme lineage. See the [release process](release-process.md).
 
 ## Compatibility notes
 
@@ -24,7 +29,7 @@ and this file should be rewritten for the next version.
 
 ## Draft GitHub release notes
 
-Title: `2.0.0`
+Title: `2.1.0`
 
 ### Added
 
@@ -59,6 +64,10 @@ Title: `2.0.0`
 
 ### Fixed
 
+- Release tooling supports prepared releases after `2.0.0`, validates versions
+  against stable Git tags, and prevents publishing metadata that differs from
+  the version semantic-release computes. `release:check -- --skip-smoke` now
+  skips runtime smoke commands as documented.
 - `style.css` header replacement no longer warns when a header already holds the
   requested value; only a genuinely missing header is reported.
 
@@ -77,4 +86,4 @@ Title: `2.0.0`
   WordPress fixture path.
 - Run `npm run publish-test -- --no-ci` before publishing.
 - Publish the compatible `@emulsify/core` release before Emulsify WordPress
-  `2.0.0`.
+  `2.1.0`.

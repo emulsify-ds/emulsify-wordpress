@@ -1,162 +1,94 @@
 #!/usr/bin/env node
 
-const { execFileSync, spawnSync } = require('node:child_process');
+const { execFileSync } = require('node:child_process');
 const path = require('node:path');
+const { parseArgs } = require('node:util');
+const { validateReleaseVersionContract } = require('./release-version-contract.cjs');
 
-const repoRoot = path.resolve(__dirname, '..', '..');
-const {
-  expectedStableRelease,
-  initialStableBaseline,
-} = require(path.join(repoRoot, 'release.config.js'));
-const syntheticBaselineEnvironment = 'EMULSIFY_SYNTHETIC_STABLE_BASELINE';
-const syntheticBaselineShaEnvironment = 'EMULSIFY_SYNTHETIC_STABLE_BASELINE_SHA';
-const syntheticBaselineSourceEnvironment = 'EMULSIFY_SYNTHETIC_STABLE_BASELINE_SOURCE';
-
-function git(args, options = {}) {
-  const output = execFileSync('git', args, {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    ...options,
-  });
-
-  return typeof output === 'string' ? output.trim() : '';
+function git(repoRoot, args) {
+  return execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8' }).trim();
 }
 
-function mergedTags() {
-  const output = git(['tag', '--merged', 'HEAD', '--sort=-version:refname']);
+function assertPublishedStableTags(repoRoot) {
+  const stableTags = git(repoRoot, ['tag', '--list'])
+    .split(/\r?\n/).filter((tag) => /^\d+\.\d+\.\d+$/.test(tag));
+  const remoteTags = new Set(git(repoRoot, ['ls-remote', '--tags', 'origin'])
+    .split(/\r?\n/).map((line) => (line.split(/\s+/)[1] || '')
+      .replace(/^refs\/tags\//, '').replace(/\^\{\}$/, '')));
+  const localOnlyTags = stableTags.filter((tag) => !remoteTags.has(tag));
 
-  return output === '' ? [] : output.split(/\r?\n/);
-}
-
-function publishedTags() {
-  const output = git(['ls-remote', '--tags', 'origin']);
-  const tags = new Set();
-
-  for (const line of output.split(/\r?\n/)) {
-    const ref = line.trim().split(/\s+/)[1] || '';
-    if (ref.startsWith('refs/tags/')) {
-      tags.add(ref.slice('refs/tags/'.length).replace(/\^\{\}$/, ''));
-    }
-  }
-
-  return tags;
-}
-
-function tagCommit(tag) {
-  try {
-    return git(['rev-parse', '--verify', `${tag}^{commit}`]);
-  }
-  catch {
-    return null;
-  }
-}
-
-function prepareStableBaseline() {
-  const branch = process.env.GITHUB_REF_NAME || git(['branch', '--show-current']);
-
-  if (branch !== 'main') {
-    return null;
-  }
-
-  const tags = mergedTags();
-  const stableTags = tags.filter((tag) => /^\d+\.\d+\.\d+$/.test(tag));
-
-  if (stableTags.length > 0) {
-    const remoteTags = publishedTags();
-    const localOnlyTags = stableTags.filter((tag) => !remoteTags.has(tag));
-
-    if (localOnlyTags.length > 0) {
-      throw new Error(
-	`Refusing to publish local-only stable tag(s): ${localOnlyTags.join(', ')}. Remove them or publish them intentionally first.`
-      );
-    }
-
-    return null;
-  }
-
-  const prereleaseTag = tags.find((tag) => tag.startsWith(`${initialStableBaseline}-`));
-
-  if (!prereleaseTag) {
+  if (localOnlyTags.length > 0) {
     throw new Error(
-      `Cannot prepare ${expectedStableRelease}: no stable tag or merged ${initialStableBaseline} prerelease tag was found.`
+      `Refusing to publish local-only stable tag(s): ${localOnlyTags.join(', ')}. Remove them or publish them intentionally first.`,
     );
   }
+}
 
-  const sourceSha = tagCommit(prereleaseTag);
-  if (!sourceSha) {
-    throw new Error(`Cannot resolve ${prereleaseTag} to a commit for the temporary stable baseline.`);
-  }
-
-  git(['tag', initialStableBaseline, sourceSha]);
+function releaseOptions(args) {
+  const { values } = parseArgs({
+    args,
+    allowNegative: true,
+    options: {
+      'tag-format': { type: 'string', short: 't' },
+      'dry-run': { type: 'boolean', short: 'd' },
+      debug: { type: 'boolean' },
+      ci: { type: 'boolean' },
+    },
+  });
   return {
-    sha: sourceSha,
-    source: prereleaseTag,
-    tag: initialStableBaseline,
+    ...(values['tag-format'] !== undefined && { tagFormat: values['tag-format'] }),
+    ...(values['dry-run'] !== undefined && { dryRun: values['dry-run'] }),
+    ...(values.ci !== undefined && { ci: values.ci }),
+    ...(values.debug !== undefined && { debug: values.debug }),
   };
 }
 
-function removeStableBaseline(baseline) {
-  if (!baseline) {
-    return;
+async function runSemanticRelease(options, context) {
+  if (options.debug) {
+    (await import('debug')).default.enable('semantic-release:*');
+  }
+  return (await import('semantic-release')).default(options, context);
+}
+
+async function main({
+  repoRoot = path.resolve(__dirname, '../..'),
+  args = process.argv.slice(2),
+  runRelease = runSemanticRelease,
+} = {}) {
+  const options = releaseOptions(args);
+  const contract = validateReleaseVersionContract({ repoRoot });
+  if (contract.errors.length > 0) {
+    throw new Error(contract.errors.join('\n'));
   }
 
-  const existingSha = tagCommit(baseline.tag);
-  if (!existingSha) {
-    return;
+  // Check before skipping too: semantic-release must never push an unpublished
+  // stable tag from a developer's checkout.
+  assertPublishedStableTags(repoRoot);
+  if (!contract.releasePrepared) {
+    console.log(`No release prepared: package.json matches latest stable tag ${contract.latestStableTag}. Skipping publishing.`);
+    return 0;
   }
 
-  if (existingSha !== baseline.sha) {
+  // A release PR can verify its version before merging to main. This override
+  // is only for an explicit local dry run, which cannot tag or publish.
+  if (options.dryRun && options.ci === false) {
+    options.branches = [git(repoRoot, ['branch', '--show-current'])];
+  }
+
+  const result = await runRelease(options, { cwd: repoRoot });
+  if (result?.nextRelease?.version !== contract.packageVersion) {
     throw new Error(
-      `Refusing to delete ${baseline.tag}: it no longer points to the temporary baseline commit ${baseline.sha}.`
+      `Prepared package.json version ${contract.packageVersion}, but semantic-release ${result?.nextRelease ? `computed ${result.nextRelease.version}` : 'did not compute a release'}. Run on main with releasable Conventional Commits matching the prepared version, then rerun npm run release:check.`,
     );
   }
-
-  git(['tag', '--delete', baseline.tag], { stdio: 'ignore' });
+  return 0;
 }
 
-function main() {
-  let temporaryBaseline = null;
-
-  try {
-    temporaryBaseline = prepareStableBaseline();
-
-    const cli = require.resolve('semantic-release/bin/semantic-release.js');
-    const result = spawnSync(process.execPath, [cli, ...process.argv.slice(2)], {
-      cwd: repoRoot,
-      env: {
-	...process.env,
-	[syntheticBaselineEnvironment]: temporaryBaseline?.tag || '',
-	[syntheticBaselineShaEnvironment]: temporaryBaseline?.sha || '',
-	[syntheticBaselineSourceEnvironment]: temporaryBaseline?.source || '',
-      },
-      stdio: 'inherit',
-    });
-
-    if (result.error) {
-      throw result.error;
-    }
-
-    if (
-      result.status === 0
-      && temporaryBaseline
-      && tagCommit(temporaryBaseline.tag)
-    ) {
-      throw new Error(
-	`Semantic-release completed without removing the temporary ${temporaryBaseline.tag} baseline tag.`
-      );
-    }
-
-    return Number.isInteger(result.status) ? result.status : 1;
-  }
-  finally {
-    removeStableBaseline(temporaryBaseline);
-  }
+if (require.main === module) {
+  main().then((status) => { process.exitCode = status; }).catch((error) => {
+    console.error(`Semantic release runner failed: ${error.message}`);
+    process.exitCode = 1;
+  });
 }
 
-try {
-  process.exitCode = main();
-}
-catch (error) {
-  console.error(`Semantic release runner failed: ${error.message}`);
-  process.exitCode = 1;
-}
+module.exports = { assertPublishedStableTags, main, releaseOptions };

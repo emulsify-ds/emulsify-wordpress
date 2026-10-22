@@ -4,6 +4,15 @@ Emulsify WordPress is a parent theme. Generated child themes do not inherit
 later starter changes, so most upgrades have two parts: update the parent theme,
 then decide which starter changes to adopt in each generated project.
 
+## Upgrading from 2.0.0 to 2.1.0
+
+The release tooling change requires no runtime or generated child theme edits.
+Maintainers need a full Git checkout with tags to run release checks. Before
+publishing, prepare a release PR that updates root `package.json` and all derived
+version metadata together, then confirm semantic-release computes the same
+version. A checkout still at the latest tagged version skips publishing. See
+the [release PR procedure](docs/release-process.md#release-pr-procedure).
+
 ## Upgrading from 1.x to 2.0.0
 
 2.0.0 is a full rebuild of the WordPress theme around Timber, Emulsify Core 4,

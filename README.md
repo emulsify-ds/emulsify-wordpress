@@ -2,7 +2,7 @@
 
 # Emulsify WordPress
 
-Emulsify WordPress 2.0.0 is a Timber-first WordPress parent theme for teams building component-driven sites with Emulsify Core 4, Vite, Storybook, and Twig.
+Emulsify WordPress is a Timber-first WordPress parent theme for teams building component-driven sites with Emulsify Core 4, Vite, Storybook, and Twig.
 
 The parent theme provides the WordPress runtime: theme setup, Timber bootstrapping, Twig namespaces and helpers, template fallbacks, asset loading, and optional block registration. Generated child themes provide the project layer: components, templates, source Sass and JavaScript, compiled assets, and site-specific overrides.
 
