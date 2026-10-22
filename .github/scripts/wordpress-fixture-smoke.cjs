@@ -328,9 +328,26 @@ function assertGeneratedChildTheme(themePath, slug) {
 function installGeneratedChildFixtures(themePath) {
   const globalDirectory = path.join(themePath, 'dist', 'global');
   const acfDirectory = path.join(themePath, 'dist', 'components', 'smoke-acf');
+  const groupedDirectory = path.join(themePath, 'src', 'components', 'atoms', 'layout', 'smoke-grouped');
+  const themeSlug = path.basename(themePath);
 
   fs.mkdirSync(globalDirectory, { recursive: true });
   fs.mkdirSync(path.join(acfDirectory, 'css'), { recursive: true });
+  fs.mkdirSync(groupedDirectory, { recursive: true });
+  fs.writeFileSync(
+    path.join(groupedDirectory, 'smoke-grouped.html.twig'),
+    '<p class="smoke-grouped-project-component">{{ label }}</p>\n'
+  );
+  fs.writeFileSync(
+    path.join(themePath, 'templates', 'single.twig'),
+    `{% extends '@emulsify-tpl/single.twig' %}
+{% block content %}
+  {{ parent() }}
+  {% include "${themeSlug}:smoke-grouped" with { label: 'Grouped project component via colon' } only %}
+  {% include "@${themeSlug}/smoke-grouped" with { label: 'Grouped project component via namespace' } only %}
+{% endblock %}
+`
+  );
   fs.writeFileSync(
     path.join(globalDirectory, 'smoke.css'),
     '.smoke-generated-global { color: inherit; }\n'
@@ -759,7 +776,17 @@ async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
   const routes = [
     { name: 'home', path: '/', includes: ['Emulsify Smoke', 'Smoke Post'] },
     { name: 'page', path: `/?page_id=${content.pageId}`, includes: pageIncludes },
-    { name: 'single', path: `/?p=${content.postId}`, includes: ['Smoke Post', 'Smoke post content', 'Smoke comment content'] },
+    {
+      name: 'single',
+      path: `/?p=${content.postId}`,
+      includes: [
+        'Smoke Post',
+        'Smoke post content',
+        'Smoke comment content',
+        'Grouped project component via colon',
+        'Grouped project component via namespace',
+      ],
+    },
     { name: 'archive', path: `/?cat=${content.categoryId}`, includes: ['Smoke Category', 'Smoke Post'] },
     { name: 'search', path: '/?s=Smoke', includes: ['Search results for Smoke', 'Smoke Post'] },
     { name: 'author', path: `/?author=${content.authorId}`, includes: ['Archive of Smoke Author', 'Smoke Post'] },

@@ -6,6 +6,14 @@ then decide which starter changes to adopt in each generated project.
 
 ## Upgrading from 2.0.0 to 2.1.0
 
+Project component references now resolve components inside group folders and
+accept both `project_machine_name:component` and
+`@project_machine_name/component`. Resolution follows Emulsify Core, so a flat
+`component.twig` now precedes `component/component.twig`; earlier WordPress
+versions preferred the latter. Check projects that contain both forms or
+duplicate component names, and use an explicit group or template path to keep
+the intended choice. See the [component resolution order](docs/timber-and-twig-authoring.md#component-includes).
+
 Fallback pagination ellipses remain non-interactive spans with the existing BEM
 classes, now displaying a translated `…` and omitting `aria-current`. Child
 themes that override `templates/partials/pagination.twig` should adopt these

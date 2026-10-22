@@ -202,6 +202,7 @@ $missing_child = $work_root . '/missing-project-child';
 $invalid_child = $work_root . '/invalid-project-child';
 $parent        = $work_root . '/parent-theme';
 $extra         = $work_root . '/extra-components';
+$failures      = array();
 
 try {
 	emulsify_twig_project_smoke_write(
@@ -234,6 +235,59 @@ try {
 	emulsify_twig_project_smoke_write( $child . '/custom-twig/teaser.twig', 'Configured namespace teaser' );
 	emulsify_twig_project_smoke_write( $parent . '/src/components/example-card/example-card.twig', 'Parent example card' );
 	emulsify_twig_project_smoke_write( $extra . '/filtered/filtered.twig', 'Filtered root' );
+
+	$component_fixtures = array(
+		'exact-file.twig'                           => 'Twig extension after exact file',
+		'trailing.twig'                             => 'Flat trailing name must not win',
+		'trailing/.twig'                            => 'Trailing slash dot Twig candidate',
+		'trailing/trailing.twig'                    => 'Nested trailing name after dot Twig',
+		'atoms/button/button.twig'                   => 'Grouped button',
+		'ui/controls/deep-card/deep-card.twig'       => 'Deep grouped card',
+		'01-duplicate/duplicate/duplicate.twig'      => 'First sibling duplicate',
+		'02-duplicate/duplicate/duplicate.twig'      => 'Second sibling duplicate',
+		'a-depth/deeper/breadth/breadth.twig'        => 'Deeper duplicate',
+		'z-depth/breadth/breadth.twig'               => 'Shallower duplicate',
+		"\u{1F600}/unicode-order/unicode-order.twig" => 'UTF-16 first duplicate',
+		"\u{E000}/unicode-order/unicode-order.twig"  => 'UTF-8 first duplicate',
+		'exact-file'                                 => 'Exact file candidate',
+		'direct-priority.twig'                       => 'Direct before grouped',
+		'atoms/direct-priority/direct-priority.twig' => 'Grouped after direct',
+		'candidate-order.twig'                       => 'Flat Twig candidate',
+		'candidate-order.html.twig'                  => 'Flat HTML Twig candidate',
+		'candidate-order/candidate-order.twig'       => 'Nested Twig candidate',
+		'flat-html.html.twig'                        => 'HTML Twig before nested',
+		'flat-html/flat-html.twig'                   => 'Nested after HTML Twig',
+		'nested-order/nested-order.twig'             => 'Nested Twig before HTML Twig',
+		'nested-order/nested-order.html.twig'        => 'Nested HTML Twig after Twig',
+		'nested-html/nested-html.html.twig'          => 'Nested HTML Twig candidate',
+		'nested.html/nested.html.twig'               => 'HTML extension stays in nested stem',
+		'atoms/grouped-html/grouped-html.html.twig'  => 'Grouped HTML Twig candidate',
+		'atoms/override/override.twig'               => 'Child grouped override',
+	);
+
+	foreach ( $component_fixtures as $relative => $contents ) {
+		emulsify_twig_project_smoke_write( $child . '/src/components/' . $relative, $contents );
+	}
+
+	emulsify_twig_project_smoke_write( $parent . '/src/components/override.twig', 'Parent direct override' );
+	emulsify_twig_project_smoke_write( $parent . '/src/components/parent-only.twig', 'Parent source root' );
+	emulsify_twig_project_smoke_write( $parent . '/components/parent-legacy.twig', 'Parent legacy root' );
+
+	$skipped_directories = array( 'node_modules', '.git', '.cache', '.vite', '.out', '.coverage', 'dist' );
+	foreach ( $skipped_directories as $index => $directory ) {
+		emulsify_twig_project_smoke_write( $child . '/src/components/' . $directory . '/skipped-' . $index . '/skipped-' . $index . '.twig', 'Skipped component' );
+		emulsify_twig_project_smoke_write( $child . '/src/components/ui/' . $directory . '/nested-skip-' . $index . '/nested-skip-' . $index . '.twig', 'Nested skipped component' );
+	}
+
+	$outside = $work_root . '/outside-components';
+	emulsify_twig_project_smoke_write( $outside . '/escape.twig', 'Outside directory template' );
+	emulsify_twig_project_smoke_write( $outside . '/external/external.twig', 'Outside grouped template' );
+	if ( ! symlink( $outside, $child . '/src/components/escape' ) || ! symlink( $outside . '/escape.twig', $child . '/src/components/escape-file.twig' ) ) {
+		throw new RuntimeException( 'Could not create component containment symlink fixtures.' );
+	}
+	if ( ! symlink( $child . '/src/components/badge.twig', $child . '/src/components/inside-file.twig' ) || ! symlink( $child . '/src/components/atoms/button', $child . '/src/components/inside-directory' ) ) {
+		throw new RuntimeException( 'Could not create contained component symlink fixtures.' );
+	}
 
 	add_filter(
 		'emulsify_theme_project_component_roots',
@@ -297,6 +351,83 @@ try {
 		'Unsafe project component references should be rejected.'
 	);
 
+	$resolution_cases = array(
+		array( 'whisk:button', 'Grouped button', 'A component name should resolve inside a group.' ),
+		array( 'whisk:deep-card', 'Deep grouped card', 'A component name should resolve inside two grouping levels.' ),
+		array( 'whisk:ui/controls/deep-card', 'Deep grouped card', 'Explicit grouping paths should support more than two segments.' ),
+		array( 'whisk:atoms\\button', 'Grouped button', 'Windows-style separators should normalize before candidate construction.' ),
+		array( 'whisk:./badge', 'Child badge', 'Safe current-directory segments should normalize within the root.' ),
+		array( 'whisk:missing/../badge', 'Child badge', 'Contained parent-directory segments should normalize without requiring an existing directory.' ),
+		array( 'whisk:atoms//button', 'Grouped button', 'Repeated separators should normalize before candidate construction.' ),
+		array( 'whisk:atoms/button/', 'Grouped button', 'A trailing separator should preserve nested component candidates.' ),
+		array( 'whisk:trailing/', 'Trailing slash dot Twig candidate', 'Candidate suffixes should be added before normalizing a trailing separator.' ),
+		array( 'whisk:duplicate', 'First sibling duplicate', 'Duplicate shorthand names should use sorted sibling order.' ),
+		array( 'whisk:breadth', 'Shallower duplicate', 'Shallower groups should precede alphabetically earlier deeper groups.' ),
+		array( 'whisk:unicode-order', 'UTF-16 first duplicate', 'Sibling sorting should use UTF-16 code units rather than UTF-8 bytes.' ),
+		array( 'whisk:exact-file', 'Exact file candidate', 'An exact file should be the first candidate.' ),
+		array( 'whisk:direct-priority', 'Direct before grouped', 'Direct candidates should precede every grouped candidate in the same root.' ),
+		array( 'whisk:candidate-order', 'Flat Twig candidate', 'A flat Twig candidate should precede HTML Twig and nested candidates.' ),
+		array( 'whisk:flat-html', 'HTML Twig before nested', 'A flat HTML Twig candidate should precede nested candidates.' ),
+		array( 'whisk:nested-order', 'Nested Twig before HTML Twig', 'A nested Twig candidate should precede nested HTML Twig.' ),
+		array( 'whisk:nested-html', 'Nested HTML Twig candidate', 'Nested HTML Twig candidates should resolve.' ),
+		array( 'whisk:grouped-html', 'Grouped HTML Twig candidate', 'Grouped HTML Twig candidates should resolve.' ),
+		array( 'whisk:badge.twig', 'Child badge', 'Explicit Twig extensions should resolve as exact files.' ),
+		array( 'whisk:nested-order.twig', 'Nested Twig before HTML Twig', 'Nested candidate stems should strip an explicit final Twig extension.' ),
+		array( 'whisk:nested.html.twig', 'HTML extension stays in nested stem', 'Nested candidate stems should preserve HTML before the final Twig extension.' ),
+		array( 'whisk:flat-html.html.twig', 'HTML Twig before nested', 'Explicit HTML Twig extensions should resolve as exact files.' ),
+		array( 'whisk:inside-file', 'Child badge', 'File symlinks contained by the root should remain usable.' ),
+		array( 'whisk:inside-directory/button.twig', 'Grouped button', 'Explicit directory symlinks contained by the root should remain usable.' ),
+		array( '@whisk/button', 'Grouped button', 'Project at-namespace syntax should use grouped lookup.' ),
+		array( 'whisk:override', 'Child grouped override', 'A child grouped component should precede a parent direct component.' ),
+		array( 'whisk:parent-only', 'Parent source root', 'The parent source root should remain available.' ),
+		array( 'whisk:parent-legacy', 'Parent legacy root', 'The parent legacy root should remain available.' ),
+	);
+
+	foreach ( $resolution_cases as list( $reference, $expected, $message ) ) {
+		try {
+			emulsify_twig_project_smoke_assert_same(
+				$expected,
+				emulsify_twig_project_smoke_render( $environment, '{% include ' . json_encode( $reference, JSON_UNESCAPED_SLASHES ) . ' %}' ),
+				$message
+			);
+		} catch ( Throwable $throwable ) {
+			$failures[] = $message . ' ' . $throwable->getMessage();
+		}
+	}
+
+	$missing_references = array(
+		'whisk:escape'               => 'Directory symlinks must not escape the component root.',
+		'whisk:escape-file'          => 'File symlinks must not escape the component root.',
+		'@whisk/escape-file'         => 'Project at-namespace aliases must not escape the component root.',
+		'whisk:external'             => 'Grouping discovery must not follow directory symlinks.',
+		'whisk:../../outside'        => 'Lexical traversal must not escape the component root.',
+		'whisk:missing/button'       => 'Project paths must preserve a missing first segment.',
+		'missing/button'             => 'Bare paths must preserve a missing first segment.',
+		'missing/button/button.twig' => 'Bare explicit template paths must preserve a missing first segment.',
+	);
+
+	foreach ( $skipped_directories as $index => $directory ) {
+		$missing_references[ 'whisk:skipped-' . $index ]     = $directory . ' must not be searched as a group.';
+		$missing_references[ 'whisk:nested-skip-' . $index ] = $directory . ' must be skipped inside nested groups.';
+	}
+
+	foreach ( $missing_references as $reference => $message ) {
+		try {
+			emulsify_twig_project_smoke_assert( false === $environment->getLoader()->exists( $reference ), $message );
+		} catch ( Throwable $throwable ) {
+			$failures[] = $throwable->getMessage();
+		}
+	}
+
+	foreach ( array( 'whisk:missing-component' => 'is not defined', 'whisk:../example-card' => 'name "whisk:../example-card" is invalid' ) as $reference => $expected_message ) {
+		try {
+			$environment->getLoader()->getSourceContext( $reference );
+			$failures[] = 'Missing or invalid project references should throw LoaderError: ' . $reference;
+		} catch ( \Twig\Error\LoaderError $exception ) {
+			emulsify_twig_project_smoke_assert( false !== strpos( $exception->getMessage(), $expected_message ), 'Project component loader errors should retain their existing wording.' );
+		}
+	}
+
 	emulsify_twig_project_smoke_write( $missing_child . '/src/components/example-card/example-card.twig', 'Missing project example card' );
 
 	$missing_environment = emulsify_twig_project_smoke_environment( $missing_child, $parent );
@@ -322,6 +453,10 @@ try {
 		emulsify_twig_project_smoke_render( $invalid_environment, '{% include "@components/example-card/example-card.twig" %}' ),
 		'Invalid project.emulsify.json should not break @components.'
 	);
+
+	if ( $failures ) {
+		throw new RuntimeException( implode( "\n", $failures ) );
+	}
 
 	echo "Twig project namespace smoke checks passed.\n";
 } catch ( Throwable $throwable ) {

@@ -64,6 +64,10 @@ Title: `2.1.0`
 
 ### Fixed
 
+- Project component references now match Emulsify Core's direct candidates and
+  breadth-first grouped discovery, including `.html.twig` templates and the
+  `@project_machine_name/component` alias. Each child root is searched before
+  parent roots, with deterministic duplicate precedence and root containment.
 - Fallback menus set `aria-current="page"` only on the current menu item,
   leaving its ancestors unmarked.
 - Fallback pagination marks only the actual current page, renders a translated
