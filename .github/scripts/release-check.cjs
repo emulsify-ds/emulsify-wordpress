@@ -394,6 +394,9 @@ function runStaticChecks() {
       'templates/search.twig',
       'templates/single-password.twig',
       'templates/single.twig',
+      'docs/template-extension.md',
+      '.github/scripts/template-extension-smoke.php',
+      '.github/fixtures/template-extension/README.md',
       '.github/scripts/acf-local-json-smoke.php',
       '.github/scripts/asset-manifest-smoke.php',
       '.github/scripts/attribute-helper-smoke.php',
@@ -426,7 +429,6 @@ function runStaticChecks() {
       'whisk/config/acf-json/.gitkeep',
       'whisk/patterns/.gitkeep',
       'whisk/src/components/.gitkeep',
-      'whisk/templates/page.twig',
     ];
     const missingFiles = requiredFiles.filter((file) => !fs.existsSync(path.join(repoRoot, file)));
     ensure(missingFiles.length === 0, `Missing required files: ${missingFiles.join(', ')}.`);
@@ -475,6 +477,7 @@ function runStaticChecks() {
     ensure(rootPackage.scripts['smoke:theme-filters'] === 'php .github/scripts/theme-filters-smoke.php', 'package.json should expose npm run smoke:theme-filters.');
     ensure(rootPackage.scripts['smoke:twig-switch'] === 'php .github/scripts/twig-switch-smoke.php', 'package.json should expose npm run smoke:twig-switch.');
     ensure(rootPackage.scripts['smoke:twig-project-namespace'] === 'php .github/scripts/twig-project-namespace-smoke.php', 'package.json should expose npm run smoke:twig-project-namespace.');
+    ensure(rootPackage.scripts['smoke:template-extension'] === 'php .github/scripts/template-extension-smoke.php', 'package.json should expose the exact-byte template extension smoke.');
     ensure(rootPackage.scripts['whisk:install'], 'package.json should expose npm run whisk:install.');
     ensure(rootPackage.scripts['whisk:build'] === 'npm --prefix whisk run build', 'package.json should expose npm run whisk:build.');
     ensure(!rootPackage.devDependencies['@semantic-release/changelog'], 'package.json should not declare unused @semantic-release/changelog tooling.');
@@ -971,7 +974,6 @@ function runStaticChecks() {
     const projectComponentLoader = readFile('includes/Twig/ProjectComponentLoader.php');
     const twigNamespaceSmoke = readFile('.github/scripts/twig-project-namespace-smoke.php');
     const childFunctions = readFile('whisk/functions.php');
-    const childPageTemplate = readFile('whisk/templates/page.twig');
     const parentTemplateFiles = listFilesRecursive('templates', (file) => file.endsWith('.twig')).sort();
     const childTemplateFiles = listFilesRecursive('whisk/templates', (file) => file.endsWith('.twig')).sort();
     const expectedParentFallbacks = [
@@ -984,12 +986,6 @@ function runStaticChecks() {
       'templates/single-password.twig',
       'templates/single.twig',
     ];
-    const unexpectedChildTemplates = childTemplateFiles.filter((file) => file !== 'whisk/templates/page.twig');
-    const duplicateChildTemplates = childTemplateFiles.filter((file) => {
-      const parentFile = file.replace(/^whisk\//, '');
-      const parentPath = path.join(repoRoot, parentFile);
-      return fs.existsSync(parentPath) && readFile(file) === readFile(parentFile);
-    });
     const childTemplatePathIndex = twigIntegration.indexOf("'path'      => get_stylesheet_directory() . '/templates'");
     const parentTemplatePathIndex = twigIntegration.indexOf("'path'      => get_template_directory() . '/templates'");
     const childComponentSrcPathIndex = twigIntegration.indexOf("'path'      => get_stylesheet_directory() . '/src/components'");
@@ -1000,10 +996,8 @@ function runStaticChecks() {
     for (const fallback of expectedParentFallbacks) {
       ensure(parentTemplateFiles.includes(fallback), `${fallback} should exist as a parent fallback.`);
     }
-    ensure(unexpectedChildTemplates.length === 0, `Whisk should not duplicate parent fallback templates: ${unexpectedChildTemplates.join(', ')}.`);
-    ensure(duplicateChildTemplates.length === 0, `Whisk templates should not be byte-identical parent copies: ${duplicateChildTemplates.join(', ')}.`);
-    ensure(childPageTemplate.includes("{% extends '@emulsify-tpl/page.twig' %}"), 'whisk/templates/page.twig should extend the parent-only page fallback.');
-    ensure(childPageTemplate.includes('{{ parent() }}'), 'whisk/templates/page.twig should demonstrate wrapping parent fallback output.');
+    ensure(childTemplateFiles.length === 0, `Whisk ships no Twig templates; remove ${childTemplateFiles.join(', ')} and see docs/template-extension.md for intentional child overrides.`);
+    ensure(!fs.existsSync(path.join(repoRoot, 'whisk/templates')), 'Whisk should omit the templates directory; see docs/template-extension.md before adding project overrides.');
     ensure(childTemplatePathIndex !== -1, 'Twig integration should register child @templates path.');
     ensure(parentTemplatePathIndex !== -1, 'Twig integration should register parent @templates path.');
     ensure(childTemplatePathIndex < parentTemplatePathIndex, 'Twig integration should register child @templates before parent @templates.');
@@ -1041,13 +1035,29 @@ function runStaticChecks() {
     ensure(wordpressFixtureSmoke.includes('assertGeneratedChildTheme'), 'WordPress fixture smoke should validate generated child theme metadata and copied Whisk files.');
     ensure(wordpressFixtureSmoke.includes("project.project?.generatedFrom !== 'emulsify-wordpress'"), 'WordPress fixture smoke should validate generatedFrom metadata.');
     ensure(wordpressFixtureSmoke.includes('project.project?.generatedFromVersion !== expectedGeneratedFromVersion'), 'WordPress fixture smoke should derive the expected generatedFromVersion from root package metadata instead of a literal.');
-    ensure(wordpressFixtureSmoke.includes('${themeSlug}-page'), 'WordPress fixture smoke should prove the generated child page template renders through Timber.');
+    ensure(wordpressFixtureSmoke.includes('Generated child theme should not include Twig templates by default.') && wordpressFixtureSmoke.includes('entry__content'), 'WordPress fixture smoke should prove parent page rendering without a generated child Twig override.');
+    ensure(wordpressFixtureSmoke.includes('Child block extension must preserve every surrounding byte.') && wordpressFixtureSmoke.includes("{% extends '@emulsify-tpl/page.twig' %}") && wordpressFixtureSmoke.includes('finally'), 'WordPress fixture smoke should prove one-block child inheritance and restore the temporary override; see docs/template-extension.md.');
     ensure(wordpressFixtureSmoke.includes('checkGeneratedAssets'), 'WordPress fixture smoke should fetch generated child theme built assets.');
     ensure(wordpressFixtureSmoke.includes('runAcfDiscoveryWithoutAcf'), 'WordPress fixture smoke should check ACF/Twig discovery when ACF is absent.');
     ensure(wordpressFixtureSmoke.includes('installAcfStub'), 'WordPress fixture smoke should provide a fixture-only ACF stub.');
     ensure(wordpressFixtureSmoke.includes('runAcfDiscoveryWithStub'), 'WordPress fixture smoke should check ACF/Twig registration with the ACF stub.');
     ensure(wordpressFixtureSmoke.includes('emulsify/smoke-native'), 'WordPress fixture smoke should check native block.json discovery and registration.');
-    return 'Parent owns route fallbacks and default Twig namespaces; Whisk ships only the page override example.';
+    return 'Parent owns route fallbacks and default Twig namespaces; Whisk ships no Twig templates.';
+  });
+
+  runStaticCheck('Template extension contract', () => {
+    const base = readFile('templates/layouts/base.twig');
+    const extensionDocs = readFile('docs/template-extension.md');
+    for (const block of ['head', 'header', 'content', 'footer', 'site_header', 'main', 'page_title']) {
+      ensure(base.includes(`{% block ${block} %}`) && extensionDocs.includes('`' + block + '`'), `Preserve the public ${block} block and boundary documented in docs/template-extension.md.`);
+    }
+    const goldens = listFilesRecursive('.github/fixtures/template-extension', (file) => file.endsWith('.html'));
+    ensure(goldens.length >= 10, 'Keep the pre-extension output captures; see docs/template-extension.md.');
+    ensure(readFile('.github/scripts/pr-validation.cjs').includes('smoke:template-extension'), 'PR validation should compare exact template bytes and child extension boundaries.');
+    for (const file of ['README.md', 'docs/README.md', 'docs/timber-and-twig-authoring.md']) {
+      ensure(readFile(file).includes('template-extension.md'), `${file} should link to the public template extension contract.`);
+    }
+    return 'Seven public layout blocks retain ten golden outputs, tested child inheritance, and documented boundaries.';
   });
 
   runStaticCheck('Generated child theme documentation', () => {

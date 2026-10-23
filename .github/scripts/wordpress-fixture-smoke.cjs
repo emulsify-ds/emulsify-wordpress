@@ -274,7 +274,6 @@ function assertGeneratedChildTheme(themePath, slug) {
     'patterns/.gitkeep',
     'src/components/.gitkeep',
     'project.emulsify.json',
-    'templates/page.twig',
   ];
 
   if (!style.includes('Theme Name: Smoke Generated') || !style.includes('Template: emulsify')) {
@@ -312,6 +311,14 @@ function assertGeneratedChildTheme(themePath, slug) {
     throw new Error('Generated child theme should not include an empty child theme.json by default.');
   }
 
+  if (fs.existsSync(path.join(themePath, 'templates'))) {
+    throw new Error('Generated child theme should not include a templates directory by default.');
+  }
+
+  if (fs.readdirSync(themePath, { recursive: true }).some((file) => file.endsWith('.twig'))) {
+    throw new Error('Generated child theme should not include Twig templates by default.');
+  }
+
   for (const directory of ['src/editor', 'src/foundation', 'src/layout']) {
     if (fs.existsSync(path.join(themePath, directory))) {
       throw new Error(`Generated child theme should not include assumed source directory: ${directory}`);
@@ -334,6 +341,7 @@ function installGeneratedChildFixtures(themePath) {
   fs.mkdirSync(globalDirectory, { recursive: true });
   fs.mkdirSync(path.join(acfDirectory, 'css'), { recursive: true });
   fs.mkdirSync(groupedDirectory, { recursive: true });
+  fs.mkdirSync(path.join(themePath, 'templates'), { recursive: true });
   fs.writeFileSync(
     path.join(groupedDirectory, 'smoke-grouped.html.twig'),
     '<p class="smoke-grouped-project-component">{{ label }}</p>\n'
@@ -685,7 +693,7 @@ async function checkRoute(baseUrl, route) {
   const expectedStatus = route.status || 200;
 
   appendLog('http.log', `\n${route.name} ${route.path}\nStatus: ${response.status}\n`);
-  appendLog('http.log', body.slice(0, 4000));
+  appendLog('http.log', body);
   appendLog('http.log', '\n');
 
   if (response.status !== expectedStatus) {
@@ -762,6 +770,53 @@ async function checkSearchPagination(baseUrl) {
   }
 }
 
+async function checkChildBlockExtension(baseUrl, pagePath, themePath, baseline) {
+  const childTemplate = path.join(themePath, 'templates', 'page.twig');
+  const original = fs.existsSync(childTemplate) ? fs.readFileSync(childTemplate, 'utf8') : null;
+  const before = '<!-- child content extension start -->';
+  const after = '<!-- child content extension end -->';
+
+  try {
+    fs.mkdirSync(path.dirname(childTemplate), { recursive: true });
+    fs.writeFileSync(
+      childTemplate,
+      `{% extends '@emulsify-tpl/page.twig' %}{% block content %}${before}{{ parent() }}${after}{% endblock %}`
+    );
+    const extended = await checkRoute(baseUrl, {
+      name: 'child page block extension',
+      path: pagePath,
+      includes: [before, after, 'Smoke Page', 'Smoke page content'],
+    });
+
+    // Anonymous fixture responses are deterministic. Compare raw bytes, including
+    // whitespace and WordPress hook output, without normalizing the document.
+    if (
+      extended.split(before).length !== 2 ||
+      extended.split(after).length !== 2 ||
+      extended.replace(before, '').replace(after, '') !== baseline
+    ) {
+      throw new Error('Child block extension must preserve every surrounding byte.');
+    }
+  }
+  finally {
+    if (original === null) {
+      fs.rmSync(childTemplate, { force: true });
+    }
+    else {
+      fs.writeFileSync(childTemplate, original);
+    }
+  }
+
+  const restored = await checkRoute(baseUrl, {
+    name: 'parent page after child extension cleanup',
+    path: pagePath,
+    includes: ['Smoke Page', 'Smoke page content'],
+  });
+  if (restored !== baseline) {
+    throw new Error('Removing the child block extension must restore the parent page bytes.');
+  }
+}
+
 async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
   startServer(wpPath, port);
   await waitForServer(baseUrl);
@@ -769,7 +824,9 @@ async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
   const pageIncludes = [
     'Smoke Page',
     'Smoke page content',
-    `${themeSlug}-page`,
+    `<article class="entry" id="post-${content.pageId}">`,
+    '<h1 class="entry__title">Smoke Page</h1>',
+    '<div class="entry__content">',
     `/wp-content/themes/${themeSlug}/dist/global/smoke.css`,
     `/wp-content/themes/${themeSlug}/dist/components/smoke-acf/css/smoke-acf.css`,
   ];
@@ -793,12 +850,29 @@ async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
     { name: '404', path: '/?p=9999999', status: 404, includes: ['Page not found'] },
   ];
 
+  let parentPage = null;
   for (const route of routes) {
-    await checkRoute(baseUrl, route);
+    const body = await checkRoute(baseUrl, route);
+    if (route.name === 'page') {
+      parentPage = body;
+    }
   }
 
+  await checkChildBlockExtension(
+    baseUrl,
+    `/?page_id=${content.pageId}`,
+    path.join(wpPath, 'wp-content', 'themes', themeSlug),
+    parentPage
+  );
   await checkSearchPagination(baseUrl);
   await checkGeneratedAssets(baseUrl, themeSlug);
+}
+
+function assertCleanDebugLog(wpPath) {
+  const debugLog = path.join(wpPath, 'wp-content', 'debug.log');
+  if (fs.existsSync(debugLog) && fs.readFileSync(debugLog, 'utf8').trim() !== '') {
+    throw new Error(`WordPress fixture debug log must remain clean. See ${debugLog}.`);
+  }
 }
 
 function dumpLogs(wpPath) {
@@ -909,8 +983,9 @@ async function main() {
   const content = createFixtureContent(wpPath);
   await renderRoutes(wpPath, content, baseUrl, port, generatedChildSlug);
   stopServer();
+  assertCleanDebugLog(wpPath);
 
-  log('Generated and activated a child theme, checked block discovery, loaded assets, rendered home, page, single, archive, search, author, and 404 routes, and followed search pagination to page 2.');
+  log('Generated and activated a child without Twig templates, checked block discovery, loaded assets, rendered parent page fallbacks and child block extensions without changing surrounding bytes, rendered home, single, archive, search, author, and 404 routes, and followed search pagination to page 2 with a clean debug log.');
   dropDatabase(env);
 
   if (!keepFixture) {

@@ -350,15 +350,6 @@ final class GenerateChildThemeCommand {
 			}
 		);
 
-		$this->collect_text_update(
-			$updates,
-			$root,
-			'templates/page.twig',
-			function ( string $contents ) use ( $machine_name ): string {
-				return str_replace( self::STARTER_SLUG . '-page', $machine_name . '-page', $contents );
-			}
-		);
-
 		$this->collect_pattern_updates( $updates, $root, $machine_name );
 
 		$this->collect_documentation_updates(

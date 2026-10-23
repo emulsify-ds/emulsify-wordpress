@@ -138,7 +138,8 @@ function emulsify_extension_expect( bool $condition, string $message, array &$er
 	}
 }
 
-$capture = array_slice( $argv, 1 ) === array( '--update-goldens' );
+$capture   = array_slice( $argv, 1 ) === array( '--update-goldens' );
+$exit_code = 0;
 
 if ( count( $argv ) > 1 && ! $capture ) {
 	fwrite( STDERR, "Only --update-goldens is supported; ordinary runs never rewrite fixtures.\n" );
@@ -234,6 +235,7 @@ try {
 			emulsify_extension_expect( false !== strpos( $output, $fragment ), 'Replacing ' . $block . ' must preserve its surrounding markup: ' . $fragment, $errors );
 		}
 		emulsify_extension_expect( $hooks_expected === $GLOBALS['emulsify_extension_hooks'], 'Replacing ' . $block . ' must preserve the structural WordPress hooks and their order.', $errors );
+		emulsify_extension_expect( 1 === substr_count( $output, 'href="#content"' ), 'Replacing ' . $block . ' must preserve the skip link outside the block.', $errors );
 	}
 
 	foreach ( array( 'site_header' => 'header', 'main' => 'page_title' ) as $outer => $inner ) {
@@ -251,7 +253,7 @@ try {
 	echo "PASS child page inheritance, seven block names, replacement boundaries, nested blocks, and structural WordPress hooks.\n";
 } catch ( Throwable $throwable ) {
 	fwrite( STDERR, $throwable->getMessage() . "\n" );
-	exit( 1 );
+	$exit_code = 1;
 } finally {
 	if ( is_dir( get_stylesheet_directory() . '/templates' ) ) {
 		rmdir( get_stylesheet_directory() . '/templates' );
@@ -260,3 +262,5 @@ try {
 		rmdir( get_stylesheet_directory() );
 	}
 }
+
+exit( $exit_code );

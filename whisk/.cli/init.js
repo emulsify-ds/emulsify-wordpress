@@ -243,16 +243,6 @@ const updateFunctionsPhp = ({ sourceLabel }) => {
   writeTextIfChanged(filePath, contents);
 };
 
-const updatePageTemplate = ({ machineName }) => {
-  const filePath = path.join(ROOT, 'templates/page.twig');
-  const contents = readText(filePath).replaceAll(
-    `${STARTER_SLUG}-page`,
-    `${machineName}-page`,
-  );
-
-  writeTextIfChanged(filePath, contents);
-};
-
 const walkJsonFiles = (directory) => {
   if (!fs.existsSync(directory)) {
     return [];
@@ -303,7 +293,6 @@ const main = () => {
   updateLockfile('npm-shrinkwrap.json', project);
   updateProjectConfig(config, project);
   updateFunctionsPhp(project);
-  updatePageTemplate(project);
   updatePatternNamespaces(project);
 
   // Generation-only tooling should not linger in a project repository. Removing

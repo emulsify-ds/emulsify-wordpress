@@ -48,7 +48,6 @@ const REQUIRED_GENERATED_FILES = [
   'docs/development.md',
   'docs/support-information.md',
   'docs/upgrading.md',
-  'templates/page.twig',
 ];
 
 // Generation-only tooling and build output must never reach a project repo.

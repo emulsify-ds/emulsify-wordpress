@@ -274,7 +274,6 @@ try {
   const project = readJson(path.join(target, 'project.emulsify.json'));
   const pattern = readJson(path.join(target, 'patterns/smoke-pattern.json'));
   const functionsPhp = fs.readFileSync(path.join(target, 'functions.php'), 'utf8');
-  const pageTwig = fs.readFileSync(path.join(target, 'templates/page.twig'), 'utf8');
 
   assert(style['Theme Name'] === 'Acme echo 1 Theme', 'style.css should use a source-safe Theme Name.');
   assert(!style['Theme Name'].includes('*/'), 'style.css should not contain a crafted comment terminator.');
@@ -294,8 +293,7 @@ try {
   );
   assert(functionsPhp.includes('Acme echo 1 Theme child theme hooks.'), 'functions.php should use a source-safe visible label.');
   assert(!functionsPhp.includes('*/ echo 1; /*'), 'functions.php should not contain the attempted docblock breakout.');
-  assert(pageTwig.includes('acme-theme-page'), 'templates/page.twig should update the page class.');
-  assert(!pageTwig.includes('whisk-page'), 'templates/page.twig should not keep the starter page class.');
+  assert(!fs.existsSync(path.join(target, 'templates')), 'Fresh generated child themes should inherit parent templates without a local templates directory.');
   assert(pattern.name === 'acme-theme/smoke-pattern', 'JSON pattern names should update the whisk namespace.');
   assert(
     !fs.existsSync(path.join(target, '.cli')),

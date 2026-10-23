@@ -115,6 +115,36 @@ test('accepts a freshly generated child theme', () => {
   });
 });
 
+test('freshly generated child themes inherit parent templates without local Twig files', () => {
+  withGeneratedTheme((target) => {
+    assert.equal(fs.existsSync(path.join(target, 'templates')), false);
+    assert.deepEqual(
+      fs.readdirSync(target, { recursive: true }).filter((file) => file.endsWith('.twig')),
+      [],
+    );
+  });
+});
+
+test('accepts a generated child theme without a local page template', () => {
+  withGeneratedTheme((target) => {
+    fs.rmSync(path.join(target, 'templates'), { recursive: true, force: true });
+    const result = validate(target);
+    assert.deepEqual(result.errors, [], result.format());
+  });
+});
+
+test('allows consumers to add an intentional page override after generation', () => {
+  withGeneratedTheme((target) => {
+    fs.mkdirSync(path.join(target, 'templates'), { recursive: true });
+    fs.writeFileSync(
+      path.join(target, 'templates/page.twig'),
+      "{% extends '@emulsify-tpl/page.twig' %}\n{% block content %}<div class=\"project-page\">{{ parent() }}</div>{% endblock %}\n",
+    );
+    const result = validate(target);
+    assert.deepEqual(result.errors, [], result.format());
+  });
+});
+
 test('requires the generated documentation set', () => {
   withGeneratedTheme((target) => {
     fs.rmSync(path.join(target, 'README.md'));
@@ -143,11 +173,10 @@ test('reports leftover documentation tokens', () => {
 
 test('reports a stale starter machine name', () => {
   withGeneratedTheme((target) => {
-    const templatePath = path.join(target, 'templates/page.twig');
-    fs.writeFileSync(
-      templatePath,
-      fs.readFileSync(templatePath, 'utf8').replace(`${machineName}-page`, 'whisk-page'),
-    );
+    const packagePath = path.join(target, 'package.json');
+    const packageJson = readJson(packagePath);
+    packageJson.name = 'whisk';
+    writeJson(packagePath, packageJson);
 
     const result = validate(target);
     assert.match(result.format(), /FAIL placeholder replacement/);
