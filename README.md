@@ -34,7 +34,7 @@ Use the named `emulsify.zip` asset, not GitHub's automatically generated **Sourc
 - WordPress 6.8 or newer.
 - PHP 8.3 or newer.
 - Composer 2 for Composer-based installation and parent-theme maintenance.
-- Node.js 24. Root release tooling expects `>=24.10`; generated child themes expect `>=24`.
+- Node.js 24.13.0 or newer for generated child themes: their `package.json` advertises `>=24`, but Emulsify Core 4.5.0 requires `>=24.13.0`. Root release tooling separately requires `>=24.10`. Both `.nvmrc` files select the Node 24 line without pinning a minor version.
 - Timber 2, installed by the site project or bundled in the manual release ZIP.
 - WP-CLI when generating child themes or running the full WordPress fixture smoke test.
 

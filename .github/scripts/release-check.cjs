@@ -923,14 +923,14 @@ function runStaticChecks() {
     ensure(!fs.existsSync(path.join(repoRoot, 'whisk/whisk.info.yml')), 'Whisk should not add Drupal-style .info.yml metadata.');
     ensure(!fs.existsSync(path.join(repoRoot, 'whisk/scripts/vite-if-inputs.mjs')), 'Whisk should not wrap Emulsify Core Vite build errors.');
     ensure(whiskPackage.dependencies && whiskPackage.dependencies['@emulsify/core'], 'whisk/package.json must declare @emulsify/core.');
-    // Accept any caret range on Core 4 at or above the component-inspector
-    // minimum, so a patch or minor Core bump does not require editing this file.
+    // Accept any caret range at or above Core 4.5, so a patch or minor Core
+    // bump does not require editing this file.
     const coreRange = whiskPackage.dependencies['@emulsify/core'];
     const coreRangeMatch = /^\^4\.(\d+)\.(\d+)$/.exec(coreRange);
     ensure(coreRangeMatch, `whisk/package.json should target a caret range within Emulsify Core 4; found ${coreRange}.`);
     ensure(
-      Number(coreRangeMatch[1]) > 3 || (Number(coreRangeMatch[1]) === 3 && Number(coreRangeMatch[2]) >= 0),
-      `whisk/package.json should target Emulsify Core ^4.3.0 or newer within Core 4; found ${coreRange}.`,
+      Number(coreRangeMatch[1]) >= 5,
+      `whisk/package.json should target Emulsify Core ^4.5.0 or newer within Core 4; found ${coreRange}.`,
     );
     ensure(scripts['inspect:components'] === 'emulsify-inspect-components', 'whisk/package.json should expose the published Emulsify Core component inspector binary.');
     ensure(!scripts['inspect:components'].includes('node_modules/'), 'whisk/package.json should not deep-link to the component inspector implementation.');

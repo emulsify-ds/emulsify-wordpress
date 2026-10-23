@@ -9,6 +9,25 @@ then decide which starter changes to adopt in each generated project.
 The minimum WordPress version is now 6.8, matching the locked Timber dependency.
 Sites running WordPress 6.7 must update WordPress before updating the theme.
 
+New child themes use Emulsify Core `^4.5.0`. Existing generated themes do not
+inherit copied starter scripts or configuration when the parent is updated.
+Updating Core is optional for existing projects; to adopt 4.5.0, change the
+dependency and refresh your project's lockfile with `npm install`:
+
+```diff
+ "dependencies": {
+-  "@emulsify/core": "^4.3.2"
++  "@emulsify/core": "^4.5.0"
+ }
+```
+
+Core requires Node.js 24.13.0 or newer, even though the generated theme advertises
+`>=24` and `.nvmrc` selects only the Node 24 line. Check the resolved package's
+engines after updates. Core 4.5.0 adds bounded accessibility concurrency and an
+optional `@emulsify/core/a11y/wcag22` preset. Its Twig resolver preserves every
+segment of bare paths: correct references that relied on a missing first
+segment falling back to another group.
+
 The parent no longer emits link hover, focus, and active color declarations
 that referenced an undefined custom property. Those declarations caused color
 inheritance; removing them can reveal existing link colors. In the default
@@ -52,7 +71,7 @@ Step-by-step guidance lives in
 - WordPress 6.8 or newer.
 - PHP 8.3 or newer.
 - Timber 2.3 or newer, available to the parent theme.
-- Node.js 24 or newer for generated child theme frontend tooling. Root release
+- Node.js 24.13.0 or newer for generated child theme frontend tooling. Root release
   tooling requires Node.js 24.10 or newer.
 - Generated child themes keep `Template: emulsify` in `style.css` so WordPress
   loads the parent runtime.
@@ -81,7 +100,7 @@ Step-by-step guidance lives in
 ### Package changes
 
 - Added: `timber/timber` `^2.3` as a parent theme requirement.
-- Added: `@emulsify/core` `^4.3.2` in generated child themes.
+- Added: `@emulsify/core` `^4.5.0` in generated child themes.
 - Added: PHPCS, PHPStan, WPCS, and WordPress/ACF/WP-CLI stubs as parent theme
   development requirements.
 - Removed: Webpack-era build dependencies from the starter.

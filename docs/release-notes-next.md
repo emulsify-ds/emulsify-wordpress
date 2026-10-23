@@ -21,11 +21,11 @@ and generated-theme lineage. See the [release process](release-process.md).
 
 - WordPress 6.8 or newer; PHP 8.3 or newer.
 - Timber `^2.3` is required by the parent theme.
-- Generated child themes use Emulsify Core `^4.3.2` and the Vite build workflow.
+- Generated child themes use Emulsify Core `^4.5.0` and the Vite build workflow.
 - Generated child themes keep `Template: emulsify`; `whisk` remains a
   generation-only starter source and must not be activated directly.
 - Root release tooling requires Node.js `>=24.10`; generated child theme tooling
-  requires Node.js `>=24`.
+  advertises Node.js `>=24`, but Core requires `>=24.13.0`, the effective floor.
 
 ## Draft GitHub release notes
 
@@ -51,6 +51,9 @@ Title: `2.1.0`
 
 ### Changed
 
+- New generated themes use Emulsify Core `^4.5.0`; their effective Node.js floor
+  is 24.13.0. Existing projects should refresh their own dependency lockfiles
+  when adopting this optional Core update.
 - Root `package.json` is now the single source of truth for the release version.
   Theme headers, starter metadata, generated lineage, and smoke assertions all
   derive from it instead of restating a literal.

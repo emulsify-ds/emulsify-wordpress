@@ -6,7 +6,7 @@ This guide covers local setup, the frontend workflow, and what this project owns
 
 - An existing WordPress site with the Emulsify parent theme and this generated theme installed in `wp-content/themes/%%EMULSIFY_MACHINE_NAME%%` (or the equivalent themes directory).
 - The Timber plugin or Composer package available to the parent theme. The parent theme owns Timber bootstrapping, Twig namespaces, and route fallbacks.
-- Node.js 24 or newer. `package.json` declares the supported range and `.nvmrc` records the recommended version.
+- Node.js 24.13.0 or newer for Emulsify Core 4.5.0. The theme advertises `>=24`, but Core requires `>=24.13.0`; `.nvmrc` selects the Node 24 line without pinning a minor version. Check the resolved Core package's `engines` after dependency updates.
 - nvm is optional but keeps the Node version aligned with the project.
 - npm, which ships with Node.js.
 
