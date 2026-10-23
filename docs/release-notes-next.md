@@ -33,6 +33,10 @@ Title: `2.1.0`
 
 ### Added
 
+- A rendered WordPress accessibility audit covers six real fixture routes with
+  explicit WCAG 2.2 AA tags, menu/pagination assertions, and per-route HTML,
+  axe JSON, and screen-reader-text evidence. Its sole `target-size` exception
+  preserves the parent's no-frontend-CSS boundary; projects own final styling.
 - Generated child themes include portable `AGENTS.md` guidance, a WordPress
   integration guide, and an optional integration workflow skill. Both
   generators preserve these files unchanged, including hidden `.agents/`
@@ -84,6 +88,14 @@ Title: `2.1.0`
 
 ### Fixed
 
+- The document shell renders Timber's trusted WordPress language attributes as
+  markup so `lang` is valid. The failing pale-blue normal link color is removed
+  from parent `theme.json`; normal colors fall through to core, browser, or
+  project styles, while visited-link styling and all other styles and presets
+  are retained.
+- Numbered fallback pagination links include a translated `Page ` label in a
+  `screen-reader-text` span. Current/ellipsis spans and Previous/Next links keep
+  their existing labels and classes; no frontend CSS is added.
 - Copied lint, lint-fix, and format scripts run every step and propagate any
   failure. Generated audit wrappers send documentation footers to stderr while
   preserving JSON stdout, arguments, and Core's exit status.

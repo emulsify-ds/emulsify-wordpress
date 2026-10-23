@@ -157,7 +157,9 @@ The `.husky/pre-commit` hook already runs `npm run lint`, which delegates to thi
 | `npm run build:dist` | Build the installable `dist-artifact/emulsify.zip` release archive. |
 | `npm run publish-test -- --no-ci` | Run a local semantic-release dry run. |
 
-Every pull request to the configured branches runs two visible fast readiness jobs: practical smoke checks and dedicated PHPCS/PHPStan analysis. Pull requests targeting `main` or `release-2.x` additionally run the MySQL-backed WordPress fixture and Whisk Storybook accessibility audit. The WordPress job builds and extracts `emulsify.zip`, confirms its packaged generator and Whisk source, and sets `WP_SMOKE_REQUIRED=1`, so missing WP-CLI/MySQL prerequisites or route render failures fail the job instead of producing a skip. The Whisk job installs Chrome explicitly, copies an accessible CI-only story and Vite entry into the otherwise component-agnostic starter, and then builds Storybook and runs axe.
+Every pull request to the configured branches runs two visible fast readiness jobs: practical smoke checks and dedicated PHPCS/PHPStan analysis. Pull requests targeting `main` or `release-2.x` additionally run the MySQL-backed WordPress fixture and Whisk Storybook accessibility audit. The WordPress job builds and extracts `emulsify.zip`, confirms its packaged generator and Whisk source, and sets `WP_SMOKE_REQUIRED=1`, so missing WP-CLI/MySQL prerequisites or route render failures fail the job instead of producing a skip. It also audits six actual WordPress routes with explicit WCAG 2.2 AA axe tags and saves rendered HTML, results, and navigation evidence. The sole `target-size` exclusion reflects the unstyled parent; projects own target sizing and focus/helper styles. See [accessibility checks](docs/accessibility.md).
+
+The Whisk job selects and verifies the runner-installed Chrome with its sandbox enabled, copies an accessible CI-only story and Vite entry into the otherwise component-agnostic starter, runs seeded project tests, and then builds Storybook and runs axe. Storybook coverage supplements the actual WordPress route audit.
 
 Weekly scheduled runs repeat the WordPress fixture and Whisk accessibility audit. Manual GitHub Actions > `WordPress Theme Readiness` runs can select either extended fixture with the `wordpress_fixture` and `extended_checks` inputs. Local `release:check` still skips the database fixture when prerequisites are unavailable unless `WP_SMOKE_REQUIRED=1` is set. Release publishing also requires the full WordPress fixture path before semantic-release can publish.
 
@@ -190,6 +192,7 @@ For Emulsify CLI integration, the standalone starter repository is `https://gith
 - [Generated child theme contract](docs/generated-child-theme-contract.md)
 - [Parent and child theme architecture](docs/parent-child-architecture.md)
 - [Timber and Twig authoring](docs/timber-and-twig-authoring.md)
+- [Accessibility checks and project responsibilities](docs/accessibility.md)
 - [Emulsify Core 4 and Vite workflow](docs/core-4-vite-workflow.md)
 - [Design token integration](docs/design-token-integration.md)
 - [Component recipes](docs/component-recipes.md)

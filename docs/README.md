@@ -12,6 +12,7 @@
 
 - [Timber and Twig authoring](timber-and-twig-authoring.md)
 - [Parent Twig extension points](template-extension.md)
+- [Accessibility checks and project responsibilities](accessibility.md)
 - [Component recipes](component-recipes.md)
 - [Emulsify Core 4 and Vite workflow](core-4-vite-workflow.md)
 - [Design token integration](design-token-integration.md)
@@ -36,4 +37,4 @@
 
 ## Continuous integration
 
-Every configured pull request runs practical smoke coverage and a dedicated PHPCS/PHPStan job. Pull requests targeting `main` or `release-2.x` additionally run the required MySQL/WP-CLI WordPress rendering fixture and a CI-seeded Whisk Storybook accessibility audit. Weekly scheduled runs repeat both extended fixtures. Manual readiness runs use the `wordpress_fixture` and `extended_checks` inputs to select those extended jobs. The release process documents commands, route coverage, and merge-gate details.
+Every configured pull request runs practical smoke coverage and a dedicated PHPCS/PHPStan job. Pull requests targeting `main` or `release-2.x` additionally run the required MySQL/WP-CLI WordPress rendering fixture and a CI-seeded Whisk Storybook accessibility audit. The WordPress job also audits six rendered routes with explicit WCAG 2.2 AA tags and retains per-route evidence; see [accessibility checks](accessibility.md) for the sole target-size exception and project responsibilities. Weekly scheduled runs repeat both extended fixtures. Manual readiness runs use the `wordpress_fixture` and `extended_checks` inputs to select those extended jobs. The release process documents commands, route coverage, and merge-gate details.

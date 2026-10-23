@@ -111,6 +111,18 @@ fixture, focused links keep their normal color instead of inheriting the
 surrounding text color. Review child theme link-state styles if they relied on
 that inheritance.
 
+The normal link color rule has also been removed from parent `theme.json`
+because its pale blue failed contrast on white. Normal anchor colors now fall
+through to WordPress core, browser, or project styles. The visited-link rule
+and all other styles and presets are unchanged by this additional removal.
+Review normal, visited, and focused links against the project's backgrounds.
+
+The document shell now prints Timber's trusted WordPress language-attribute
+fragment as markup, allowing the browser to parse `lang` and any `dir`
+attribute correctly. Child base-layout overrides should apply the same narrow
+treatment to `site.language_attributes` while retaining autoescaping for other
+values.
+
 Project component references now resolve components inside group folders and
 accept both `project_machine_name:component` and
 `@project_machine_name/component`. Resolution follows Emulsify Core, so a flat
@@ -124,6 +136,14 @@ classes, now displaying a translated `…` and omitting `aria-current`. Child
 themes that override `templates/partials/pagination.twig` should adopt these
 markup corrections and decode Timber's display-escaped URLs before passing
 them to `add_attributes`. The parent adds no frontend CSS.
+
+Numbered pagination links now prefix their number with a translated `Page `
+inside `span.screen-reader-text`. Adopt this label in child pagination overrides;
+keep the current-page span, ellipsis, and Previous/Next labels unchanged. Verify
+your project loads a compatible visually hidden helper and visible focus styles.
+Projects also own pointer target sizing; the parent audit's sole `target-size`
+exception does not establish SC 2.5.8 compliance. See
+[accessibility responsibilities](docs/accessibility.md#project-responsibilities).
 
 Child themes overriding `templates/partials/menu.twig` should also mark only
 links whose `item.current` flag is true with `aria-current="page"`.

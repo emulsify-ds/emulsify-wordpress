@@ -335,6 +335,7 @@ function runStaticChecks() {
       'UPGRADE.md',
       'docs/README.md',
       'docs/acf-local-json.md',
+      'docs/accessibility.md',
       'docs/acf-twig-blocks.md',
       'docs/asset-loading.md',
       'docs/block-patterns.md',
@@ -1076,6 +1077,8 @@ function runStaticChecks() {
     ensure(fixtureJob.includes('wordpress-rendered-a11y-') && fixtureJob.includes('if: always()'), 'WordPress accessibility reports must upload on success and failure.');
     ensure(wordpressFixtureSmoke.includes('Verify rendered accessibility failure gates'), 'WordPress fixture must exercise the browser audit negative controls.');
     ensure(wordpressFixtureSmoke.includes('archiveCount < 12') && wordpressFixtureSmoke.includes("['option', 'update', 'posts_per_page', '1']"), 'Rendered archive audit needs at least 12 posts and one post per page.');
+    const guide = readFile('docs/accessibility.md');
+    ensure(guide.includes('target-size') && guide.includes('screen-reader-text') && guide.includes('focus'), 'Accessibility guide must document the sole rule exception and project styling responsibilities.');
     return 'Six rendered routes use sandboxed Chrome, full WCAG tags, strict navigation assertions, and retained HTML/axe reports; only target-size is excluded.';
   });
 
