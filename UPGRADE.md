@@ -6,48 +6,69 @@ then decide which starter changes to adopt in each generated project.
 
 ## Upgrading from 2.0.0 to 2.1.0
 
-YouTube and Vimeo oEmbeds gain optional privacy mode and JavaScript-free
-click-to-load posters. Both are off by default; enable them with the
-`emulsify_theme_media_embed_options` filter. Existing child themes inherit the
-runtime and the parent poster fallback without copying starter files. Review
-your Content Security Policy before enabling click to load: its `srcdoc`
-document inherits the page policy, including restrictions on inline styles.
-Projects can override `templates/partials/oembed-poster.twig`. See
-[media embeds](docs/media-embeds.md) for the options and override contract.
+Before updating the parent theme, review the conditional actions below against
+the project's overrides and components. Existing generated child themes are not
+rewritten: their copied scripts, configuration, templates, and documentation
+remain project-owned. New generated themes receive the updated defaults.
 
-Argumentless Twig `bem()` and `add_attributes()` now read only inherited
-`attributes`, rather than interpreting unrelated Timber context variables as
-attributes or BEM options. Pass intended values explicitly if a template relied
-on that accidental output. Normal explicit-argument calls and the direct PHP
-helper API are unchanged; the parent update supplies this fix automatically.
+### Required actions
 
-New generated themes include `AGENTS.md`, a WordPress integration guide, and
-the optional `.agents/skills/emulsify-wordpress-integration/` workflow skill.
-Existing child themes can copy these token-free files from a fresh comparison
-theme and adapt them to their project. Start assistant sessions in the child
-theme directory for local skill discovery; generation does not change
-site-root agent instructions.
+1. **Update WordPress first if the site is on 6.7.** The parent now requires
+   WordPress 6.8 or newer, matching the locked Timber dependency. PHP remains
+   8.3 or newer; the PHP and Timber dependency constraints do not change.
+2. **Review component resolution if the project has ambiguous paths.** Project
+   references now follow Core's candidate order: a flat `component.twig`
+   precedes `component/component.twig`, and a child's grouped component wins
+   over a parent's direct component. Duplicate names resolve by root, direct
+   candidate, then breadth-first group order. Use an explicit group or template
+   path where a project needs one particular component. A bare path keeps every
+   segment; correct references that relied on a missing first segment falling
+   back to another group. See the
+   [component resolution order](docs/timber-and-twig-authoring.md#component-includes).
+3. **Apply the relevant fixes to child overrides.** Unmodified parent fallbacks
+   receive the fixes automatically; project copies need review:
+   - `templates/partials/pagination.twig`: mark only `page.current` with
+     `aria-current="page"`; display a translated literal `…` in the existing
+     non-interactive span; decode Timber's display-escaped URL entities before
+     passing every page, previous, and next URL to `add_attributes`.
+   - Numbered pagination links: prefix the number with translated `Page ` in
+     `span.screen-reader-text`. Keep the current-page span, ellipsis, and
+     Previous/Next text unchanged.
+   - `templates/partials/menu.twig`: mark only links whose `item.current` flag
+     is true with `aria-current="page"`; leave ancestors unmarked.
+   - Base layout: print Timber's trusted `site.language_attributes` fragment
+     as markup so `lang` and `dir` parse correctly, while retaining
+     autoescaping for other values.
+   - Argumentless Twig `bem()` and `add_attributes()` now read only inherited
+     `attributes`. Pass intended values explicitly if a template relied on
+     unrelated Timber context variables becoming attributes or BEM options.
+     Explicit-argument calls and the direct PHP helper API are unchanged.
+4. **Check the rendered site's accessibility and link states.** Projects own
+   `screen-reader-text`, visible focus styles, and pointer target sizing. The
+   parent adds no frontend CSS to supply them. The rendered audit disables
+   only axe's `target-size` rule; that exception does not establish WCAG 2.2
+   SC 2.5.8 compliance. See
+   [project responsibilities](docs/accessibility.md#project-responsibilities).
+   The parent's normal pale-blue link color has been removed because it failed
+   contrast on white. Its unresolved hover, focus, and active declarations
+   have also been removed; those declarations caused color inheritance, so
+   removal can reveal an existing link color. Review normal, visited, and
+   focused links against project backgrounds. The visited-link rule and other
+   parent styles and presets remain.
 
-The minimum WordPress version is now 6.8, matching the locked Timber dependency.
-Sites running WordPress 6.7 must update WordPress before updating the theme.
+Render representative pages as both an administrator and an anonymous visitor,
+check the editor where blocks are used, and inspect `debug.log`. Storybook
+alone does not exercise Timber context or WordPress hooks.
 
-New generated themes no longer ship `templates/page.twig` or a `templates/`
-directory. Existing 2.x children keep their page override: it still inherits
-parent fixes when it extends `@emulsify-tpl/page.twig` and calls `parent()`.
-Search project CSS for the `.<machine>-page` wrapper, such as `.acme-site-page`,
-before deleting that override. Projects can remove it if the wrapper is unused
-and the file has no other project customizations.
+### Optional actions for existing generated themes
 
-The new `site_header`, `main`, and `page_title` layout blocks are additive; the
-parent's default output remains byte-identical. Existing `head`, `header`,
-`content`, and `footer` blocks retain their names and boundaries. See the
-[public template extension contract](docs/template-extension.md) before adding
-an override, including how to preserve the skip-link target.
+Choose the changes below individually and preserve local customizations. A
+parent update does not copy starter files into an existing child theme.
 
-New child themes use Emulsify Core `^4.5.0`. Existing generated themes do not
-inherit copied starter scripts or configuration when the parent is updated.
-Updating Core is optional for existing projects; to adopt 4.5.0, change the
-dependency and refresh your project's lockfile with `npm install`:
+#### Update Core and the effective Node version
+
+New child themes use Emulsify Core `^4.5.0`. To adopt it in an existing project,
+change the dependency and refresh the project's lockfile with `npm install`:
 
 ```diff
  "dependencies": {
@@ -56,18 +77,17 @@ dependency and refresh your project's lockfile with `npm install`:
  }
 ```
 
-Core requires Node.js 24.13.0 or newer, even though the generated theme advertises
-`>=24` and `.nvmrc` selects only the Node 24 line. Check the resolved package's
-engines after updates. Core 4.5.0 adds bounded accessibility concurrency and an
-optional `@emulsify/core/a11y/wcag22` preset. Its Twig resolver preserves every
-segment of bare paths: correct references that relied on a missing first
-segment falling back to another group.
+Use Node.js 24.13.0 or newer for Core 4.5.0. The generated theme's `>=24` engine
+and `.nvmrc` value `24` do not express that effective minor-version floor; check
+the resolved Core package's engines after dependency updates. Core 4.5.0 adds
+bounded accessibility concurrency and an optional
+`@emulsify/core/a11y/wcag22` preset. The preset is not enabled automatically.
 
-To adopt the copied tooling fixes, edit the existing project's `package.json`
-and copy the updated configs described below. Parent theme updates alone do
-not replace these files. Adoption is optional for an existing project, but the
-lint/format failure fixes are recommended so CI cannot silently pass a failed
-check. These commands still run both steps:
+#### Preserve every lint and format failure
+
+Adopting these copied script fixes is recommended so CI cannot silently pass a
+failed first check. Update the existing project's `package.json`; both steps
+still run:
 
 ```diff
  "scripts": {
@@ -80,6 +100,8 @@ check. These commands still run both steps:
  }
 ```
 
+#### Adopt the Core accessibility runner
+
 The accessibility command stays the same before and after:
 
 ```json
@@ -90,18 +112,20 @@ The accessibility command stays the same before and after:
 }
 ```
 
-For this optional migration, update Core to `^4.5.0` first and replace the copied
+Update Core to `^4.5.0` first, then replace the copied
 `config/emulsify-core/run-a11y.js` with the current starter's thin wrapper.
 Changing `package.json` alone does not replace the old runner. The new wrapper
 uses Core's bounded concurrency, complete reporting, and static server, while
-retaining WordPress's failure when no stories are found. Core resolves project
-`a11y.config.js` from the working directory and defaults the Storybook output
-to `.out`; existing `pa11y.wait` settings still apply. Use a sandbox-capable
-Chrome rather than disabling its sandbox. The WCAG 2.2 preset is a separate,
-optional choice; it is not enabled by this migration.
+retaining WordPress's failure when no stories are found. Core loads project
+`config/emulsify-core/a11y.config.js` from the working directory and defaults
+Storybook output to `.out`; existing `pa11y.wait` settings still apply. Preserve
+project configuration and use a sandbox-capable Chrome. Never disable its
+sandbox to make a check pass. Choosing the WCAG 2.2 preset remains optional.
 
-To adopt ESM tests and project coverage, copy `config/jest.config.js` from the
-current starter and update the test commands together:
+#### Run ESM tests and collect project coverage
+
+Copy `config/jest.config.js` from a fresh comparison theme and update both test
+commands together, preserving project-specific Jest settings:
 
 ```diff
  "scripts": {
@@ -112,63 +136,72 @@ current starter and update the test commands together:
  }
 ```
 
-This optional copied-tooling migration intentionally makes an empty project
-fail tests, matching new generated themes. Add at least one real test before
-enabling it in an existing project's CI. Keep project-specific Jest settings;
-the new defaults retain `rootDir: '..'` and the existing test locations, add
+This optional migration makes an empty project's test command fail, matching new
+generated themes. Add a real project test before enabling it in existing CI.
+The defaults retain `rootDir: '..'` and the existing test locations, add
 `transform: {}` and V8 coverage, and exclude dependencies, built files, stories,
-and test files from source coverage.
+and test files from source coverage. Coverage includes eligible project files
+that tests do not import. Projects using JSX or TypeScript need their own
+transformer that emits ESM.
 
-The parent no longer emits link hover, focus, and active color declarations
-that referenced an undefined custom property. Those declarations caused color
-inheritance; removing them can reveal existing link colors. In the default
-fixture, focused links keep their normal color instead of inheriting the
-surrounding text color. Review child theme link-state styles if they relied on
-that inheritance.
+#### Keep audit JSON machine-readable
 
-The normal link color rule has also been removed from parent `theme.json`
-because its pale blue failed contrast on white. Normal anchor colors now fall
-through to WordPress core, browser, or project styles. The visited-link rule
-and all other styles and presets are unchanged by this additional removal.
-Review normal, visited, and focused links against the project's backgrounds.
+The copied `audit` and `audit:twig-stories` wrappers now send their documentation
+footers to stderr and preserve the underlying audit's exit status. Copy those
+two script values from a fresh comparison theme if adopting the fix. If project
+automation parses audit JSON, adopt it before relying on stdout as JSON, and
+capture diagnostics separately. See the [project audit](#project-audit).
 
-The document shell now prints Timber's trusted WordPress language-attribute
-fragment as markup, allowing the browser to parse `lang` and any `dir`
-attribute correctly. Child base-layout overrides should apply the same narrow
-treatment to `site.language_attributes` while retaining autoescaping for other
-values.
+#### Simplify template overrides
 
-Project component references now resolve components inside group folders and
-accept both `project_machine_name:component` and
-`@project_machine_name/component`. Resolution follows Emulsify Core, so a flat
-`component.twig` now precedes `component/component.twig`; earlier WordPress
-versions preferred the latter. Check projects that contain both forms or
-duplicate component names, and use an explicit group or template path to keep
-the intended choice. See the [component resolution order](docs/timber-and-twig-authoring.md#component-includes).
+New generated themes no longer ship `templates/page.twig` or a `templates/`
+directory. Existing 2.x children can keep their override: it still inherits
+parent fixes when it extends `@emulsify-tpl/page.twig` and calls `parent()`.
+Search project CSS for the `.<machine>-page` wrapper, such as `.acme-site-page`,
+before deleting the file. Remove it only if the wrapper is unused and the file
+has no other project customizations.
 
-Fallback pagination ellipses remain non-interactive spans with the existing BEM
-classes, now displaying a translated `…` and omitting `aria-current`. Child
-themes that override `templates/partials/pagination.twig` should adopt these
-markup corrections and decode Timber's display-escaped URLs before passing
-them to `add_attributes`. The parent adds no frontend CSS.
+The new `site_header`, `main`, and `page_title` layout blocks are additive and
+do not change the default output. Existing `head`, `header`, `content`, and
+`footer` names and boundaries remain. Use the
+[public template extension contract](docs/template-extension.md) when adding
+an override, including preserving the `#content` skip-link target. A same-path
+child override extends `@emulsify-tpl/...`; extending `@templates/...` resolves
+back to itself.
 
-Numbered pagination links now prefix their number with a translated `Page `
-inside `span.screen-reader-text`. Adopt this label in child pagination overrides;
-keep the current-page span, ellipsis, and Previous/Next labels unchanged. Verify
-your project loads a compatible visually hidden helper and visible focus styles.
-Projects also own pointer target sizing; the parent audit's sole `target-size`
-exception does not establish SC 2.5.8 compliance. See
-[accessibility responsibilities](docs/accessibility.md#project-responsibilities).
+#### Enable privacy-friendly video embeds
 
-Child themes overriding `templates/partials/menu.twig` should also mark only
-links whose `item.current` flag is true with `aria-current="page"`.
+YouTube and Vimeo oEmbeds gain optional privacy mode and JavaScript-free
+click-to-load posters. Both are off by default. Existing child themes inherit
+the runtime and parent poster fallback without copying starter files. Enable
+them with `emulsify_theme_media_embed_options` only after reviewing the site's
+Content Security Policy. The `srcdoc` document inherits that policy, including
+inline-style restrictions; the poster's CSS is confined to its iframe.
 
-The release tooling change requires no runtime or generated child theme edits.
-Maintainers need a full Git checkout with tags to run release checks. Before
-publishing, prepare a release PR that updates root `package.json` and all derived
-version metadata together, then confirm semantic-release computes the same
-version. A checkout still at the latest tagged version skips publishing. See
-the [release PR procedure](docs/release-process.md#release-pr-procedure).
+Provider posters still request a third-party thumbnail before activation;
+choose `poster: 'neutral'` to avoid that request. The provider receives data once
+the player loads, and Back returns to the poster. A child can override
+`templates/partials/oembed-poster.twig`. See [media embeds](docs/media-embeds.md)
+for the options, override contract, metadata cache, and CSP requirements.
+
+#### Adopt project-local AI guidance
+
+New generated themes include `AGENTS.md`, `docs/wordpress-integration.md`, and
+`.agents/skills/emulsify-wordpress-integration/SKILL.md`. Existing projects can
+copy these token-free files from a fresh comparison theme and adapt them. Keep
+the hidden `.agents/` directory when copying, and resolve the guide's links
+within the project. Start assistant sessions in the child theme directory for
+skill discovery. Generation does not change site-root agent instructions.
+
+### Release maintainers
+
+The release-tooling changes need no site runtime or generated-theme edits.
+Maintainers need a full Git checkout with stable tags to run release checks.
+Prepare root `package.json` and every derived version together in a release PR,
+then confirm semantic-release computes that exact version. A checkout still at
+the latest tagged version skips publishing. Follow the
+[release PR procedure](docs/release-process.md#release-pr-procedure), including
+re-syncing the standalone starter before release.
 
 ## Upgrading from 1.x to 2.0.0
 

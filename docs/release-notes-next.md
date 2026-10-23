@@ -1,175 +1,151 @@
 # 2.1.0 Release Notes Draft
 
-Status date: 2026-10-23
+Status date: 2026-10-23. Unreleased; the parity work and release preparation
+must merge before publication. These notes describe changes since `2.0.0`,
+including the [Drupal 7.3.0 sync](sister-project-parity.md#sync-log).
 
 ## Version strategy
 
 Latest published tag: `2.0.0`. This draft tracks the upcoming `2.1.0` release.
 
-Root `package.json` remains at the latest stable version until a release PR
-bumps it and every derived version surface together. The version contract
-accepts the latest stable tag or an untagged next patch, minor, or major, and
-requires full Git history and tags. It rejects already-tagged draft versions
-and stale claims about the latest release.
+Root `package.json` remains at `2.0.0` until a release PR prepares `2.1.0`
+together with every derived version surface. The version contract accepts the
+latest stable tag or an untagged next patch, minor, or major, and requires full
+Git history and tags. It rejects already-tagged draft versions and stale claims
+about the latest release.
 
-The guarded runner skips publishing when no new version is prepared. Once a
-release PR prepares `2.1.0`, semantic-release must compute exactly `2.1.0` from
-Conventional Commits before it can publish the committed theme headers, ZIP,
-and generated-theme lineage. See the [release process](release-process.md).
+Publishing skips successfully when no version is prepared. Once `2.1.0` is
+prepared, semantic-release must compute exactly `2.1.0` from Conventional
+Commits before publishing the committed theme headers, ZIP, and generated-theme
+lineage. See the [release process](release-process.md).
 
-## Compatibility notes
-
-- WordPress 6.8 or newer; PHP 8.3 or newer.
-- Timber `^2.3` is required by the parent theme.
-- Generated child themes use Emulsify Core `^4.5.0` and the Vite build workflow.
-- Generated child themes keep `Template: emulsify`; `whisk` remains a
-  generation-only starter source and must not be activated directly.
-- Root release tooling requires Node.js `>=24.10`; generated child theme tooling
-  advertises Node.js `>=24`, but Core requires `>=24.13.0`, the effective floor.
-
-## Draft GitHub release notes
-
-Title: `2.1.0`
-
-### Added
+## Added
 
 - Optional privacy mode and JavaScript-free click-to-load posters for YouTube
-  and Vimeo oEmbeds, configured through `emulsify_theme_media_embed_options`.
-  Both features are off by default. Neutral posters avoid provider image
-  requests before activation; child themes can override the accessible
-  `srcdoc` document through the normal template namespace.
-- A rendered WordPress accessibility audit covers seven real fixture routes,
-  including YouTube and Vimeo click-to-load posters, with
-  explicit WCAG 2.2 AA tags, menu/pagination assertions, and per-route HTML,
-  axe JSON, and screen-reader-text evidence. Its sole `target-size` exception
-  preserves the parent's no-frontend-CSS boundary; projects own final styling.
-- Generated child themes include portable `AGENTS.md` guidance, a WordPress
-  integration guide, and an optional integration workflow skill. Both
-  generators preserve these files unchanged, including hidden `.agents/`
-  content. Root contributor guidance covers maintainer ownership and checks.
-- Public `site_header`, `main`, and `page_title` layout extension blocks, with
-  byte-for-byte golden coverage and documented boundaries. Existing layout
-  blocks and default parent output remain unchanged.
-- Timber-first WordPress parent theme with Twig route fallbacks, global context,
-  namespace registration, and Emulsify-compatible switch tags.
-- `wp emulsify` WP-CLI child theme generation with `--machine-name`,
-  `--description`, `--parent`, `--dry-run`, `--force`, and `--activate`.
-- Standalone starter generation through
+  and Vimeo oEmbeds. Both default to off. The
+  `emulsify_theme_media_embed_options` filter controls privacy, activation, and
+  provider or neutral posters; children can override the accessible `srcdoc`
+  document. See [media embeds](media-embeds.md) for CSP and privacy requirements.
+- Public `site_header`, `main`, and `page_title` Twig blocks let children extend
+  the parent layout without copying it. Existing block names, boundaries, and
+  default output are preserved and tested. See
+  [template extension](template-extension.md).
+- Generated themes include portable `AGENTS.md` guidance, a WordPress
+  integration guide, and an optional integration skill. Both generators retain
+  identical guidance, including the hidden `.agents/` directory. The root
+  contributor guide documents maintainer ownership and validation.
+- Rendered WordPress accessibility checks cover seven fixture routes, including
+  paginated content and video posters. They retain HTML and axe reports, check
+  current menu/pager items, and use five WCAG tags through WCAG 2.2 AA. Only
+  `target-size` is disabled because projects style the fallbacks; see
+  [accessibility](accessibility.md).
+- A shared fixture characterizes PHP Twig helpers against installed Emulsify
+  Core JavaScript helpers, recording known differences explicitly. Run
+  `npm run test:twig-helpers`; see
+  [Twig authoring](timber-and-twig-authoring.md).
+
+## Changed
+
+- New generated themes use Emulsify Core `^4.5.0`, with an effective Node.js
+  minimum of 24.13.0. Existing child manifests and lockfiles remain
+  project-owned.
+- New generated themes ship no Twig overrides or `templates/` directory. Pages
+  use parent fallbacks; projects create overrides only when needed.
+- Project tests execute native ESM, collect project coverage including untested
+  source, and fail when no tests exist. Lint, lint-fix, and format run all steps
+  while preserving any failure. The accessibility wrapper uses Core's bounded
+  runner, preserves the empty-audit failure, honors `pa11y.wait`, and keeps
+  Chrome's sandbox enabled.
+- CI pins all actions to commit SHAs, updates them through Dependabot, and
+  protects the blocking WordPress/PHP matrix with a contract check. Compatible
+  release-tooling lockfile updates address independently resolved dependency
+  findings; remaining development findings and upstream owners are recorded in
+  the [October 23 audit](dependency-audit-2026-10-23.md).
+
+## Fixed
+
+- Pagination marks only the actual current page, renders a translated ellipsis
+  character as non-interactive text, and preserves query arguments in numbered,
+  previous, and next links. Numbered links now include a translated `Page `
+  prefix in a `screen-reader-text` span, with no added frontend CSS.
+- Fallback menus mark the current item with `aria-current="page"`, leaving
+  ancestors unmarked.
+- Project component references follow Core's direct candidates and breadth-first
+  grouped discovery, including `.html.twig` and the
+  `@project_machine_name/component` alias. Each child root is searched completely
+  before parent roots, with deterministic duplicates and root containment.
+- Twig helpers register Timber's safety/context options correctly. Argumentless
+  `bem()` and `add_attributes()` calls no longer consume unrelated context as
+  arguments or expose it as attributes.
+- The document shell preserves trusted WordPress language attributes as markup,
+  producing a valid `lang` attribute.
+- Parent `theme.json` no longer sets the failing pale-blue normal link color or
+  invalid hover, focus, and active color declarations. Other styles and editor
+  presets remain; review project link presentation after updating.
+- Generated audit wrappers keep JSON stdout clean by sending documentation
+  footers to stderr, while preserving arguments and Core's exit status.
+- Release tooling accepts prepared versions after `2.0.0`, rejects stale draft
+  versions and release claims, and prevents publishing mismatched metadata.
+  `npm run release:check -- --skip-smoke` now honors its documented behavior.
+
+## Compatibility
+
+- **WordPress 6.8 or newer is required**, raised from 6.7 to match locked Timber
+  2.5.1. Update WordPress before updating the theme. PHP remains 8.3 or newer;
+  the PHP and Timber package constraints are unchanged.
+- The minimum WordPress version and current stable release are blocking CI
+  legs. `Tested up to` is 7.1 after a passing fixture on 7.1.3; nightly remains
+  advisory. Practical checks block on PHP 8.3, 8.4, and 8.5.
+- Generated child tooling advertises Node.js `>=24`, while Core sets the
+  effective minimum at 24.13.0. Root maintainer tooling requires `>=24.10`.
+- Existing children keep `Template: emulsify` and their copied files. Parent
+  updates do not replace their scripts, Jest config, guidance, or dependencies.
+  Existing parent-extending page overrides continue receiving parent fixes.
+
+## Consumer action
+
+Before updating, sites on WordPress 6.7 must upgrade WordPress to at least 6.8.
+After updating, check menus, long archives, filtered searches, link colors, and
+language markup. Projects own target size, `screen-reader-text`, and focus
+styles; confirm the new pager prefix is visually hidden by the site's styles.
+
+Adopting copied tooling fixes, Core `^4.5.0`, AI guidance, or the new extension
+blocks in an existing child is optional. Copy the relevant changes into the
+child deliberately; refreshing the parent does not change those files. An old
+page wrapper can remain, or be removed after checking project CSS. Privacy and
+click-to-load embeds remain off until enabled; review CSP and playback behavior
+before opting in. See the required and optional actions in
+[UPGRADE.md](../UPGRADE.md#upgrading-from-200-to-210).
+
+## Release PR checklist
+
+- [ ] Merge the parity implementation PRs and review the
+  [sync log](sister-project-parity.md#sync-log) against the final changes.
+- [ ] Prepare `2.1.0` following the [release procedure](release-process.md): bump
+  root `package.json`, both theme `Version` headers, `whisk/package.json`, and
+  `whisk/project.emulsify.json` lineage together, including applicable lockfile
+  metadata. This documentation change does not bump versions.
+- [ ] Re-sync
   [`emulsify-wordpress-starter`](https://github.com/emulsify-ds/emulsify-wordpress-starter)
-  and its `.cli/init.js` hook.
-- Project-specific documentation in generated child themes: `README.md`,
-  `docs/development.md`, `docs/upgrading.md`, and `docs/support-information.md`,
-  resolved from `%%EMULSIFY_*%%` tokens at generation time.
-- A generated child theme contract with focused tests, plus a cross-path parity
-  smoke that requires both generation paths to produce the same file tree.
-- ACF/Twig block registration, native `block.json` registration, block pattern
-  registration, editor policy controls, and editor enhancements.
-- Asset discovery and enqueuing for built child theme output under `dist/`.
-
-### Changed
-
-- Fresh generated themes ship no Twig overrides or `templates/` directory.
-  Pages render through parent fallbacks. Existing child page overrides keep
-  inheriting parent fixes; search project CSS for the machine-name wrapper
-  before deciding whether to remove one.
-- New generated themes use Emulsify Core `^4.5.0`; their effective Node.js floor
-  is 24.13.0. Existing projects should refresh their own dependency lockfiles
-  when adopting this optional Core update.
-- Root `package.json` is now the single source of truth for the release version.
-  Theme headers, starter metadata, generated lineage, and smoke assertions all
-  derive from it instead of restating a literal.
-- Both generation paths emit two-space JSON so generated metadata is identical
-  regardless of which path a project used.
-- Generation-only tooling is no longer left in generated child themes. The
-  WP-CLI generator excludes `.cli`, and the standalone starter hook removes
-  itself after a successful run.
-- `docs-command-check.cjs` now exports a reusable validator and can validate a
-  real generated child theme directory, not just repository documentation.
-
-### Compatibility
-
-- The minimum WordPress version is now 6.8, matching the locked Timber 2.5.1
-  requirement. Sites on WordPress 6.7 must update WordPress before updating the
-  theme. The minimum fixture remains blocking; the current stable release is
-  also blocking and `Tested up to` is 7.1 after validation on 7.1.3. Nightly is
-  advisory. Practical checks now block on PHP 8.3, 8.4, and 8.5.
-
-### Fixed
-
-- Argumentless Twig `bem()` and `add_attributes()` calls no longer mistake the
-  whole Timber context for helper arguments. Unrelated variables cannot leak
-  into attributes or supply unintended BEM classes. Explicit-argument behavior
-  and the direct PHP API remain unchanged.
-- The document shell renders Timber's trusted WordPress language attributes as
-  markup so `lang` is valid. The failing pale-blue normal link color is removed
-  from parent `theme.json`; normal colors fall through to core, browser, or
-  project styles, while visited-link styling and all other styles and presets
-  are retained.
-- Numbered fallback pagination links include a translated `Page ` label in a
-  `screen-reader-text` span. Current/ellipsis spans and Previous/Next links keep
-  their existing labels and classes; no frontend CSS is added.
-- Copied lint, lint-fix, and format scripts run every step and propagate any
-  failure. Generated audit wrappers send documentation footers to stderr while
-  preserving JSON stdout, arguments, and Core's exit status.
-- Project Jest commands execute native ESM, collect project coverage including
-  untested source, and fail when no tests exist. Existing generated themes must
-  copy the updated scripts and Jest configuration to adopt this behavior.
-- The accessibility wrapper delegates to Core's bounded runner and complete
-  reporting, keeps the empty-audit failure, honors project `pa11y.wait`, and
-  never disables Chrome's sandbox.
-- Removed link hover, focus, and active color rules that referenced an undefined
-  custom property instead of introducing replacement link-state colors. This
-  can reveal existing link colors where the invalid declarations previously
-  caused inheritance; see [upgrade guidance](../UPGRADE.md#upgrading-from-200-to-210).
-- Project component references now match Emulsify Core's direct candidates and
-  breadth-first grouped discovery, including `.html.twig` templates and the
-  `@project_machine_name/component` alias. Each child root is searched before
-  parent roots, with deterministic duplicate precedence and root containment.
-- Fallback menus set `aria-current="page"` only on the current menu item,
-  leaving its ancestors unmarked.
-- Fallback pagination marks only the actual current page, renders a translated
-  ellipsis character as non-interactive text, and preserves multi-argument URLs
-  in numbered, previous, and next links without double escaping.
-- Twig helper registration uses Timber's function options so rendered attribute
-  markup remains intact and helpers receive the intended Twig context.
-- Release tooling supports prepared releases after `2.0.0`, validates versions
-  against stable Git tags, and prevents publishing metadata that differs from
-  the version semantic-release computes. `release:check -- --skip-smoke` now
-  skips runtime smoke commands as documented.
-- `style.css` header replacement no longer warns when a header already holds the
-  requested value; only a genuinely missing header is reported.
-
-### Internal
-
-- Workflow actions use full SHA pins and Node 24 artifact uploads, maintained
-  by weekly GitHub Actions Dependabot updates. Validation credentials are
-  read-only; the publish dry run uses the publishing job's scoped token.
-  Project-board and contributor automation use pinned releases and corrected
-  token configuration.
-- Compatible root lockfile updates fix the independently resolved Handlebars,
-  JS-YAML, Fast URI, and Undici findings. Remaining development-only findings
-  belong to semantic-release's bundled npm; see the
-  [October 23 audit](dependency-audit-2026-10-23.md).
-- Added `npm run test:twig-helpers` to characterize PHP and installed Core
-  JavaScript helpers with exact HTML, attribute maps, and remaining context.
-  Separate expectations preserve observed differences without changing runtime
-  behavior or claiming universal parity.
-- Re-sync the standalone `emulsify-wordpress-starter` repository from `whisk/`
-  before publishing, including its hidden `.agents/` directory and AI guidance.
-- Extended CI verifies the runner's installed Chrome with its sandbox enabled,
-  runs real seeded project tests before accessibility checks, and retains
-  coverage diagnostics.
-- Added `npm run test:generated-theme` and `npm run smoke:generation-parity`.
-- Added release checks for generated documentation sections, the documentation
-  token list across both generators, and the generated child theme contract.
+  from `whisk/`, including hidden `.agents/` guidance and the standalone
+  `.cli/init.js` generator; confirm both generation paths still agree.
+- [x] Confirm a published `@emulsify/core` version satisfies `^4.5.0`:
+  [4.5.0](https://www.npmjs.com/package/@emulsify/core/v/4.5.0) was verified in
+  the npm registry on 2026-10-23 and requires Node.js 24.13.0 or newer.
+- [ ] Confirm the version resolved by a fresh generated theme lockfile still
+  satisfies that range and the effective Node requirement.
+- [ ] Run the readiness checks below on the prepared committed files, push the
+  release PR, and confirm semantic-release computes exactly `2.1.0` before
+  merging. Rotate this draft after publication.
 
 ## Validation notes
 
-- Run `npm run release:check -- --skip-smoke` for static validation.
-- Run `npm run test:generated-theme` and `npm run smoke:generation-parity` for
-  generation coverage.
+- Run `npm run docs:check-commands` and `npm run lint:php`.
+- Run `npm run pr:check`, `npm run test:generated-theme`, and
+  `npm run smoke:generation-parity`.
 - Run `npm run release:check` with WP-CLI and MySQL available for the full
-  WordPress fixture path.
-- Run `npm run publish-test -- --no-ci` before publishing.
-- Publish the compatible `@emulsify/core` release before Emulsify WordPress
-  `2.1.0`.
+  WordPress fixture path; set `WP_SMOKE_REQUIRED=1` so missing prerequisites fail.
+- Run `npm run release:check -- --skip-smoke` only for static validation; it
+  does not replace the full release gate.
+- After pushing the release PR, run `npm run publish-test -- --no-ci` to verify
+  the prepared version matches semantic-release's calculation.

@@ -3,6 +3,7 @@
 ## Getting started
 
 - [Generated-theme upgrade guide](../UPGRADE.md)
+- [Required and optional 2.0.0 to 2.1.0 upgrade actions](../UPGRADE.md#upgrading-from-200-to-210)
 - [Upgrading from 1.x to 2.x](upgrading-1x-to-2x.md)
 - [Parent and child theme architecture](parent-child-architecture.md)
 - [WP-CLI child theme generation](wp-cli-child-theme-generation.md)
@@ -33,8 +34,11 @@
 
 - [Asset loading](asset-loading.md)
 - [Release process](release-process.md)
-- [Next release notes draft](release-notes-next.md)
+- [2.1.0 release notes (unreleased)](release-notes-next.md)
+- [2.1.0 release PR checklist](release-notes-next.md#release-pr-checklist)
 - [Sister-project parity contract](sister-project-parity.md)
+- [Drupal 7.3.0 sync log](sister-project-parity.md#sync-log)
+- [How to run a sister-project sync](sister-project-parity.md#how-to-run-a-sync)
 - [Post-2.x optimization roadmap](post-2x-optimization-roadmap.md)
 
 ## Continuous integration
