@@ -15,7 +15,8 @@ function fixture(t, version = '2.1.0') {
   const remote = path.join(workRoot, 'origin.git');
   fs.mkdirSync(repoRoot);
   const git = (...args) => execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8', stdio: 'pipe' }).trim();
-  git('init', '--bare', remote);
+  // Keep remote HEAD valid even when the runner defaults to another branch.
+  git('-c', 'init.defaultBranch=legacy', 'init', '--bare', '-b', 'main', remote);
   git('init', '-b', 'main');
   git('-c', 'user.name=Contract Test', '-c', 'user.email=contract@example.invalid', 'commit', '--allow-empty', '-m', 'chore: initial release');
   git('-c', 'user.name=Contract Test', '-c', 'user.email=contract@example.invalid', 'tag', '-a', '2.0.0', '-m', '2.0.0');
