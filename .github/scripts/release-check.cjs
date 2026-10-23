@@ -318,6 +318,8 @@ function runStaticChecks() {
       '.github/scripts/release-version-contract.test.cjs',
       '.github/scripts/semantic-release.test.cjs',
       '.github/scripts/fallback-navigation-smoke.php',
+      '.github/scripts/rendered-a11y.cjs',
+      '.github/scripts/rendered-a11y.test.cjs',
       '.github/scripts/docs-command-check.cjs',
       '.github/scripts/pr-validation.cjs',
       '.github/scripts/semantic-release.cjs',
@@ -1062,6 +1064,19 @@ function runStaticChecks() {
       ensure(readFile(file).includes('template-extension.md'), `${file} should link to the public template extension contract.`);
     }
     return 'Seven public layout blocks retain ten golden outputs, tested child inheritance, and documented boundaries.';
+  });
+
+  runStaticCheck('Rendered WordPress accessibility', () => {
+    const { wcagTags, disabledRules } = require('./rendered-a11y.cjs');
+    ensure(JSON.stringify(wcagTags) === JSON.stringify(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']), 'Rendered WordPress axe audit must select all five WCAG tags.');
+    ensure(JSON.stringify(disabledRules) === JSON.stringify(['target-size']), 'Only target-size may be disabled for the unstyled parent fixture.');
+    const fixtureJob = themeReadinessWorkflow.slice(themeReadinessWorkflow.indexOf('  wordpress-fixture:'), themeReadinessWorkflow.indexOf('  extended-whisk:'));
+    ensure(fixtureJob.includes('Select and verify runner Chrome') && fixtureJob.includes('--headless --dump-dom about:blank'), 'WordPress fixture job must verify sandboxed runner Chrome.');
+    ensure(fixtureJob.includes("WP_SMOKE_A11Y: '1'") && fixtureJob.includes('WP_SMOKE_A11Y_OUTPUT:'), 'WordPress fixture job must enable the rendered browser audit and retain its reports.');
+    ensure(fixtureJob.includes('wordpress-rendered-a11y-') && fixtureJob.includes('if: always()'), 'WordPress accessibility reports must upload on success and failure.');
+    ensure(wordpressFixtureSmoke.includes('Verify rendered accessibility failure gates'), 'WordPress fixture must exercise the browser audit negative controls.');
+    ensure(wordpressFixtureSmoke.includes('archiveCount < 12') && wordpressFixtureSmoke.includes("['option', 'update', 'posts_per_page', '1']"), 'Rendered archive audit needs at least 12 posts and one post per page.');
+    return 'Six rendered routes use sandboxed Chrome, full WCAG tags, strict navigation assertions, and retained HTML/axe reports; only target-size is excluded.';
   });
 
   runStaticCheck('Generated child theme documentation', () => {

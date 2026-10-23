@@ -202,6 +202,16 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      - name: Select and verify runner Chrome
+        timeout-minutes: 1
+        run: |
+          # Ubuntu's AppArmor profile permits the installed Google Chrome.
+          # Verify it launches with its sandbox before Puppeteer runs.
+          chrome_path="$(command -v google-chrome)"
+          "$chrome_path" --version
+          "$chrome_path" --headless --dump-dom about:blank
+          printf 'PUPPETEER_EXECUTABLE_PATH=%s\n' "$chrome_path" >> "$GITHUB_ENV"
+
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
@@ -222,6 +232,8 @@ jobs:
       - name: Run WordPress fixture smoke
         env:
           WP_SMOKE_REQUIRED: '1'
+          WP_SMOKE_A11Y: '1'
+          WP_SMOKE_A11Y_OUTPUT: .artifacts/wordpress-a11y
           WP_SMOKE_THEME_ARCHIVE: dist-artifact/emulsify.zip
           WP_SMOKE_WORDPRESS_VERSION: ${{ matrix.wordpress-version }}
           WP_SMOKE_DB_HOST: 127.0.0.1
@@ -230,6 +242,16 @@ jobs:
           WP_SMOKE_DB_USER: root
           WP_SMOKE_DB_PASSWORD: root
         run: npm run release:check
+
+      - name: Upload rendered WordPress accessibility reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wordpress-rendered-a11y-${{ matrix.wordpress-version }}
+          path: .artifacts/wordpress-a11y/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload fixture diagnostics
         if: failure()

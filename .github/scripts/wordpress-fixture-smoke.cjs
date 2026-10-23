@@ -17,6 +17,7 @@ const expectedGeneratedFromVersion = JSON.parse(
 ).version;
 const required = process.env.WP_SMOKE_REQUIRED === '1';
 const keepFixture = process.env.WP_SMOKE_KEEP === '1';
+const auditAccessibility = process.env.WP_SMOKE_A11Y === '1';
 const host = process.env.WP_SMOKE_HOST || '127.0.0.1';
 const wordpressVersion = process.env.WP_SMOKE_WORDPRESS_VERSION || '6.8';
 let workDir = null;
@@ -223,9 +224,11 @@ function copyThemes(themesDir) {
     if ([
       '.git',
       '.github',
+      '.artifacts',
       '.coverage',
       '.out',
       '.publish',
+      'dist-artifact',
       'node_modules',
       'vendor',
     ].includes(first)) {
@@ -630,6 +633,7 @@ for ( $number = 1; $number <= 11; $number++ ) {
     'post_title' => sprintf( 'PaginationProbe result %02d', $number ),
     'post_content' => sprintf( 'PaginationProbe content %02d', $number ),
     'post_date' => sprintf( '2001-01-%02d 12:00:00', $number ),
+    'post_category' => array( ${Number(categoryId)} ),
   ), true );
   if ( is_wp_error( $result ) ) {
     fwrite( STDERR, $result->get_error_message() . "\n" );
@@ -637,6 +641,12 @@ for ( $number = 1; $number <= 11; $number++ ) {
   }
 }
 `]);
+
+  const menuId = wp(wpPath, ['menu', 'create', 'Smoke Primary', '--porcelain']);
+  wp(wpPath, ['menu', 'item', 'add-post', menuId, pageId]);
+  wp(wpPath, ['menu', 'item', 'add-post', menuId, postId]);
+  wp(wpPath, ['menu', 'item', 'add-term', menuId, 'category', categoryId]);
+  wp(wpPath, ['menu', 'location', 'assign', menuId, 'primary']);
 
   return { authorId, categoryId, pageId, postId };
 }
@@ -866,6 +876,47 @@ async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
   );
   await checkSearchPagination(baseUrl);
   await checkGeneratedAssets(baseUrl, themeSlug);
+
+  if (auditAccessibility) {
+    const archiveCount = Number(wp(wpPath, ['post', 'list', '--post_type=post', '--post_status=publish', `--cat=${content.categoryId}`, '--format=count']));
+    if (!Number.isInteger(archiveCount) || archiveCount < 12) {
+      throw new Error(`Rendered accessibility archive needs at least 12 published posts; found ${archiveCount}.`);
+    }
+    wp(wpPath, ['option', 'update', 'posts_per_page', '1']);
+    const themeDir = path.join(wpPath, 'wp-content', 'themes', themeSlug);
+    run('Install generated child accessibility dependencies', 'npm', [
+      'install', '--ignore-scripts', '--package-lock=false',
+    ], {
+      cwd: themeDir,
+      env: { ...process.env, PUPPETEER_SKIP_DOWNLOAD: 'true' },
+    });
+    run('Verify rendered accessibility failure gates', 'node', [
+      '--test', path.join(repoRoot, '.github/scripts/rendered-a11y.test.cjs'),
+    ], { env: { ...process.env, EMULSIFY_A11Y_THEME: themeDir } });
+    const { auditRenderedPages } = require('./rendered-a11y.cjs');
+    const outputDir = path.resolve(process.env.WP_SMOKE_A11Y_OUTPUT || path.join(repoRoot, '.artifacts', 'wordpress-a11y'));
+    const pageUrl = `${baseUrl}/?page_id=${content.pageId}`;
+    const singleUrl = `${baseUrl}/?p=${content.postId}`;
+    const archiveUrl = `${baseUrl}/?cat=${content.categoryId}`;
+    const routes = [
+      { name: 'home', url: `${baseUrl}/`, expectedText: 'Smoke Post' },
+      { name: 'page', url: pageUrl, expectedText: ['Smoke Page', 'Smoke page content'], currentMenuHref: pageUrl },
+      { name: 'single', url: singleUrl, expectedText: ['Smoke Post', 'Smoke post content'], currentMenuHref: singleUrl },
+      { name: 'archive', url: archiveUrl, expectedText: ['Smoke Category', 'Smoke Post'], currentMenuHref: archiveUrl },
+      { name: 'search', url: `${baseUrl}/?s=Smoke`, expectedText: ['Search results for Smoke', 'Smoke Page'] },
+      {
+        name: 'archive-page-2',
+        url: `${archiveUrl}&paged=2`,
+        expectedText: ['Smoke Category', 'PaginationProbe result 11'],
+        paginationPage: 2,
+        currentMenuHref: archiveUrl,
+      },
+    ];
+    fs.mkdirSync(outputDir, { recursive: true });
+    fs.writeFileSync(path.join(outputDir, 'routes.json'), `${JSON.stringify(routes, null, 2)}\n`);
+    await auditRenderedPages({ themeDir, outputDir, routes });
+    log(`Rendered accessibility reports: ${outputDir}`);
+  }
 }
 
 function assertCleanDebugLog(wpPath) {
@@ -985,7 +1036,7 @@ async function main() {
   stopServer();
   assertCleanDebugLog(wpPath);
 
-  log('Generated and activated a child without Twig templates, checked block discovery, loaded assets, rendered parent page fallbacks and child block extensions without changing surrounding bytes, rendered home, single, archive, search, author, and 404 routes, and followed search pagination to page 2 with a clean debug log.');
+  log('Generated and activated a child without Twig templates, checked block discovery, loaded assets, rendered parent page fallbacks and child block extensions without changing surrounding bytes, rendered home, single, archive, search, author, and 404 routes, and followed search pagination to page 2 with a clean debug log.' + (auditAccessibility ? ' Six rendered routes passed the WCAG accessibility audit.' : ''));
   dropDatabase(env);
 
   if (!keepFixture) {
