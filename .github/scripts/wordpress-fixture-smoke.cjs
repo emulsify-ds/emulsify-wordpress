@@ -1039,7 +1039,7 @@ async function main() {
   stopServer();
   assertCleanDebugLog(wpPath);
 
-  log('Generated and activated a child without Twig templates, checked block discovery, loaded assets, rendered parent page fallbacks and child block extensions without changing surrounding bytes, rendered home, single, archive, search, author, and 404 routes, and followed search pagination to page 2 with a clean debug log.' + (auditAccessibility ? ' Six rendered routes passed the WCAG accessibility audit.' : ''));
+  log(`WordPress ${resolvedWordpressVersion} (requested ${wordpressVersion}): Generated and activated a child without Twig templates, checked block discovery, loaded assets, rendered parent page fallbacks and child block extensions without changing surrounding bytes, rendered home, single, archive, search, author, and 404 routes, and followed search pagination to page 2 with a clean debug log.` + (auditAccessibility ? ' Six rendered routes passed the WCAG accessibility audit.' : ''));
   dropDatabase(env);
 
   if (!keepFixture) {

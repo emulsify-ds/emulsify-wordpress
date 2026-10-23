@@ -1423,6 +1423,7 @@ function runStaticChecks() {
     ensure(wordpressFixtureJob.includes('- name: Build installable theme archive') && wordpressFixtureJob.includes('run: npm run build:dist'), 'WordPress fixture job should build the installable archive.');
     ensure(wordpressFixtureJob.includes('WP_SMOKE_THEME_ARCHIVE: dist-artifact/emulsify.zip'), 'WordPress fixture job should test the built archive instead of the source tree.');
     ensure(wordpressFixtureSmoke.includes("['core', 'version']") && wordpressFixtureSmoke.includes('WordPress version: requested') && wordpressFixtureSmoke.includes('resolved ${resolvedWordpressVersion}'), 'WordPress fixture smoke should log the actual downloaded core version, including latest and nightly resolution.');
+    ensure(wordpressFixtureSmoke.includes('log(`WordPress ${resolvedWordpressVersion} (requested ${wordpressVersion}): Generated'), 'The fixture success summary must expose resolved WordPress versions in captured CI output.');
     ensure(themeReadinessWorkflow.includes('extended_checks'), 'theme-readiness.yml should expose optional extended checks.');
     ensure(extendedWhiskJob.includes(releaseTargetedPrGate), 'Whisk accessibility job should run on release-targeted pull requests.');
     ensure(extendedWhiskJob.includes("github.event_name == 'schedule'"), 'Whisk accessibility job should run on the schedule.');
