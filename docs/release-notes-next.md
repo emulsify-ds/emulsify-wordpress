@@ -70,6 +70,10 @@ Title: `2.1.0`
 
 ### Fixed
 
+- Removed link hover, focus, and active color rules that referenced an undefined
+  custom property instead of introducing replacement link-state colors. This
+  can reveal existing link colors where the invalid declarations previously
+  caused inheritance; see [upgrade guidance](../UPGRADE.md#upgrading-from-200-to-210).
 - Project component references now match Emulsify Core's direct candidates and
   breadth-first grouped discovery, including `.html.twig` templates and the
   `@project_machine_name/component` alias. Each child root is searched before

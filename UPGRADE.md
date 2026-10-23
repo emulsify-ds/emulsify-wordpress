@@ -9,6 +9,13 @@ then decide which starter changes to adopt in each generated project.
 The minimum WordPress version is now 6.8, matching the locked Timber dependency.
 Sites running WordPress 6.7 must update WordPress before updating the theme.
 
+The parent no longer emits link hover, focus, and active color declarations
+that referenced an undefined custom property. Those declarations caused color
+inheritance; removing them can reveal existing link colors. In the default
+fixture, focused links keep their normal color instead of inheriting the
+surrounding text color. Review child theme link-state styles if they relied on
+that inheritance.
+
 Project component references now resolve components inside group folders and
 accept both `project_machine_name:component` and
 `@project_machine_name/component`. Resolution follows Emulsify Core, so a flat

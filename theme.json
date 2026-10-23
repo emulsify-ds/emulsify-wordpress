@@ -526,24 +526,9 @@
         "color": {
           "text": "var(--wp--preset--color--brand-primary-light)"
         },
-        ":hover": {
-          "color": {
-            "text": "var(---wp--preset--color--brand-primary)"
-          }
-        },
-        ":focus": {
-          "color": {
-            "text": "var(---wp--preset--color--brand-primary)"
-          }
-        },
         ":visited": {
           "color": {
             "text": "var(--wp--preset--color--brand-primary-dark)"
-          }
-        },
-        ":active": {
-          "color": {
-            "text": "var(---wp--preset--color--brand-primary)"
           }
         },
         "spacing": {},
