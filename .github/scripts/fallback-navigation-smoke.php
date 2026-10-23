@@ -24,7 +24,7 @@ require_once $autoload;
 // Only WordPress translation needs a stand-in outside the WordPress fixture.
 if ( ! function_exists( '__' ) ) {
 	/**
-	 * Returns an untranslated string while recording its translation domain.
+	 * Returns fixture translations while recording their translation domain.
 	 *
 	 * @param string $text   Source text.
 	 * @param string $domain Translation domain.
@@ -32,7 +32,7 @@ if ( ! function_exists( '__' ) ) {
 	 */
 	function __( string $text, string $domain = 'default' ): string {
 		$GLOBALS['emulsify_navigation_translations'][] = array( $text, $domain );
-		return $text;
+		return $GLOBALS['emulsify_navigation_translation_overrides'][ $domain ][ $text ] ?? $text;
 	}
 }
 
@@ -113,6 +113,7 @@ $pager_dom = emulsify_navigation_dom( $pagination );
 $checks    = array(
 	'pagination current page'     => array(),
 	'pagination literal ellipsis' => array(),
+	'pagination page prefixes'    => array(),
 	'pagination URL escaping'     => array(),
 	'menu current item'           => array(),
 );
@@ -125,7 +126,7 @@ emulsify_navigation_expect( 1 === $pager_dom->query( '//li[contains(concat(" ", 
 $pagination_context['pagination']['pages'][2]['link'] = $display_url( '/?s=needle&paged=5&filter=a%26b' );
 $linked_current_dom = emulsify_navigation_dom( $environment->render( '@templates/partials/pagination.twig', $pagination_context ) );
 $linked_current     = $linked_current_dom->query( '//nav//*[@aria-current="page"]' );
-emulsify_navigation_expect( 1 === $linked_current->length && '5' === trim( $linked_current->item( 0 )->textContent ), 'An explicitly current item must be marked even when it supplies a link.', $checks['pagination current page'] );
+emulsify_navigation_expect( 1 === $linked_current->length && '5' === trim( $linked_current->item( 0 )->lastChild->textContent ), 'An explicitly current item must be marked even when it supplies a link.', $checks['pagination current page'] );
 
 $dots = $pager_dom->query( '//nav//*[contains(concat(" ", normalize-space(@class), " "), " dots ")]' );
 emulsify_navigation_expect( 1 === $dots->length && 'span' === $dots->item( 0 )->nodeName && '…' === trim( $dots->item( 0 )->textContent ), 'Timber ellipsis items must render as non-interactive spans with the literal … character.', $checks['pagination literal ellipsis'] );
@@ -135,10 +136,30 @@ emulsify_navigation_expect( in_array( array( '…', 'emulsify' ), $GLOBALS['emul
 $links = $pager_dom->query( '//nav//a' );
 emulsify_navigation_expect( count( $urls ) === $links->length, 'Previous, numeric, and next pagination links must all render.', $checks['pagination URL escaping'] );
 
-foreach ( $links as $link ) {
+$numbered_links = $pager_dom->query( '//nav//a[contains(concat(" ", normalize-space(@class), " "), " page-number ")]' );
+$prefix_query   = './span[contains(concat(" ", normalize-space(@class), " "), " screen-reader-text ")]';
+emulsify_navigation_expect( 2 === $numbered_links->length, 'The fixture must contain two numbered pagination links.', $checks['pagination page prefixes'] );
+foreach ( $numbered_links as $link ) {
+	$prefixes = $pager_dom->query( $prefix_query, $link );
+	emulsify_navigation_expect( 1 === $prefixes->length && 'Page ' === $prefixes->item( 0 )->textContent, 'Each numbered pagination link must contain one screen-reader-text span with Page and a trailing space.', $checks['pagination page prefixes'] );
+}
+$linked_prefixes = $linked_current_dom->query( $prefix_query, $linked_current->item( 0 ) );
+emulsify_navigation_expect( 1 === $linked_prefixes->length && 'Page ' === $linked_prefixes->item( 0 )->textContent, 'A current page supplied as a numbered link must retain the Page prefix.', $checks['pagination page prefixes'] );
+emulsify_navigation_expect( 2 === $pager_dom->query( '//nav//span[contains(concat(" ", normalize-space(@class), " "), " screen-reader-text ")]' )->length, 'Previous, next, unlinked current, and ellipsis items must not acquire Page prefix spans.', $checks['pagination page prefixes'] );
+emulsify_navigation_expect( in_array( array( 'Page', 'emulsify' ), $GLOBALS['emulsify_navigation_translations'] ?? array(), true ), 'The Page prefix must use the parent theme translation domain.', $checks['pagination page prefixes'] );
+
+$GLOBALS['emulsify_navigation_translation_overrides']['emulsify']['Page'] = $hostile;
+$translated_pagination = $environment->render( '@templates/partials/pagination.twig', $pagination_context );
+$translated_dom        = emulsify_navigation_dom( $translated_pagination );
+$translated_prefixes   = $translated_dom->query( '//nav//span[contains(concat(" ", normalize-space(@class), " "), " screen-reader-text ")]' );
+emulsify_navigation_expect( $translated_prefixes->length > 0 && $hostile . ' ' === $translated_prefixes->item( 0 )->textContent && 0 === $translated_dom->query( '//script' )->length, 'Translated Page prefixes must remain HTML escaped and retain their separating space.', $checks['pagination page prefixes'] );
+unset( $GLOBALS['emulsify_navigation_translation_overrides'] );
+
+$expected_urls = array_values( $urls );
+foreach ( $links as $index => $link ) {
 	$title    = trim( $link->textContent );
 	$actual   = $link->getAttribute( 'href' );
-	$expected = $urls[ $title ] ?? '';
+	$expected = $expected_urls[ $index ] ?? '';
 	parse_str( (string) parse_url( $actual, PHP_URL_QUERY ), $actual_query );
 	parse_str( (string) parse_url( $expected, PHP_URL_QUERY ), $expected_query );
 	emulsify_navigation_expect( '' !== $expected && $actual === $expected && $actual_query === $expected_query && null === parse_url( $actual, PHP_URL_FRAGMENT ), sprintf( '%s link must decode once to %s; got %s.', $title, $expected, $actual ), $checks['pagination URL escaping'] );
