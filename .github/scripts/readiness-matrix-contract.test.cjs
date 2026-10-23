@@ -1,0 +1,128 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+const yaml = require('js-yaml');
+const { validateReadinessMatrix } = require('./readiness-matrix-contract.cjs');
+
+function fixture() {
+  return {
+    jobs: {
+      practical: {
+        strategy: { matrix: { include: [
+          { 'php-version': '8.3', experimental: false },
+          { 'php-version': '8.4', experimental: false },
+          { 'php-version': '8.5', experimental: false },
+        ] } },
+        'continue-on-error': '${{ matrix.experimental }}',
+        steps: [{ run: 'npm run pr:check' }, { run: 'npm run release:check' }],
+      },
+      'wordpress-fixture': {
+        strategy: { matrix: { include: [
+          { 'wordpress-version': '6.8', experimental: false },
+          { 'wordpress-version': 'latest', experimental: false },
+          { 'wordpress-version': 'nightly', experimental: true },
+        ] } },
+        'continue-on-error': '${{ matrix.experimental }}',
+        steps: [{
+          run: 'npm run release:check',
+          env: { WP_SMOKE_WORDPRESS_VERSION: '${{ matrix.wordpress-version }}', WP_SMOKE_REQUIRED: '1', WP_SMOKE_A11Y: '1' },
+        }],
+      },
+    },
+  };
+}
+
+function validate(workflow = fixture(), options) {
+  return validateReadinessMatrix(yaml.dump(workflow), options);
+}
+
+test('accepts minimum and current stable blocking, with an advisory preview', () => {
+  assert.equal(validate().wordpress.length, 3);
+});
+
+test('validates the committed workflow and declared theme minimum', () => {
+  const repoRoot = path.resolve(__dirname, '../..');
+  const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/theme-readiness.yml'), 'utf8');
+  const minimumWordPress = fs.readFileSync(path.join(repoRoot, 'style.css'), 'utf8').match(/Requires at least:\s*(\S+)/)[1];
+  validateReadinessMatrix(workflow, { minimumWordPress });
+});
+
+test('rejects removed or advisory minimum, latest, and baseline PHP legs', () => {
+  for (const [jobName, versionKey, version] of [
+    ['wordpress-fixture', 'wordpress-version', '6.8'],
+    ['wordpress-fixture', 'wordpress-version', 'latest'],
+    ['practical', 'php-version', '8.3'],
+    ['practical', 'php-version', '8.4'],
+    ['practical', 'php-version', '8.5'],
+  ]) {
+    for (const remove of [false, true]) {
+      const workflow = fixture();
+      const entries = workflow.jobs[jobName].strategy.matrix.include;
+      if (remove) entries.splice(entries.findIndex((entry) => entry[versionKey] === version), 1);
+      else entries.find((entry) => entry[versionKey] === version).experimental = true;
+      assert.throws(() => validate(workflow), /must keep .* blocking/);
+    }
+  }
+});
+
+test('requires the nightly preview to remain advisory', () => {
+  const workflow = fixture();
+  workflow.jobs['wordpress-fixture'].strategy.matrix.include[2].experimental = false;
+  assert.throws(() => validate(workflow), /must keep nightly advisory/);
+});
+
+test('rejects job-wide failure bypasses and matrix exclusions', () => {
+  for (const jobName of ['practical', 'wordpress-fixture']) {
+    const bypass = fixture();
+    bypass.jobs[jobName]['continue-on-error'] = true;
+    assert.throws(() => validate(bypass), /only matrix.experimental legs advisory/);
+    const excluded = fixture();
+    excluded.jobs[jobName].strategy.matrix.exclude = [{ experimental: false }];
+    assert.throws(() => validate(excluded), /must not exclude/);
+  }
+});
+
+test('rejects string experimental flags, numeric versions, and duplicate legs', () => {
+  const flag = fixture();
+  flag.jobs.practical.strategy.matrix.include[0].experimental = 'false';
+  assert.throws(() => validate(flag), /explicitly mark/);
+  const numeric = fixture();
+  numeric.jobs.practical.strategy.matrix.include[0]['php-version'] = 8.3;
+  assert.throws(() => validate(numeric), /as a string/);
+  const duplicate = fixture();
+  duplicate.jobs.practical.strategy.matrix.include.push({ 'php-version': '8.3', experimental: true });
+  assert.throws(() => validate(duplicate), /must not duplicate/);
+});
+
+test('rejects missing, conditional, skipped, or failure-tolerant readiness commands', () => {
+  for (const jobName of ['practical', 'wordpress-fixture']) {
+    for (const mutation of ['remove', 'if', 'continue-on-error', 'skip-smoke']) {
+      const workflow = fixture();
+      const step = workflow.jobs[jobName].steps.find((entry) => entry.run === 'npm run release:check');
+      if (mutation === 'remove') workflow.jobs[jobName].steps = [];
+      else if (mutation === 'skip-smoke') step.run += ' -- --skip-smoke';
+      else step[mutation] = true;
+      assert.throws(() => validate(workflow), /must (run|not allow failures)/);
+    }
+  }
+});
+
+test('rejects hardcoded fixture versions or disabled fixture checks', () => {
+  for (const [key, value] of [['WP_SMOKE_WORDPRESS_VERSION', '6.8'], ['WP_SMOKE_REQUIRED', '0'], ['WP_SMOKE_A11Y', '0'], ['WP_SMOKE_SKIP', '1']]) {
+    const workflow = fixture();
+    workflow.jobs['wordpress-fixture'].steps[0].env[key] = value;
+    assert.throws(() => validate(workflow), /WordPress fixture/);
+  }
+  for (const scope of ['workflow', 'job']) {
+    const workflow = fixture();
+    (scope === 'workflow' ? workflow : workflow.jobs['wordpress-fixture']).env = { WP_SMOKE_SKIP: '1' };
+    assert.throws(() => validate(workflow), /must not skip/);
+  }
+});
+
+test('keeps the validated PHP 8.5 lane blocking', () => {
+  const workflow = fixture();
+  workflow.jobs.practical.strategy.matrix.include[2].experimental = true;
+  assert.throws(() => validate(workflow), /must keep 8.5 blocking/);
+});

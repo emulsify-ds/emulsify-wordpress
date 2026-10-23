@@ -7,7 +7,9 @@
 const fs = require('fs');
 const path = require('path');
 const childProcess = require('child_process');
+const yaml = require('js-yaml');
 const { validateReleaseVersionContract } = require('./release-version-contract.cjs');
+const { validateReadinessMatrix } = require('./readiness-matrix-contract.cjs');
 
 const repoRoot = path.resolve(__dirname, '../..');
 const skipSmoke = process.argv.slice(2).includes('--skip-smoke');
@@ -316,6 +318,8 @@ function runStaticChecks() {
       '.github/scripts/release-check.cjs',
       '.github/scripts/release-version-contract.cjs',
       '.github/scripts/release-version-contract.test.cjs',
+      '.github/scripts/readiness-matrix-contract.cjs',
+      '.github/scripts/readiness-matrix-contract.test.cjs',
       '.github/scripts/semantic-release.test.cjs',
       '.github/scripts/fallback-navigation-smoke.php',
       '.github/scripts/rendered-a11y.cjs',
@@ -548,9 +552,9 @@ function runStaticChecks() {
   runStaticCheck('WordPress tested compatibility', () => {
     const tested = rootThemeHeader['Tested up to'];
     const minimum = rootThemeHeader['Requires at least'];
-    ensure(tested === '6.8', 'style.css Tested up to must match the blocking WordPress 6.8 fixture for this release.');
+    ensure(/^\d+\.\d+(?:\.\d+)?$/.test(tested), 'style.css Tested up to must name a stable WordPress version verified by the blocking fixture.');
     ensure(wordpressVersionAtLeast(tested, minimum), 'style.css Tested up to must not be lower than Requires at least.');
-    return `Tested up to ${tested} matches the blocking fixture and covers theme minimum ${minimum}.`;
+    return `Tested up to ${tested} covers theme minimum ${minimum}; the current stable WordPress fixture is blocking.`;
   });
 
   runStaticCheck('PHP analysis scope', () => {
@@ -1308,7 +1312,8 @@ function runStaticChecks() {
     const readinessJob = semanticReleaseWorkflow.slice(readinessJobStart, releaseJobStart);
     const releaseJob = semanticReleaseWorkflow.slice(releaseJobStart);
     const buildStep = releaseJob.indexOf('npm run build:dist');
-    const publishStep = releaseJob.indexOf('npm run publish');
+    const publishStep = releaseJob.indexOf('run: npm run publish\n');
+    const dryRunStep = releaseJob.indexOf('run: npm run publish-test -- --no-ci');
     const releaseAsset = Array.isArray(githubOptions.assets)
       ? githubOptions.assets.find((asset) => asset.path === 'dist-artifact/emulsify.zip')
       : null;
@@ -1340,6 +1345,8 @@ function runStaticChecks() {
     ensure(releaseJob.includes('tools: composer:v2'), 'semantic-release.yml release job should install Composer.');
     ensure(buildStep >= 0, 'semantic-release.yml release job should build the installable theme archive.');
     ensure(publishStep >= 0 && buildStep < publishStep, 'semantic-release.yml should build the installable theme archive before publishing.');
+    ensure(dryRunStep >= 0 && dryRunStep < publishStep, 'semantic-release.yml should run the dry run in the publishing job before publishing.');
+    ensure(!readinessJob.includes('npm run publish-test') && !readinessJob.includes('GITHUB_TOKEN:'), 'Read-only release readiness must not run the authenticated semantic-release dry run.');
     ensure(semanticReleaseRunner.includes('Refusing to publish local-only stable tag(s)'), 'The guarded runner should refuse to push unpublished local stable tags.');
     return 'Semantic release requires a prepared package version, non-prefixed tags, main-only publishing, and the tested installable ZIP asset.';
   });
@@ -1398,7 +1405,9 @@ function runStaticChecks() {
     ensure(themeReadinessWorkflow.includes('npm run release:check'), 'theme-readiness.yml should run release readiness checks.');
     ensure(practicalJob.includes('fetch-depth: 0') && wordpressFixtureJob.includes('fetch-depth: 0'), 'Readiness jobs running the release version contract should fetch full history and tags.');
     ensure(practicalJob.includes("- name: Build installable theme archive\n        if: matrix.php-version == '8.3'\n        run: npm run build:dist"), 'The PHP 8.3 practical lane should build the client-testable release archive.');
-    ensure(practicalJob.includes("- name: Upload installable theme archive\n        if: matrix.php-version == '8.3'\n        uses: actions/upload-artifact@v7"), 'The PHP 8.3 practical lane should use direct-file artifact upload.');
+    const readinessJobs = yaml.load(themeReadinessWorkflow).jobs;
+    const archiveUpload = readinessJobs.practical.steps.find((step) => step.name === 'Upload installable theme archive');
+    ensure(archiveUpload?.if === "matrix.php-version == '8.3'" && /^actions\/upload-artifact@[a-f0-9]{40}$/.test(archiveUpload.uses), 'The PHP 8.3 practical lane should use a pinned artifact upload.');
     ensure(practicalJob.includes('path: dist-artifact/emulsify.zip') && practicalJob.includes('archive: false') && practicalJob.includes('overwrite: true'), 'Theme readiness should upload the installable ZIP directly and support workflow reruns.');
     ensure(practicalJob.includes('if-no-files-found: error') && practicalJob.includes('retention-days: 14'), 'The client-testable artifact should be required and retained for 14 days.');
     ensure(practicalStart >= 0 && phpLintStart > practicalStart && wordpressFixtureStart > phpLintStart && extendedWhiskStart > wordpressFixtureStart, 'theme-readiness.yml should define practical, PHP, WordPress fixture, and Whisk accessibility jobs.');
@@ -1413,6 +1422,7 @@ function runStaticChecks() {
     ensure(wordpressFixtureJob.includes("WP_SMOKE_REQUIRED: '1'"), 'WordPress fixture job should require the fixture instead of allowing a skip.');
     ensure(wordpressFixtureJob.includes('- name: Build installable theme archive') && wordpressFixtureJob.includes('run: npm run build:dist'), 'WordPress fixture job should build the installable archive.');
     ensure(wordpressFixtureJob.includes('WP_SMOKE_THEME_ARCHIVE: dist-artifact/emulsify.zip'), 'WordPress fixture job should test the built archive instead of the source tree.');
+    ensure(wordpressFixtureSmoke.includes("['core', 'version']") && wordpressFixtureSmoke.includes('WordPress version: requested') && wordpressFixtureSmoke.includes('resolved ${resolvedWordpressVersion}'), 'WordPress fixture smoke should log the actual downloaded core version, including latest and nightly resolution.');
     ensure(themeReadinessWorkflow.includes('extended_checks'), 'theme-readiness.yml should expose optional extended checks.');
     ensure(extendedWhiskJob.includes(releaseTargetedPrGate), 'Whisk accessibility job should run on release-targeted pull requests.');
     ensure(extendedWhiskJob.includes("github.event_name == 'schedule'"), 'Whisk accessibility job should run on the schedule.');
@@ -1455,6 +1465,53 @@ function runStaticChecks() {
     ensure(prValidationScript.indexOf('whisk:install') < prValidationScript.indexOf('smoke:starter-init'), 'PR validation should install Whisk dependencies before checking the starter npm test script.');
     ensure(!prValidationScript.includes('whisk:build'), 'PR validation should not require a Whisk build before a component system is installed.');
     return 'Theme readiness runs fast checks on every configured pull request and extended checks for release targets, schedules, and manual dispatches.';
+  });
+
+  runStaticCheck('Readiness matrix contract', () => {
+    const entries = validateReadinessMatrix(themeReadinessWorkflow, {
+      minimumWordPress: rootThemeHeader['Requires at least'],
+    });
+    return `Blocking WordPress minimum and latest, advisory nightly, and ${entries.practical.filter((entry) => !entry.experimental).length} blocking PHP legs are required.`;
+  });
+
+  runStaticCheck('Pinned workflow actions and validation credentials', () => {
+    const files = listFilesRecursive('.github/workflows', (file) => /\.ya?ml$/.test(file));
+    for (const file of files) {
+      const source = readFile(file);
+      for (const line of source.split(/\r?\n/)) {
+        if (!/^\s*(?:-\s*)?uses:\s*/.test(line)) continue;
+        ensure(/^\s*(?:-\s*)?uses:\s*[\w.-]+\/[\w./-]+@[a-f0-9]{40}\s+#\s*v\d+\.\d+\.\d+(?:[\w.+-]*)?\s*$/.test(line),
+          `${file} must pin every action to a full commit SHA with its release version comment: ${line.trim()}`);
+        if (line.includes('actions/upload-artifact@')) ensure(/#\s*v7\./.test(line), `${file} must use the Node 24 upload-artifact v7 release.`);
+      }
+      const workflow = yaml.load(source);
+      ensure(workflow.permissions?.contents === 'read' && Object.keys(workflow.permissions).length === 1,
+        `${file} must default to exactly contents: read.`);
+      ensure(!Object.hasOwn(workflow.on || {}, 'pull_request_target'), `${file} must not run untrusted pull requests with pull_request_target credentials.`);
+      for (const [jobName, job] of Object.entries(workflow.jobs || {})) {
+        const publishingJob = file === '.github/workflows/semantic-release.yml' && jobName === 'semantic-release';
+        const contributorsJob = file === '.github/workflows/contributors.yml' && jobName === 'add-contributors';
+        if (publishingJob) {
+          ensure(job.permissions?.contents === 'write' && job.permissions?.issues === 'write'
+            && job.permissions?.['pull-requests'] === 'write' && Object.keys(job.permissions).length === 3,
+          'The semantic-release publishing job must request exactly contents, issues, and pull-requests write permissions.');
+        }
+        else if (contributorsJob) {
+          ensure(job.permissions?.contents === 'write' && Object.keys(job.permissions).length === 1,
+            'Contributor automation must request only contents: write.');
+        }
+        else {
+          ensure(job.permissions === undefined || (typeof job.permissions === 'object'
+            && Object.values(job.permissions).every((value) => value === 'read' || value === 'none')),
+          `${file} ${jobName} validation permissions must remain read-only.`);
+        }
+        for (const step of job.steps || []) {
+          if (!step.uses?.startsWith('actions/checkout@') || publishingJob) continue;
+          ensure(step.with?.['persist-credentials'] === false, `${file} ${jobName} validation checkout must disable persisted credentials.`);
+        }
+      }
+    }
+    return 'All workflow actions use full SHA pins with version comments, and validation checkouts do not retain credentials.';
   });
 
   runStaticCheck('Release documentation', () => {
@@ -1737,6 +1794,7 @@ function runStaticChecks() {
   });
 
   runCommandCheck('Release version contract tests', process.execPath, ['--test', '.github/scripts/release-version-contract.test.cjs']);
+  runCommandCheck('Readiness matrix contract tests', process.execPath, ['--test', '.github/scripts/readiness-matrix-contract.test.cjs']);
   runCommandCheck('Semantic release guard tests', process.execPath, ['--test', '.github/scripts/semantic-release.test.cjs']);
 
   if (skipSmoke) {

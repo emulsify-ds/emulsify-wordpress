@@ -978,6 +978,8 @@ async function main() {
     `--version=${wordpressVersion}`,
     '--force',
   ]);
+  const resolvedWordpressVersion = wp(wpPath, ['core', 'version']);
+  log(`WordPress version: requested ${wordpressVersion}; resolved ${resolvedWordpressVersion}`);
 
   run('Create wp-config.php', 'wp', [
     '--allow-root',
