@@ -23,6 +23,12 @@ These are separate implementations in different languages, so the release checks
 - `package.json` is valid JSON, uses the generated machine name, retains every Emulsify Core npm script, and keeps the starter's `@emulsify/core` range.
 - `project.emulsify.json` is valid JSON and retains `platform`, the generated `machineName`, `generatedFrom`, `generatedFromVersion`, and the `starter` repository block.
 - `README.md`, `docs/development.md`, `docs/upgrading.md`, and `docs/support-information.md` are present. The README contains the requested display name, machine name, description, source project, source version, and Emulsify Core range, and the guides document only npm commands that the generated `package.json` exposes.
+- `AGENTS.md`, `docs/wordpress-integration.md`, and
+  `.agents/skills/emulsify-wordpress-integration/SKILL.md` ship unchanged from
+  the generation source, including the hidden skill directory. The skill has
+  valid YAML frontmatter, and guidance links resolve inside the child theme.
+  These files contain no identity placeholders; projects can customize their
+  copies after generation.
 - No `%%EMULSIFY_*%%` documentation token survives generation. An unreplaced token fails generation rather than shipping to a project.
 - No starter identity survives: the machine name `whisk`, the display name `Whisk`, and legacy `EMULSIFY_NAME` placeholders are all absent.
 - Generation-only tooling and build output are absent, including `.cli`, `node_modules`, `dist`, `.out`, and `.coverage`.
@@ -55,6 +61,12 @@ npm run release:check -- --skip-smoke
 
 `npm run test:generated-theme` runs focused contract tests that generate a throwaway theme and then mutate it to prove each class of failure is detected. `npm run smoke:generation-parity` generates through both paths and compares them; it requires a PHP binary and skips with a warning when none is available.
 
+The validator's `--check-built-assets` mode checks an installed, built consumer
+theme: it requires `dist/`, allows dependency/build directories and customized
+guidance, and still rejects `.cli/`. Guidance presence, skill metadata, local
+links, and documented commands remain checked; only the fresh-copy byte
+comparison is relaxed.
+
 To verify generated audit wrappers against an actual packed Core artifact, run:
 
 ```sh
@@ -83,6 +95,11 @@ That requires Node.js, PHP, Composer, MySQL, WP-CLI, and network access.
 - **WordPress metadata:** A `style.css` header does not match the requested identity, or `functions.php` still describes the starter.
 - **Frontend metadata:** `package.json` or `project.emulsify.json` lost a required key, an npm script, or the Emulsify Core range.
 - **Documentation:** A required generated guide is missing, still contains a source token, lost project-specific metadata, or documents an npm command the generated package does not expose. Fix the Whisk documentation template or the generation post-processors.
+- **AI guidance:** A guidance file is missing or changed during generation,
+  skill frontmatter is invalid, or a guidance link is missing or escapes the
+  theme. Fix the source or copy path; byte comparison applies to fresh
+  generation, while built/customized themes may edit their guidance. Skill
+  metadata and links must remain valid.
 - **Placeholder replacement:** A starter name or token survived. Both generators must be updated together; a token added to the templates without a matching replacement in each generator fails the release check.
 - **File references:** A documentation link or script path escapes the generated theme.
 

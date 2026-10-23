@@ -6,6 +6,13 @@ then decide which starter changes to adopt in each generated project.
 
 ## Upgrading from 2.0.0 to 2.1.0
 
+New generated themes include `AGENTS.md`, a WordPress integration guide, and
+the optional `.agents/skills/emulsify-wordpress-integration/` workflow skill.
+Existing child themes can copy these token-free files from a fresh comparison
+theme and adapt them to their project. Start assistant sessions in the child
+theme directory for local skill discovery; generation does not change
+site-root agent instructions.
+
 The minimum WordPress version is now 6.8, matching the locked Timber dependency.
 Sites running WordPress 6.7 must update WordPress before updating the theme.
 

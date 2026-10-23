@@ -188,7 +188,20 @@ function collectComparableFiles(root, relative = '', collected = new Map()) {
 function compareTrees(scenario, wpCliDir, starterDir) {
   const left = collectComparableFiles(wpCliDir);
   const right = collectComparableFiles(starterDir);
+  const guidance = collectComparableFiles(starterRoot, '.agents');
   const differences = [];
+
+  assert(guidance.size > 0, 'Whisk must ship a non-empty .agents guidance tree.');
+  for (const [label, generated] of [['WP-CLI', left], ['starter init', right]]) {
+    const guidancePaths = [...generated.keys()].filter((file) => file.startsWith(`.agents${path.sep}`));
+    if (guidancePaths.length !== guidance.size) {
+      differences.push(`${label} .agents tree does not contain exactly the source guidance files`);
+    }
+    const changed = [...guidance].filter(([file, hash]) => generated.get(file) !== hash);
+    for (const [relativePath] of changed) {
+      differences.push(`${label} ${relativePath} does not match the Whisk source bytes`);
+    }
+  }
 
   for (const [relativePath, hash] of left) {
     if (!right.has(relativePath)) {
@@ -212,6 +225,9 @@ function compareTrees(scenario, wpCliDir, starterDir) {
     `Generation paths diverged for ${scenario.machineName}:\n- ${differences.join('\n- ')}`,
   );
 
+  console.log(
+    `Both generated .agents trees match the Whisk source across ${guidance.size} file${guidance.size === 1 ? '' : 's'} for ${scenario.machineName}.`,
+  );
   return left.size;
 }
 

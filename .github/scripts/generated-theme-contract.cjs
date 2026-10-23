@@ -15,6 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const { isDeepStrictEqual } = require('util');
+const yaml = require('js-yaml');
 
 const { validateDocumentation } = require('./docs-command-check.cjs');
 
@@ -24,6 +25,7 @@ const SECTION_LABELS = {
   frontend: 'frontend metadata',
   references: 'file references',
   documentation: 'documentation',
+  guidance: 'AI guidance',
   placeholders: 'placeholder replacement',
   build: 'build',
 };
@@ -48,6 +50,12 @@ const REQUIRED_GENERATED_FILES = [
   'docs/development.md',
   'docs/support-information.md',
   'docs/upgrading.md',
+];
+
+const REQUIRED_GUIDANCE_FILES = [
+  'AGENTS.md',
+  'docs/wordpress-integration.md',
+  '.agents/skills/emulsify-wordpress-integration/SKILL.md',
 ];
 
 // Generation-only tooling and build output must never reach a project repo.
@@ -180,10 +188,10 @@ function checkEqual(addError, section, themeLabel, file, key, actual, want) {
 }
 
 function validateGenerationShape(validator, contract) {
-  const { themeDir, themeLabel, sourceDir } = contract;
+  const { themeDir, themeLabel, sourceDir, checkBuiltAssets } = contract;
   const entries = listFilesRecursive(themeDir);
   const relativeFiles = new Set(
-    entries.filter((entry) => entry.file).map((entry) => entry.relativePath),
+    entries.filter((entry) => entry.file).map((entry) => entry.relativePath.split(path.sep).join('/')),
   );
 
   for (const requiredFile of REQUIRED_GENERATED_FILES) {
@@ -208,6 +216,9 @@ function validateGenerationShape(validator, contract) {
   }
 
   for (const forbidden of FORBIDDEN_GENERATED_PATHS) {
+    if (checkBuiltAssets && forbidden !== '.cli') {
+      continue;
+    }
     if (fs.existsSync(path.join(themeDir, forbidden))) {
       validator.addError(
         'generation',
@@ -460,6 +471,8 @@ function validateMarkdownReferences(validator, contract, entries) {
     }
 
     const contents = readTextFile(path.join(themeDir, entry.relativePath));
+    const relativePath = entry.relativePath.split(path.sep).join('/');
+    const section = REQUIRED_GUIDANCE_FILES.includes(relativePath) || relativePath.startsWith('.agents/skills/') ? 'guidance' : 'references';
 
     for (const match of contents.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
       const target = match[1].replace(/^<|>$/g, '').split('#')[0].trim();
@@ -473,20 +486,44 @@ function validateMarkdownReferences(validator, contract, entries) {
         target,
       );
 
-      if (!resolved.startsWith(themeRoot)) {
-        validator.addError(
-          'references',
+      if (resolved !== themeRoot && !resolved.startsWith(`${themeRoot}${path.sep}`)) {
+	validator.addError(section,
           `${themeLabel} has documentation link ${expected(target)} in ${expected(entry.relativePath)} that resolves outside the generated child theme; expected a self-contained path or published package.`,
         );
         continue;
       }
 
       if (!fs.existsSync(resolved)) {
-        validator.addError(
-          'references',
+	validator.addError(section,
           `${themeLabel} has documentation link ${expected(target)} in ${expected(entry.relativePath)} that resolves to missing local path ${expected(path.relative(themeDir, resolved))}; expected it inside the generated child theme.`,
         );
       }
+    }
+  }
+}
+
+function validateGeneratedGuidance(validator, contract, entries, relativeFiles) {
+  const { themeDir, themeLabel, sourceDir, checkBuiltAssets } = contract;
+  for (const relativePath of REQUIRED_GUIDANCE_FILES) {
+    if (!relativeFiles.has(relativePath)) {
+      validator.addError('guidance', `${themeLabel} is missing required generated guidance file ${expected(relativePath)}.`);
+      continue;
+    }
+    const source = path.join(sourceDir, relativePath);
+    if (!checkBuiltAssets && (!fs.existsSync(source) || !fs.readFileSync(path.join(themeDir, relativePath)).equals(fs.readFileSync(source)))) {
+      validator.addError('guidance', `${themeLabel} changed guidance file ${expected(relativePath)} during generation; expected a byte-for-byte copy of the starter guidance.`);
+    }
+  }
+
+  for (const entry of entries.filter((file) => file.file && /^\.agents[\\/]skills[\\/][^\\/]+[\\/]SKILL\.md$/.test(file.relativePath))) {
+    try {
+      const frontmatter = readTextFile(path.join(themeDir, entry.relativePath)).match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+      if (!frontmatter) throw new Error('expected YAML frontmatter bounded by ---');
+      const metadata = yaml.load(frontmatter[1]);
+      if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata) || metadata.name !== path.basename(path.dirname(entry.relativePath))) throw new Error('frontmatter name must match the skill directory');
+      if (typeof metadata.description !== 'string' || !metadata.description.trim()) throw new Error('frontmatter description must be a nonempty string');
+    } catch (error) {
+      validator.addError('guidance', `${themeLabel} has invalid skill manifest in ${expected(entry.relativePath)}: ${error.message}.`);
     }
   }
 }
@@ -504,7 +541,8 @@ function validateGeneratedDocumentation(validator, contract) {
   }
 
   for (const error of result.errors) {
-    validator.addError('documentation', `${themeLabel} ${error}`);
+    const section = REQUIRED_GUIDANCE_FILES.some((file) => error.replaceAll('\\', '/').includes(`${file}:`)) ? 'guidance' : 'documentation';
+    validator.addError(section, `${themeLabel} ${error}`);
   }
 
   const readmePath = path.join(themeDir, 'README.md');
@@ -703,6 +741,7 @@ function validateGeneratedTheme(options) {
     description: normalizeWhitespace(description),
     parent: 'emulsify',
     sourceDir,
+    checkBuiltAssets,
     sourcePackage,
     sourceProjectFile,
     sourceProject: sourceProjectFile.project,
@@ -711,9 +750,10 @@ function validateGeneratedTheme(options) {
     sourceDescription: normalizeWhitespace(sourceHeaders.Description),
   };
 
-  const { entries } = validateGenerationShape(validator, contract);
+  const { entries, relativeFiles } = validateGenerationShape(validator, contract);
   validateWordPressMetadata(validator, contract);
   validateFrontendMetadata(validator, contract);
+  validateGeneratedGuidance(validator, contract, entries, relativeFiles);
   validateMarkdownReferences(validator, contract, entries);
   validateGeneratedDocumentation(validator, contract);
   validatePlaceholders(validator, contract, entries);

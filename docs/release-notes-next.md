@@ -33,6 +33,10 @@ Title: `2.1.0`
 
 ### Added
 
+- Generated child themes include portable `AGENTS.md` guidance, a WordPress
+  integration guide, and an optional integration workflow skill. Both
+  generators preserve these files unchanged, including hidden `.agents/`
+  content.
 - Public `site_header`, `main`, and `page_title` layout extension blocks, with
   byte-for-byte golden coverage and documented boundaries. Existing layout
   blocks and default parent output remain unchanged.
@@ -113,6 +117,8 @@ Title: `2.1.0`
 
 ### Internal
 
+- Re-sync the standalone `emulsify-wordpress-starter` repository from `whisk/`
+  before publishing, including its hidden `.agents/` directory and AI guidance.
 - Extended CI verifies the runner's installed Chrome with its sandbox enabled,
   runs real seeded project tests before accessibility checks, and retains
   coverage diagnostics.

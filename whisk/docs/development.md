@@ -53,7 +53,33 @@ npm run inspect:components -- --json
 npm run inspect:components -- --help
 ```
 
-The inspector is safe to run before a component library exists. A component-neutral project returns a valid empty report.
+The inspector locates non-partial Twig templates recognized by Emulsify Core
+and reports source/output paths, references, and namespace collisions. It is
+safe to run before a component library exists; a component-neutral project
+returns a valid empty report. Read component schemas, stories, and source for
+their APIs. The inventory does not prove WordPress block registration or cover
+every component type.
+
+## AI-assisted development
+
+The theme's [AGENTS.md](../AGENTS.md) routes assistants to project facts and
+guides. The optional
+[WordPress integration skill](../.agents/skills/emulsify-wordpress-integration/SKILL.md)
+uses [the integration guide](wordpress-integration.md) for Timber template
+selection, WordPress data mapping, assets, and site verification.
+
+Start a session from this generated theme directory when an assistant discovers
+local `.agents/skills/` from its working directory. A session started at the
+WordPress site root may need an explicit instruction to read the theme's
+`AGENTS.md` and skill. Teams can add that routing to existing site-root
+instructions or install the skill through their assistant's supported
+mechanism. Generation leaves site-root instructions unchanged and does not
+configure a developer's AI tool.
+
+Read `docs/component-library.md` when the installed library supplies it, plus
+local component instructions and contracts. Its directories, props, slots,
+tokens, entrypoints, and build integration remain library-specific; WordPress
+data mappings and project conventions belong to this theme or a project plugin.
 
 ## Development workflow
 

@@ -419,6 +419,9 @@ function runStaticChecks() {
       'whisk/.cli/init.js',
       'whisk/.gitignore',
       'whisk/.nvmrc',
+      'whisk/AGENTS.md',
+      'whisk/docs/wordpress-integration.md',
+      'whisk/.agents/skills/emulsify-wordpress-integration/SKILL.md',
       'whisk/config/emulsify-core/a11y.config.js',
       'whisk/config/emulsify-core/run-a11y.js',
       'whisk/config/jest.config.js',
@@ -1172,6 +1175,30 @@ function runStaticChecks() {
     }
 
     return 'Generated docs cover project ownership, frontend workflows, upgrades, and sanitized support collection.';
+  });
+
+  runStaticCheck('Generated AI guidance', () => {
+    const guidancePaths = [
+      'AGENTS.md',
+      'docs/wordpress-integration.md',
+      '.agents/skills/emulsify-wordpress-integration/SKILL.md',
+    ];
+    for (const relativePath of guidancePaths) {
+      const sourcePath = `whisk/${relativePath}`;
+      const contents = readFile(sourcePath);
+      ensure(!/%%EMULSIFY_[A-Z_]+%%|whisk/i.test(contents), `${sourcePath} must be token-free and contain no starter identity so generators copy it unchanged.`);
+      ensure(generatedThemeContract.includes(`'${relativePath}'`), `Generated theme contract should require ${relativePath}.`);
+      ensure(docsCommandCheck.includes(`'${relativePath}'`), `Documentation command checks should cover ${relativePath}.`);
+      ensure(distBuilder.includes(`"${sourcePath}"`), `Distribution build should require staged ${sourcePath}.`);
+    }
+
+    const attributes = childProcess.spawnSync('git', [
+      'check-attr', 'export-ignore', '--',
+      'AGENTS.md', ...guidancePaths.map((file) => `whisk/${file}`),
+    ], { cwd: repoRoot, encoding: 'utf8' });
+    ensure(attributes.status === 0, `Unable to check guidance Git distribution attributes: ${attributes.stderr}`);
+    ensure(!/: export-ignore: (?:set|true)\s*$/m.test(attributes.stdout), 'Git distributions must retain contributor and generated AI guidance, including hidden skills.');
+    return 'Portable guidance is required, copied without replacement, command-checked, and retained in ZIP/Git distributions.';
   });
 
   runStaticCheck('Generated child theme contract', () => {
