@@ -11,6 +11,7 @@
 ## Authoring
 
 - [Timber and Twig authoring](timber-and-twig-authoring.md)
+- [Parent Twig extension points](template-extension.md)
 - [Component recipes](component-recipes.md)
 - [Emulsify Core 4 and Vite workflow](core-4-vite-workflow.md)
 - [Design token integration](design-token-integration.md)

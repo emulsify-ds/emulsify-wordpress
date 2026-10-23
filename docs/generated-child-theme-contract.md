@@ -15,7 +15,10 @@ These are separate implementations in different languages, so the release checks
 
 ## What the contract guarantees
 
-- The machine name, display name, and description are applied consistently to `style.css` headers, `package.json`, `project.emulsify.json`, `functions.php`, `templates/`, and `patterns/`.
+- The machine name, display name, and description are applied consistently to `style.css` headers, `package.json`, `project.emulsify.json`, `functions.php`, and `patterns/`.
+- A fresh generated theme ships no Twig templates or `templates/` directory;
+  the parent renders page fallbacks. Consumers can add their own overrides
+  later using the [template extension contract](template-extension.md).
 - `style.css` keeps `Template: emulsify` so WordPress loads the Emulsify parent runtime, and preserves the starter's license metadata.
 - `package.json` is valid JSON, uses the generated machine name, retains every Emulsify Core npm script, and keeps the starter's `@emulsify/core` range.
 - `project.emulsify.json` is valid JSON and retains `platform`, the generated `machineName`, `generatedFrom`, `generatedFromVersion`, and the `starter` repository block.

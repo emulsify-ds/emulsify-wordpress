@@ -33,6 +33,9 @@ Title: `2.1.0`
 
 ### Added
 
+- Public `site_header`, `main`, and `page_title` layout extension blocks, with
+  byte-for-byte golden coverage and documented boundaries. Existing layout
+  blocks and default parent output remain unchanged.
 - Timber-first WordPress parent theme with Twig route fallbacks, global context,
   namespace registration, and Emulsify-compatible switch tags.
 - `wp emulsify` WP-CLI child theme generation with `--machine-name`,
@@ -51,6 +54,10 @@ Title: `2.1.0`
 
 ### Changed
 
+- Fresh generated themes ship no Twig overrides or `templates/` directory.
+  Pages render through parent fallbacks. Existing child page overrides keep
+  inheriting parent fixes; search project CSS for the machine-name wrapper
+  before deciding whether to remove one.
 - New generated themes use Emulsify Core `^4.5.0`; their effective Node.js floor
   is 24.13.0. Existing projects should refresh their own dependency lockfiles
   when adopting this optional Core update.

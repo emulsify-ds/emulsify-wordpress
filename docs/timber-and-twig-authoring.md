@@ -25,6 +25,11 @@ The parent theme registers these namespaces:
 
 Use `@templates` for normal includes. Use `@emulsify-tpl` when a child override extends the parent template with the same relative path.
 
+New generated themes inherit parent fallbacks without local Twig templates.
+Create `templates/` when an override is needed. The [template extension
+contract](template-extension.md) documents layout blocks, stable boundaries,
+and the same-path inheritance recursion pitfall.
+
 ```twig
 {% extends '@emulsify-tpl/page.twig' %}
 

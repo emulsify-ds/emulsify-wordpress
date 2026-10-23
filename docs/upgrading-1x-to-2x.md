@@ -46,7 +46,10 @@ When a child template extends the parent template with the same relative path, u
 {% extends '@emulsify-tpl/page.twig' %}
 ```
 
-Using `@templates/page.twig` from `whisk/templates/page.twig` would resolve back to the child file.
+Using `@templates/page.twig` from a child `templates/page.twig` would resolve
+back to the child file. New generated themes ship no Twig templates or
+`templates/` directory; create one only when needed. See the [template extension
+contract](template-extension.md) for the supported blocks and boundaries.
 
 ## Block metadata changes
 

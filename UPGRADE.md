@@ -9,6 +9,19 @@ then decide which starter changes to adopt in each generated project.
 The minimum WordPress version is now 6.8, matching the locked Timber dependency.
 Sites running WordPress 6.7 must update WordPress before updating the theme.
 
+New generated themes no longer ship `templates/page.twig` or a `templates/`
+directory. Existing 2.x children keep their page override: it still inherits
+parent fixes when it extends `@emulsify-tpl/page.twig` and calls `parent()`.
+Search project CSS for the `.<machine>-page` wrapper, such as `.acme-site-page`,
+before deleting that override. Projects can remove it if the wrapper is unused
+and the file has no other project customizations.
+
+The new `site_header`, `main`, and `page_title` layout blocks are additive; the
+parent's default output remains byte-identical. Existing `head`, `header`,
+`content`, and `footer` blocks retain their names and boundaries. See the
+[public template extension contract](docs/template-extension.md) before adding
+an override, including how to preserve the skip-link target.
+
 New child themes use Emulsify Core `^4.5.0`. Existing generated themes do not
 inherit copied starter scripts or configuration when the parent is updated.
 Updating Core is optional for existing projects; to adopt 4.5.0, change the
