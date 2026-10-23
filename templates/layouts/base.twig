@@ -1,5 +1,6 @@
 {# Shared document shell. Keep structural WordPress hooks here so child page
-   templates can focus on content blocks and component composition. #}
+   templates can focus on content blocks and component composition.
+   Timber supplies language_attributes as the trusted WordPress core attribute fragment. #}
 {% set body_attributes = {
     class: body_class|default('')
 } %}
@@ -36,7 +37,7 @@
 } %}
 {% set menu_items = menu|default(null) ? menu.get_items : [] %}
 <!doctype html>
-<html {{ site.language_attributes|default('') }}>
+<html {{ site.language_attributes|default('')|raw }}>
     {% block head %}
         {% include '@templates/partials/head.twig' %}
     {% endblock %}

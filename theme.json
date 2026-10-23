@@ -523,9 +523,6 @@
     "elements": {
       "link": {
         "border": {},
-        "color": {
-          "text": "var(--wp--preset--color--brand-primary-light)"
-        },
         ":visited": {
           "color": {
             "text": "var(--wp--preset--color--brand-primary-dark)"

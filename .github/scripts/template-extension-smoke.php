@@ -88,7 +88,7 @@ function emulsify_extension_context( bool $has_title, bool $has_menu, bool $has_
 			'url'                 => 'https://example.test/?first=1&second=2',
 			'name'                => 'Fixture <site> & WordPress',
 			'charset'             => 'UTF-8',
-			'language_attributes' => new \Twig\Markup( 'lang="en" dir="ltr"', 'UTF-8' ),
+			'language_attributes' => 'lang="en" dir="ltr"',
 		),
 		'body_class'      => 'fixture-body route-page',
 		'menu'            => $has_menu ? array( 'get_items' => $items ) : null,
@@ -201,6 +201,11 @@ try {
 	}
 
 	$errors        = array();
+	$rtl_context   = emulsify_extension_context( true, true, true );
+	$rtl_context['site']['language_attributes'] = 'lang="ar" dir="rtl"';
+	$rtl_output = $environment->render( 'content-fixture.twig', $rtl_context );
+	emulsify_extension_expect( false !== strpos( $rtl_output, '<html lang="ar" dir="rtl">' ), 'Plain WordPress language attributes must preserve the language and RTL direction without escaping their quotes.', $errors );
+	emulsify_extension_expect( false !== strpos( $rtl_output, 'Fixture &lt;site&gt; &amp; WordPress' ) && false !== strpos( $rtl_output, 'Page &lt;title&gt; &amp; fixture' ), 'Trusting the core language attribute fragment must preserve autoescaping for site names and page titles.', $errors );
 	$page_expected = file_get_contents( __DIR__ . '/../fixtures/template-extension/page-post.html' );
 	foreach ( array( 'head', 'header', 'content', 'footer', 'site_header', 'main', 'page_title' ) as $block ) {
 		$name   = 'child-page-' . $block . '.twig';
@@ -250,7 +255,7 @@ try {
 	if ( $errors ) {
 		throw new RuntimeException( implode( "\n", $errors ) );
 	}
-	echo "PASS child page inheritance, seven block names, replacement boundaries, nested blocks, and structural WordPress hooks.\n";
+	echo "PASS plain language attributes, RTL, other field autoescaping, child page inheritance, seven block names, replacement boundaries, nested blocks, and structural WordPress hooks.\n";
 } catch ( Throwable $throwable ) {
 	fwrite( STDERR, $throwable->getMessage() . "\n" );
 	$exit_code = 1;
