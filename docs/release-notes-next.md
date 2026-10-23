@@ -129,6 +129,10 @@ Title: `2.1.0`
 
 ### Internal
 
+- Added `npm run test:twig-helpers` to characterize PHP and installed Core
+  JavaScript helpers with exact HTML, attribute maps, and remaining context.
+  Separate expectations preserve observed differences without changing runtime
+  behavior or claiming universal parity.
 - Re-sync the standalone `emulsify-wordpress-starter` repository from `whisk/`
   before publishing, including its hidden `.agents/` directory and AI guidance.
 - Extended CI verifies the runner's installed Chrome with its sandbox enabled,

@@ -162,6 +162,74 @@ The parent theme registers Core-style helpers for class and attribute handling:
 
 The helpers return an attribute bag that serializes safely in Twig string contexts.
 
+## Helper characterization
+
+The parent implements `bem()` and `add_attributes()` in PHP; Storybook uses
+Emulsify Core's JavaScript helpers. Their shared API does not guarantee identical
+behavior for every input. The maintainer contract records each implementation's
+observed behavior separately in
+`.github/fixtures/twig-helper-contract.json` in the repository checkout.
+It uses the WordPress parent's own `AttributeBag`; Core's
+[4.5.0 PHP corpus](https://github.com/emulsify-ds/emulsify-core/blob/v4.5.0/docs/twig-php-parity.md)
+instead records a pinned Emulsify Tools counterpart. That corpus's portable
+subset is not a guarantee about this WordPress implementation.
+
+This check is for a maintainer checkout; its `.github` scripts and fixtures are
+excluded from released parent ZIPs. Install the parent Composer dependencies
+and the starter's declared Core dependency, then run it from the repository root:
+
+```sh
+composer install
+npm run whisk:install
+npm run test:twig-helpers
+```
+
+The command uses `whisk/` by default. To characterize the Core version installed
+in another generated theme, pass its directory:
+
+```sh
+npm run test:twig-helpers -- "/path/to/generated-theme"
+```
+
+Each case compares three observations against that runtime's own expectations:
+the exact serialized HTML string, the returned attribute map, and
+`contextAfter`, the attributes remaining in the caller's context. Whitespace,
+escaping, attribute types and order, and context mutation remain visible. The
+check does not trim output, rewrite escaping, or normalize known differences
+to make the PHP and JavaScript results appear equal.
+
+The recorded ordinary positional/object BEM cases, aliases, nested lists, class
+sanitization, list replacement, scalar number serialization, and escaping agree.
+Selected differences remain explicit:
+
+| Recorded input | WordPress PHP | Core 4.5.0 JavaScript |
+| --- | --- | --- |
+| A `true` BEM modifier | `card--1` | `card--true` |
+| Numeric `0` as an extra class | `_0` | Omitted |
+| `true` in an `add_attributes()` class list | `_1` | `true` |
+| `true` in a non-class attribute list | `1` | `true` |
+| Caller attributes supplied as an array or attribute bag | Copied; remain in caller context | Consumed from invocation context |
+
+The fixture cases `bem-boolean-and-numeric-values`,
+`add-booleans-aria-and-falsy-classes`, and
+`add-invalid-names-and-nested-values` record the coercion differences.
+`add-repeated-context-consumption` demonstrates that WordPress prints caller
+attributes again on a second call, whereas Core has consumed them. WordPress's
+own `AttributeBag` preserves the caller context too; changing from an array to
+that bag does not provide print-once behavior.
+
+Both implementations currently treat boolean ARIA values like HTML booleans:
+`true` can produce a bare attribute, and `false` can be omitted rather than
+replacing an existing value. Supply explicit strings such as
+`{ 'aria-expanded': 'false' }` for ARIA state values. This describes the tested
+inputs, not equivalence for arbitrary attributes or Twig expressions.
+
+Review changed expectations when updating a helper or Core dependency. A
+characterization fixture records compatibility evidence; it does not decide
+which runtime should change or promise universal PHP/JavaScript parity. The
+check does not replace Twig autoescaping coverage or rendering the affected
+template in WordPress with its actual Timber context and hooks.
+
 ## Switch statements
 
 The parent theme registers the Emulsify-compatible `switch`, `case`, `default`, and `endswitch` tags used by Emulsify Core in Storybook and Emulsify Tools in Drupal. Use `or` to match more than one value in a case:

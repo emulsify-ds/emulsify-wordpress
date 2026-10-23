@@ -404,6 +404,9 @@ function runStaticChecks() {
       '.github/scripts/acf-local-json-smoke.php',
       '.github/scripts/asset-manifest-smoke.php',
       '.github/scripts/attribute-helper-smoke.php',
+      '.github/scripts/twig-helper-contract.cjs',
+      '.github/scripts/twig-helper-contract.php',
+      '.github/fixtures/twig-helper-contract.json',
       '.github/scripts/block-scoped-assets-smoke.php',
       '.github/scripts/bootstrap-loader-smoke.php',
       '.github/scripts/child-theme-generator-smoke.php',
@@ -592,6 +595,16 @@ function runStaticChecks() {
     ensure(smoke.includes('{{ bem("example-card", ["featured"]) }}'), 'Attribute helper smoke script should render a bem() Twig fixture.');
     ensure(smoke.includes('{{ add_attributes({ class: ["foo"] }) }}'), 'Attribute helper smoke script should render an add_attributes() Twig fixture.');
     return 'Attribute helper runtime and smoke fixture are wired.';
+  });
+
+  runStaticCheck('Twig helper characterization', () => {
+    ensure(rootPackage.scripts['test:twig-helpers'] === 'node .github/scripts/twig-helper-contract.cjs', 'Root package should expose the PHP/JavaScript Twig helper characterization.');
+    const prValidation = readFile('.github/scripts/pr-validation.cjs');
+    const install = prValidation.indexOf("run('Install Whisk dependencies'");
+    const compare = prValidation.indexOf("['run', 'test:twig-helpers']");
+    ensure(install >= 0 && compare > install, 'PR validation must compare both helper runtimes after installing Whisk/Core.');
+    ensure(docs.twig.includes('## Helper characterization'), 'Twig authoring docs must explain the characterization and recorded differences.');
+    return 'The PR gate compares exact PHP and installed Core helper output against one explicit-difference corpus.';
   });
 
   runStaticCheck('Twig HTML autoescaping', () => {

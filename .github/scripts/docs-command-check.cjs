@@ -9,6 +9,14 @@ const repoRoot = path.resolve(__dirname, '../..');
 // heading so unrelated prose in the same file cannot satisfy the check.
 const ROOT_CHECKS = [
   {
+    relativePath: 'docs/timber-and-twig-authoring.md',
+    heading: 'Helper characterization',
+    packagePath: 'package.json',
+    packageLabel: 'the maintainer checkout',
+    includeInlineCode: true,
+    expectedScripts: ['test:twig-helpers', 'whisk:install'],
+  },
+  {
     relativePath: 'README.md',
     heading: 'Working inside a generated child theme',
     packagePath: 'whisk/package.json',
