@@ -6,6 +6,9 @@ then decide which starter changes to adopt in each generated project.
 
 ## Upgrading from 2.0.0 to 2.1.0
 
+The minimum WordPress version is now 6.8, matching the locked Timber dependency.
+Sites running WordPress 6.7 must update WordPress before updating the theme.
+
 Project component references now resolve components inside group folders and
 accept both `project_machine_name:component` and
 `@project_machine_name/component`. Resolution follows Emulsify Core, so a flat
@@ -39,7 +42,7 @@ Step-by-step guidance lives in
 
 ### Requirements
 
-- WordPress 6.7 or newer.
+- WordPress 6.8 or newer.
 - PHP 8.3 or newer.
 - Timber 2.3 or newer, available to the parent theme.
 - Node.js 24 or newer for generated child theme frontend tooling. Root release

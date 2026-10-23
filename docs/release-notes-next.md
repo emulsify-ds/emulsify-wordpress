@@ -19,7 +19,7 @@ and generated-theme lineage. See the [release process](release-process.md).
 
 ## Compatibility notes
 
-- WordPress 6.7 or newer; PHP 8.3 or newer.
+- WordPress 6.8 or newer; PHP 8.3 or newer.
 - Timber `^2.3` is required by the parent theme.
 - Generated child themes use Emulsify Core `^4.3.2` and the Vite build workflow.
 - Generated child themes keep `Template: emulsify`; `whisk` remains a
@@ -61,6 +61,12 @@ Title: `2.1.0`
   itself after a successful run.
 - `docs-command-check.cjs` now exports a reusable validator and can validate a
   real generated child theme directory, not just repository documentation.
+
+### Compatibility
+
+- The minimum WordPress version is now 6.8, matching the locked Timber 2.5.1
+  requirement. Sites on WordPress 6.7 must update WordPress before updating the
+  theme. The blocking fixture and `Tested up to` header now target 6.8.
 
 ### Fixed
 

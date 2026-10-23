@@ -18,7 +18,7 @@ const expectedGeneratedFromVersion = JSON.parse(
 const required = process.env.WP_SMOKE_REQUIRED === '1';
 const keepFixture = process.env.WP_SMOKE_KEEP === '1';
 const host = process.env.WP_SMOKE_HOST || '127.0.0.1';
-const wordpressVersion = process.env.WP_SMOKE_WORDPRESS_VERSION || '6.7';
+const wordpressVersion = process.env.WP_SMOKE_WORDPRESS_VERSION || '6.8';
 let workDir = null;
 let logDir = null;
 let server = null;

@@ -35,6 +35,16 @@ function semver(value) {
   return /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(String(value));
 }
 
+function wordpressVersionAtLeast(version, minimum) {
+  const actualParts = version.split('.').map(Number);
+  const minimumParts = minimum.split('.').map(Number);
+  for (let index = 0; index < Math.max(actualParts.length, minimumParts.length); index += 1) {
+    const difference = (actualParts[index] || 0) - (minimumParts[index] || 0);
+    if (difference !== 0) return difference > 0;
+  }
+  return true;
+}
+
 function runStaticCheck(name, callback) {
   // Static checks intentionally inspect files as text. They catch packaging and
   // documentation regressions without needing a full WordPress install.
@@ -492,8 +502,6 @@ function runStaticChecks() {
     ensure(rootThemeHeader.Version === releaseVersion, `style.css Version should match the ${releaseVersion} release line.`);
     ensure(rootThemeHeader.License === 'GPL-2.0-only', 'style.css License should be GPL-2.0-only.');
     ensure(rootThemeHeader['License URI'] === 'https://www.gnu.org/licenses/old-licenses/gpl-2.0.html', 'style.css License URI should point to GPLv2.');
-    ensure(rootThemeHeader['Requires at least'] === '6.7', 'style.css Requires at least should stay aligned to the WordPress baseline.');
-    ensure(rootThemeHeader['Tested up to'] === '6.7', 'style.css Tested up to should stay aligned to the WordPress baseline.');
     ensure(rootThemeHeader['Requires PHP'] === '8.3', 'style.css Requires PHP should stay aligned to the release baseline.');
     ensureParentThemeLanguage('style.css Description', rootThemeHeader.Description);
     ensure(whiskThemeHeader['Theme Name'] === 'Whisk', 'whisk/style.css Theme Name should be Whisk.');
@@ -505,6 +513,25 @@ function runStaticChecks() {
     ensure(whiskThemeHeader['License URI'] === 'https://www.gnu.org/licenses/old-licenses/gpl-2.0.html', 'whisk/style.css License URI should point to GPLv2.');
     ensureGeneratedChildThemeLanguage('whisk/style.css Description', whiskThemeHeader.Description);
     return 'Parent and Whisk WordPress theme headers are coherent with package metadata.';
+  });
+
+  runStaticCheck('WordPress minimum compatibility', () => {
+    const minimum = rootThemeHeader['Requires at least'];
+    ensure(minimum === '6.8', 'style.css Requires at least must be 6.8 for this release.');
+    const timberPath = 'vendor/timber/timber/src/Timber.php';
+    ensure(fs.existsSync(path.join(repoRoot, timberPath)), 'Installed Timber source is required to verify its WordPress minimum; run composer install.');
+    const timberMinimum = readFile(timberPath).match(/\bMINIMUM_WP_VERSION\s*=\s*['"](\d+\.\d+(?:\.\d+)?)['"]/);
+    ensure(timberMinimum, 'Unable to read installed Timber MINIMUM_WP_VERSION; run composer install and review Timber compatibility.');
+    ensure(wordpressVersionAtLeast(minimum, timberMinimum[1]), `style.css Requires at least (${minimum}) is below installed Timber MINIMUM_WP_VERSION (${timberMinimum[1]}); raise the theme minimum before releasing.`);
+    return `Theme minimum ${minimum} supports installed Timber's WordPress minimum ${timberMinimum[1]}.`;
+  });
+
+  runStaticCheck('WordPress tested compatibility', () => {
+    const tested = rootThemeHeader['Tested up to'];
+    const minimum = rootThemeHeader['Requires at least'];
+    ensure(tested === '6.8', 'style.css Tested up to must match the blocking WordPress 6.8 fixture for this release.');
+    ensure(wordpressVersionAtLeast(tested, minimum), 'style.css Tested up to must not be lower than Requires at least.');
+    return `Tested up to ${tested} matches the blocking fixture and covers theme minimum ${minimum}.`;
   });
 
   runStaticCheck('PHP analysis scope', () => {

@@ -31,7 +31,7 @@ Use the named `emulsify.zip` asset, not GitHub's automatically generated **Sourc
 
 ## Requirements
 
-- WordPress 6.7 or newer.
+- WordPress 6.8 or newer.
 - PHP 8.3 or newer.
 - Composer 2 for Composer-based installation and parent-theme maintenance.
 - Node.js 24. Root release tooling expects `>=24.10`; generated child themes expect `>=24`.

@@ -168,11 +168,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 6.7 is the declared baseline in style.css. `latest` is an advisory
+        # 6.8 is the declared baseline in style.css. `latest` is an advisory
         # forward-compatibility lane so a WordPress release cannot break the
         # theme silently between scheduled runs.
         include:
-          - wordpress-version: '6.7'
+          - wordpress-version: '6.8'
             experimental: false
           - wordpress-version: latest
             experimental: true
