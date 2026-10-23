@@ -54,6 +54,7 @@ mkdir -p "${staging_root}"
 
 runtime_files=(
   "404.php"
+  "AGENTS.md"
   "LICENSE"
   "README.md"
   "UPGRADE.md"
@@ -127,6 +128,7 @@ if [[ ! -f "${staging_root}/vendor/autoload.php" ]]; then
 fi
 
 required_release_paths=(
+  "AGENTS.md"
   "UPGRADE.md"
   "docs/wp-cli-child-theme-generation.md"
   "functions.php"

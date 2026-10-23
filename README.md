@@ -212,6 +212,9 @@ Emulsify WordPress is licensed under GPL-2.0-only. See [LICENSE](LICENSE).
 
 ## Contributing
 
+Read the [contributor guidance](AGENTS.md) for repository ownership, both child
+generators, validation commands, and release rules.
+
 ### Code of conduct
 
 Read the [Code of Conduct](https://github.com/emulsify-ds/emulsify-wordpress/blob/main/CODE_OF_CONDUCT.md) before contributing. File bugs and feature requests at [emulsify-ds/emulsify-wordpress](https://github.com/emulsify-ds/emulsify-wordpress/issues).

@@ -36,7 +36,7 @@ Title: `2.1.0`
 - Generated child themes include portable `AGENTS.md` guidance, a WordPress
   integration guide, and an optional integration workflow skill. Both
   generators preserve these files unchanged, including hidden `.agents/`
-  content.
+  content. Root contributor guidance covers maintainer ownership and checks.
 - Public `site_header`, `main`, and `page_title` layout extension blocks, with
   byte-for-byte golden coverage and documented boundaries. Existing layout
   blocks and default parent output remain unchanged.

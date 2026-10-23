@@ -328,6 +328,7 @@ function runStaticChecks() {
       '.github/workflows/theme-readiness.yml',
       '.gitignore',
       '.nvmrc',
+      'AGENTS.md',
       'README.md',
       'UPGRADE.md',
       'docs/README.md',
