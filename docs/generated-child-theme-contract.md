@@ -52,6 +52,20 @@ npm run release:check -- --skip-smoke
 
 `npm run test:generated-theme` runs focused contract tests that generate a throwaway theme and then mutate it to prove each class of failure is detected. `npm run smoke:generation-parity` generates through both paths and compares them; it requires a PHP binary and skips with a warning when none is available.
 
+To verify generated audit wrappers against an actual packed Core artifact, run:
+
+```sh
+EMULSIFY_CORE_TARBALL=/absolute/path/emulsify-core-4.5.0.tgz npm run test:audit-wrappers
+```
+
+This opt-in test generates a temporary child theme and installs that package
+without installer hooks. It compares both wrappers with the installed Core
+executables, checks complete JSON stdout, stderr footers, exit codes 0/1/2, and
+arguments containing spaces. Negative controls prove that stdout footers,
+masked failures, and dropped arguments are detected. It requires Node 24 and
+registry access for the packed package's dependencies; it leaves the source
+theme and dependency ranges unchanged.
+
 The full release check additionally exercises a real WordPress fixture:
 
 ```bash

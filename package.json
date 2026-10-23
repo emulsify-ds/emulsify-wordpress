@@ -35,6 +35,7 @@
     "pr:check": "node .github/scripts/pr-validation.cjs",
     "release:check": "node .github/scripts/release-check.cjs",
     "test:generated-theme": "node --test .github/scripts/generated-theme-contract.test.cjs",
+    "test:audit-wrappers": "node --test .github/scripts/generated-audit-wrappers.test.cjs",
     "smoke:acf-json": "php .github/scripts/acf-local-json-smoke.php",
     "smoke:asset-manifest": "php .github/scripts/asset-manifest-smoke.php",
     "smoke:attributes": "php .github/scripts/attribute-helper-smoke.php",

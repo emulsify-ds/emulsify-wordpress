@@ -91,6 +91,39 @@ npm run a11y
 
 `npm run test` succeeds when no tests have been added yet. The accessibility check builds Storybook first, so it takes longer than lint or unit tests.
 
+For machine-readable project audits, silence npm's command banner and keep the
+documentation footer on stderr:
+
+```bash
+npm run audit --silent -- --json
+npm run audit:twig-stories --silent -- --json
+```
+
+Both wrappers preserve Core's exit status and forward arguments unchanged. Use
+`npm run audit --silent -- --json --fail-on warn` or
+`npm run audit:twig-stories --silent -- --json --fail-on-found` to fail when
+migration findings are present. Quote paths containing spaces, for example
+`npm run audit --silent -- --root "../theme source" --json`. Existing generated
+themes must copy the updated audit scripts from the current starter; updating
+Core alone does not change a project's `package.json`.
+
+To update an existing wrapper, keep `"$@"`, the `status=$?` immediately after
+Core runs, and `exit $status`. Add only `>&2` after the footer's `printf`:
+
+```diff
+- printf "\nAudit docs: https://github.com/emulsify-ds/emulsify-core/blob/4.x/docs/migration-4x.md#storybook-migration\n"; exit $status
++ printf "\nAudit docs: https://github.com/emulsify-ds/emulsify-core/blob/4.x/docs/migration-4x.md#storybook-migration\n" >&2; exit $status
+```
+
+Apply the same redirection to `audit:twig-stories`, retaining its existing
+`Migration docs:` footer. Alternatively, bypass the project wrappers and run
+the installed Core executables directly without downloading another version:
+
+```bash
+npx --no-install emulsify-audit --json
+npx --no-install emulsify-audit-twig-stories --json
+```
+
 ## Project ownership
 
 ### Component library
