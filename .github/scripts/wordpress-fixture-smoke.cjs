@@ -903,7 +903,8 @@ async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
       { name: 'page', url: pageUrl, expectedText: ['Smoke Page', 'Smoke page content'], currentMenuHref: pageUrl },
       { name: 'single', url: singleUrl, expectedText: ['Smoke Post', 'Smoke post content'], currentMenuHref: singleUrl },
       { name: 'archive', url: archiveUrl, expectedText: ['Smoke Category', 'Smoke Post'], currentMenuHref: archiveUrl },
-      { name: 'search', url: `${baseUrl}/?s=Smoke`, expectedText: ['Search results for Smoke', 'Smoke Page'] },
+      // A unique content phrase avoids depending on core's relevance ordering.
+      { name: 'search', url: `${baseUrl}/?s=Smoke%20post%20content`, expectedText: ['Search results for Smoke post content', 'Smoke Post'] },
       {
         name: 'archive-page-2',
         url: `${archiveUrl}&paged=2`,
