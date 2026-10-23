@@ -124,6 +124,20 @@ function emulsify_extension_golden( string $name, string $output, bool $capture 
 	echo ( $capture ? 'CAPTURE ' : 'PASS ' ) . $name . ' (' . strlen( $output ) . " bytes)\n";
 }
 
+/**
+ * Collects independent extension failures in one run.
+ *
+ * @param bool   $condition Assertion result.
+ * @param string $message   Failure explanation.
+ * @param array  $errors    Collected failures.
+ * @return void
+ */
+function emulsify_extension_expect( bool $condition, string $message, array &$errors ): void {
+	if ( ! $condition ) {
+		$errors[] = $message;
+	}
+}
+
 $capture = array_slice( $argv, 1 ) === array( '--update-goldens' );
 
 if ( count( $argv ) > 1 && ! $capture ) {
@@ -184,6 +198,57 @@ try {
 		$context['post'] = $has_post ? array( 'id' => 42, 'type' => 'page', 'title' => 'Post <title> & fixture', 'content' => $context['fixture_content'] ) : null;
 		emulsify_extension_golden( $has_post ? 'page-post' : 'page-no-post', $environment->render( '@emulsify-tpl/page.twig', $context ), $capture );
 	}
+
+	$errors        = array();
+	$page_expected = file_get_contents( __DIR__ . '/../fixtures/template-extension/page-post.html' );
+	foreach ( array( 'head', 'header', 'content', 'footer', 'site_header', 'main', 'page_title' ) as $block ) {
+		$name   = 'child-page-' . $block . '.twig';
+		$marker = '<!-- child:' . $block . ' -->';
+		$fixtures->setTemplate( $name, '{% extends "@emulsify-tpl/page.twig" %}{% block ' . $block . ' %}' . $marker . '{{ parent() }}{% endblock %}' );
+		$context         = emulsify_extension_context( false, true, true );
+		$context['post'] = array( 'id' => 42, 'type' => 'page', 'title' => 'Post <title> & fixture', 'content' => $context['fixture_content'] );
+		$output          = $environment->render( $name, $context );
+		emulsify_extension_expect( 1 === substr_count( $output, $marker ), 'A child page must override the ' . $block . ' block exactly once.', $errors );
+		emulsify_extension_expect( str_replace( $marker, '', $output ) === $page_expected, 'The ' . $block . ' override with parent() must preserve every surrounding parent-page byte.', $errors );
+	}
+
+	$replacement_cases = array(
+		'site_header' => array( 'absent' => array( '<header class="site-header"', '<nav ' ), 'present' => array( '<main class="site-main"', '<header class="page-header"', '<p>Content &amp; fixture</p>', '<footer ' ) ),
+		'main'        => array( 'absent' => array( '<main ', '<header class="page-header"', '<p>Content &amp; fixture</p>' ), 'present' => array( '<header class="site-header"', '<footer ', 'href="#content"' ) ),
+		'page_title'  => array( 'absent' => array( '<header class="page-header"' ), 'present' => array( '<header class="site-header"', '<main class="site-main"', '<p>Content &amp; fixture</p>', '<footer ' ) ),
+		'footer'      => array( 'absent' => array( '<footer ' ), 'present' => array( '<header class="site-header"', '<main class="site-main"', '<p>Content &amp; fixture</p>' ) ),
+	);
+	$hooks_expected = array( 'get_header', 'wp_head', 'wp_body_open', 'wp_footer', 'get_footer' );
+
+	foreach ( $replacement_cases as $block => $fragments ) {
+		$name   = 'replace-' . $block . '.twig';
+		$marker = '<!-- replacement:' . $block . ' -->';
+		$fixtures->setTemplate( $name, '{% extends "content-fixture.twig" %}{% block ' . $block . ' %}' . $marker . '{% endblock %}' );
+		$GLOBALS['emulsify_extension_hooks'] = array();
+		$output = $environment->render( $name, emulsify_extension_context( true, true, true ) );
+		emulsify_extension_expect( 1 === substr_count( $output, $marker ), 'Replacing ' . $block . ' must render the child block.', $errors );
+		foreach ( $fragments['absent'] as $fragment ) {
+			emulsify_extension_expect( false === strpos( $output, $fragment ), 'Replacing ' . $block . ' must remove its complete wrapper/content: ' . $fragment, $errors );
+		}
+		foreach ( $fragments['present'] as $fragment ) {
+			emulsify_extension_expect( false !== strpos( $output, $fragment ), 'Replacing ' . $block . ' must preserve its surrounding markup: ' . $fragment, $errors );
+		}
+		emulsify_extension_expect( $hooks_expected === $GLOBALS['emulsify_extension_hooks'], 'Replacing ' . $block . ' must preserve the structural WordPress hooks and their order.', $errors );
+	}
+
+	foreach ( array( 'site_header' => 'header', 'main' => 'page_title' ) as $outer => $inner ) {
+		$name         = 'nested-' . $outer . '.twig';
+		$outer_marker = '<!-- outer:' . $outer . ' -->';
+		$inner_marker = '<!-- inner:' . $inner . ' -->';
+		$fixtures->setTemplate( $name, '{% extends "content-fixture.twig" %}{% block ' . $outer . ' %}' . $outer_marker . '{% endblock %}{% block ' . $inner . ' %}' . $inner_marker . '{% endblock %}' );
+		$output = $environment->render( $name, emulsify_extension_context( true, true, true ) );
+		emulsify_extension_expect( 1 === substr_count( $output, $outer_marker ) && false === strpos( $output, $inner_marker ), $inner . ' must remain nested inside ' . $outer . ' and disappear when the enclosing block is replaced.', $errors );
+	}
+
+	if ( $errors ) {
+		throw new RuntimeException( implode( "\n", $errors ) );
+	}
+	echo "PASS child page inheritance, seven block names, replacement boundaries, nested blocks, and structural WordPress hooks.\n";
 } catch ( Throwable $throwable ) {
 	fwrite( STDERR, $throwable->getMessage() . "\n" );
 	exit( 1 );

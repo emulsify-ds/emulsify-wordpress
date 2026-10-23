@@ -53,6 +53,7 @@
     "smoke:jest-project": "node .github/scripts/jest-project-smoke.cjs",
     "smoke:patterns": "php .github/scripts/pattern-registry-smoke.php",
     "smoke:starter-init": "node .github/scripts/wordpress-starter-init-smoke.cjs",
+    "smoke:template-extension": "php .github/scripts/template-extension-smoke.php",
     "smoke:theme-filters": "php .github/scripts/theme-filters-smoke.php",
     "smoke:twig-autoescape": "php .github/scripts/twig-autoescape-smoke.php",
     "smoke:twig-switch": "php .github/scripts/twig-switch-smoke.php",
