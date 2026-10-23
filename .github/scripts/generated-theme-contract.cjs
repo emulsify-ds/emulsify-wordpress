@@ -464,6 +464,7 @@ function validateScriptReferences(validator, contract, scripts) {
 function validateMarkdownReferences(validator, contract, entries) {
   const { themeDir, themeLabel } = contract;
   const themeRoot = path.resolve(themeDir);
+  const realThemeRoot = fs.realpathSync(themeRoot);
 
   for (const entry of entries) {
     if (!entry.file || !entry.relativePath.endsWith('.md')) {
@@ -496,6 +497,15 @@ function validateMarkdownReferences(validator, contract, entries) {
       if (!fs.existsSync(resolved)) {
 	validator.addError(section,
           `${themeLabel} has documentation link ${expected(target)} in ${expected(entry.relativePath)} that resolves to missing local path ${expected(path.relative(themeDir, resolved))}; expected it inside the generated child theme.`,
+        );
+        continue;
+      }
+
+      const realTarget = fs.realpathSync(resolved);
+      if (realTarget !== realThemeRoot && !realTarget.startsWith(`${realThemeRoot}${path.sep}`)) {
+        validator.addError(
+          section,
+          `${themeLabel} has documentation link ${expected(target)} in ${expected(entry.relativePath)} that resolves outside the generated child theme through a symbolic link; expected it inside the generated child theme.`,
         );
       }
     }

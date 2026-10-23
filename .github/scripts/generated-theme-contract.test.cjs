@@ -257,6 +257,24 @@ test('checks npm commands in every generated guidance entry point', () => {
   }
 });
 
+test('rejects guidance links through dependency symlinks outside the theme', () => {
+  withGeneratedTheme((target) => {
+    fs.mkdirSync(path.join(target, 'dist'));
+    fs.mkdirSync(path.join(target, 'node_modules'));
+    fs.symlinkSync(path.join(target, 'docs'), path.join(target, 'node_modules', 'local-docs'), 'dir');
+    fs.appendFileSync(path.join(target, 'AGENTS.md'), '\n[Local guide](node_modules/local-docs/development.md)\n');
+    assert.deepEqual(validate(target, { checkBuiltAssets: true }).errors, []);
+    const outside = path.join(path.dirname(target), 'external-package');
+    fs.mkdirSync(outside);
+    fs.writeFileSync(path.join(outside, 'outside.md'), 'Outside the theme.\n');
+    fs.symlinkSync(outside, path.join(target, 'node_modules', 'external-package'), 'dir');
+    fs.appendFileSync(path.join(target, 'AGENTS.md'), '\n[External package](node_modules/external-package/outside.md)\n');
+    const result = validate(target, { checkBuiltAssets: true });
+    assert.match(result.format(), /FAIL AI guidance/);
+    assert.match(result.format(), /resolves outside the generated child theme through a symbolic link/);
+  });
+});
+
 test('continues checking guidance for stale tokens and starter identity after customization', () => {
   withGeneratedTheme((target) => {
     fs.mkdirSync(path.join(target, 'dist'));
