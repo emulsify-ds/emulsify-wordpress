@@ -1,6 +1,6 @@
 # 2.1.0 Release Notes Draft
 
-Status date: 2026-10-22
+Status date: 2026-10-23
 
 ## Version strategy
 
@@ -84,7 +84,9 @@ Title: `2.1.0`
 
 - The minimum WordPress version is now 6.8, matching the locked Timber 2.5.1
   requirement. Sites on WordPress 6.7 must update WordPress before updating the
-  theme. The blocking fixture and `Tested up to` header now target 6.8.
+  theme. The minimum fixture remains blocking; the current stable release is
+  also blocking and `Tested up to` is 7.1 after validation on 7.1.3. Nightly is
+  advisory. Practical checks now block on PHP 8.3, 8.4, and 8.5.
 
 ### Fixed
 
@@ -133,6 +135,15 @@ Title: `2.1.0`
 
 ### Internal
 
+- Workflow actions use full SHA pins and Node 24 artifact uploads, maintained
+  by weekly GitHub Actions Dependabot updates. Validation credentials are
+  read-only; the publish dry run uses the publishing job's scoped token.
+  Project-board and contributor automation use pinned releases and corrected
+  token configuration.
+- Compatible root lockfile updates fix the independently resolved Handlebars,
+  JS-YAML, Fast URI, and Undici findings. Remaining development-only findings
+  belong to semantic-release's bundled npm; see the
+  [October 23 audit](dependency-audit-2026-10-23.md).
 - Added `npm run test:twig-helpers` to characterize PHP and installed Core
   JavaScript helpers with exact HTML, attribute maps, and remaining context.
   Separate expectations preserve observed differences without changing runtime

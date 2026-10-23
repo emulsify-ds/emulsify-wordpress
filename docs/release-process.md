@@ -169,10 +169,35 @@ Every configured pull request runs two independently visible fast jobs:
 - `Practical theme readiness`: clean root npm installation, Composer validation, npm audits, the practical `pr:check` suite, and static `release:check` assertions.
 - `PHP coding standards and static analysis`: PHP 8.3, Composer development dependencies, PHPCS, and PHPStan through `npm run lint:php`.
 
+The practical matrix blocks on PHP 8.3, 8.4, and 8.5. PHP 8.5 was promoted
+after the locked Composer install, PHP analysis, and practical suite passed on
+8.5.11. No platform-requirement bypass is used for these blocking jobs.
+
 Pull requests targeting `main` or `release-2.x` additionally run the two extended jobs:
 
 - `WordPress fixture smoke`: the built installable ZIP, MySQL, WP-CLI, Timber, packaged generator/Whisk coverage, generated-child activation, block discovery, assets, and home/page/single/archive/search/author/404 rendering with `WP_SMOKE_REQUIRED=1`.
 - `Extended Whisk Storybook and a11y`: an explicit Chrome setup, a CI-only component seed, the Core 4 Vite and Storybook builds, and an axe audit of the discovered story.
+
+The WordPress matrix blocks on the declared minimum (6.8) and `latest`.
+WP-CLI resolves `latest` at run time and the fixture logs the actual downloaded
+version. Nightly is advisory coverage for the next release. On October 23,
+2026, the packaged fixture and all six rendered accessibility audits passed
+on WordPress 7.1.3; `Tested up to` therefore names 7.1. Raise that header only
+after a green fixture run for the newer stable line. The
+`readiness-matrix-contract.cjs` check and its negative tests run in `pr:check`
+and `release:check`, preventing required legs from becoming advisory or
+silently bypassing fixture checks.
+
+Every action is pinned to a full commit SHA with a release-version comment;
+weekly GitHub Actions Dependabot updates maintain those pins. Validation jobs
+use read-only credentials and disable persisted checkout credentials. Only
+the publishing job receives release writes. Its dry run runs immediately
+before publishing because semantic-release verifies push permission even in
+dry-run mode. Contributor automation separately receives repository-content
+write permission and uses `GITHUB_TOKEN`; adding issues to the organization
+project still requires the configured Projects token. See the
+[dated dependency audit](dependency-audit-2026-10-23.md) for remaining
+development-tool findings and their owners.
 
 Weekly scheduled runs repeat both extended jobs. Manual dispatch runs the WordPress fixture when `wordpress_fixture` is enabled and the Whisk build/audit when `extended_checks` is enabled. The workflow concurrency group cancels superseded pull-request runs, and both extended jobs have explicit runtime limits.
 
@@ -189,7 +214,7 @@ The two fast pull-request jobs run automatically for every configured target bra
 
 Success means `Practical theme readiness`, `PHP coding standards and static analysis`, `WordPress fixture smoke`, and `Extended Whisk Storybook and a11y` pass. The fixture job installs WP-CLI, starts MySQL, sets `WP_SMOKE_REQUIRED=1`, and runs `npm run release:check` against the isolated WordPress fixture. Record the successful workflow run in the release PR before merging.
 
-The semantic-release workflow remains release-gated. It runs release readiness, requires the full WordPress fixture smoke path with WP-CLI and MySQL, runs a semantic-release dry run, and then allows the final publish job only after the readiness job succeeds. Release publishing must not proceed when the full fixture path is skipped or failed.
+The semantic-release workflow remains release-gated. Read-only release readiness requires the full WordPress fixture smoke path with WP-CLI and MySQL. After readiness succeeds, the publishing job runs a semantic-release dry run before the actual publish command. Release publishing must not proceed when the full fixture path is skipped or failed.
 
 ## License
 

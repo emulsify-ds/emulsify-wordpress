@@ -7,6 +7,7 @@
 - [Parent and child theme architecture](parent-child-architecture.md)
 - [WP-CLI child theme generation](wp-cli-child-theme-generation.md)
 - [Generated child theme contract](generated-child-theme-contract.md)
+- [Dependency audit: October 23, 2026](dependency-audit-2026-10-23.md)
 
 ## Authoring
 

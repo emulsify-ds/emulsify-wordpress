@@ -1,4 +1,4 @@
-![Emulsify Design System](https://github.com/emulsify-ds/.github/blob/6bd435be881bd820bddfa05d88905efe29176a0a/assets/images/header.png)
+![Emulsify Design System](https://raw.githubusercontent.com/emulsify-ds/.github/6bd435be881bd820bddfa05d88905efe29176a0a/assets/images/header.png)
 
 # Emulsify WordPress
 
@@ -159,6 +159,11 @@ The `.husky/pre-commit` hook already runs `npm run lint`, which delegates to thi
 
 Every pull request to the configured branches runs two visible fast readiness jobs: practical smoke checks and dedicated PHPCS/PHPStan analysis. Pull requests targeting `main` or `release-2.x` additionally run the MySQL-backed WordPress fixture and Whisk Storybook accessibility audit. The WordPress job builds and extracts `emulsify.zip`, confirms its packaged generator and Whisk source, and sets `WP_SMOKE_REQUIRED=1`, so missing WP-CLI/MySQL prerequisites or route render failures fail the job instead of producing a skip. It also audits six actual WordPress routes with explicit WCAG 2.2 AA axe tags and saves rendered HTML, results, and navigation evidence. The sole `target-size` exclusion reflects the unstyled parent; projects own target sizing and focus/helper styles. See [accessibility checks](docs/accessibility.md).
 
+Practical checks block on PHP 8.3, 8.4, and 8.5. The WordPress fixture blocks on
+the minimum 6.8 and on `latest`, resolved at run time with the downloaded
+version logged; nightly coverage is advisory. The theme is tested through
+WordPress 7.1 (the current stable fixture resolved to 7.1.3 on October 23, 2026).
+
 The Whisk job selects and verifies the runner-installed Chrome with its sandbox enabled, copies an accessible CI-only story and Vite entry into the otherwise component-agnostic starter, runs seeded project tests, and then builds Storybook and runs axe. Storybook coverage supplements the actual WordPress route audit.
 
 Weekly scheduled runs repeat the WordPress fixture and Whisk accessibility audit. Manual GitHub Actions > `WordPress Theme Readiness` runs can select either extended fixture with the `wordpress_fixture` and `extended_checks` inputs. Local `release:check` still skips the database fixture when prerequisites are unavailable unless `WP_SMOKE_REQUIRED=1` is set. Release publishing also requires the full WordPress fixture path before semantic-release can publish.
@@ -184,6 +189,12 @@ The generator copies `<parent>/whisk` to a sibling child theme directory, update
 For Emulsify CLI integration, the standalone starter repository is `https://github.com/emulsify-ds/emulsify-wordpress-starter`. It represents the generated child theme layer from `whisk/`, not the parent runtime theme root, and generated projects still declare `Template: emulsify` so WordPress loads the installed parent theme.
 
 ## Documentation
+
+This README, [UPGRADE.md](UPGRADE.md), and the guides in this repository are
+authoritative for the WordPress 2.x workflow. The
+[Emulsify documentation site](https://emulsify.info/docs) also covers older
+tooling and other platforms; check a guide's platform and version before using
+its commands.
 
 - [Documentation index](docs/README.md)
 - [Generated-theme upgrade guide](UPGRADE.md)
