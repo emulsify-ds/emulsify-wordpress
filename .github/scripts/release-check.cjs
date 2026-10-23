@@ -1349,8 +1349,11 @@ function runStaticChecks() {
     ensure(extendedWhiskJob.includes("github.event_name == 'schedule'"), 'Whisk accessibility job should run on the schedule.');
     ensure(extendedWhiskJob.includes("(github.event_name == 'workflow_dispatch' && inputs.extended_checks)"), 'Whisk accessibility job should honor its manual input.');
     ensure(extendedWhiskJob.includes('cp -R .github/fixtures/whisk-a11y/. whisk/src/components/'), 'Whisk accessibility job should seed the CI-only component fixture.');
-    ensure(extendedWhiskJob.includes('id: setup-chrome') && extendedWhiskJob.includes('uses: browser-actions/setup-chrome@v2'), 'Whisk accessibility job should install Chrome explicitly.');
-    ensure(extendedWhiskJob.includes('PUPPETEER_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}'), 'Whisk accessibility job should use the Chrome path provided by setup-chrome.');
+    ensure(extendedWhiskJob.includes('Select and verify runner Chrome') && extendedWhiskJob.includes('command -v google-chrome'), 'Whisk accessibility job should use the runner-installed Chrome.');
+    ensure(extendedWhiskJob.includes('"$chrome_path" --version') && extendedWhiskJob.includes('"$chrome_path" --headless --dump-dom about:blank') && extendedWhiskJob.includes('PUPPETEER_EXECUTABLE_PATH=%s') && extendedWhiskJob.includes('"$GITHUB_ENV"'), 'Whisk accessibility job should verify a sandboxed Chrome launch and export its path.');
+    ensure(!extendedWhiskJob.includes('browser-actions/setup-chrome') && !extendedWhiskJob.includes('--no-sandbox') && !extendedWhiskJob.includes('--disable-setuid-sandbox'), 'Whisk accessibility CI must preserve the installed browser sandbox.');
+    ensure(extendedWhiskJob.includes("PUPPETEER_SKIP_DOWNLOAD: 'true'"), 'Whisk CI should skip redundant Puppeteer browser downloads.');
+    ensure(extendedWhiskJob.includes('npm --prefix whisk run test -- --runInBand'), 'Whisk CI should execute real seeded project tests before the accessibility audit.');
     ensure(extendedWhiskJob.includes('npm --prefix whisk run a11y'), 'Whisk accessibility job should build Storybook and run the real audit.');
     ensure(!extendedWhiskJob.includes('continue-on-error: true'), 'Whisk accessibility violations should fail the job.');
     ensure(whiskA11yEntry.includes('ciReadinessFixture'), 'CI-only Whisk fixture should provide a Vite entry.');

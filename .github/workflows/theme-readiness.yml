@@ -24,7 +24,7 @@ on:
         type: boolean
         default: true
       extended_checks:
-        description: Run the CI-seeded Whisk Storybook build and accessibility audit.
+        description: Run CI-seeded Whisk tests, Storybook build, and accessibility audit.
         required: false
         type: boolean
         default: false
@@ -261,25 +261,42 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      - name: Select and verify runner Chrome
+        timeout-minutes: 1
+        run: |
+          # Ubuntu's AppArmor profile permits the installed Google Chrome.
+          # Verify it launches with its sandbox before Puppeteer runs.
+          chrome_path="$(command -v google-chrome)"
+          "$chrome_path" --version
+          "$chrome_path" --headless --dump-dom about:blank
+          printf 'PUPPETEER_EXECUTABLE_PATH=%s\n' "$chrome_path" >> "$GITHUB_ENV"
+
       - name: Clean npm install
         run: npm ci --ignore-scripts
 
       - name: Install Whisk dependencies
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
         run: npm run whisk:install
 
       - name: Seed CI-only Whisk component
         run: cp -R .github/fixtures/whisk-a11y/. whisk/src/components/
 
-      - name: Setup Chrome
-        id: setup-chrome
-        uses: browser-actions/setup-chrome@v2
-        with:
-          chrome-version: stable
+      - name: Run CI-seeded Whisk frontend tests
+        run: npm --prefix whisk run test -- --runInBand
 
       - name: Build Storybook and run a11y
-        env:
-          PUPPETEER_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
         run: npm --prefix whisk run a11y
+
+      - name: Upload Whisk coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: extended-whisk-coverage
+          path: whisk/.coverage/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload Storybook diagnostics
         if: failure()

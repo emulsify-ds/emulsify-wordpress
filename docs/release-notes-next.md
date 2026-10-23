@@ -106,6 +106,9 @@ Title: `2.1.0`
 
 ### Internal
 
+- Extended CI verifies the runner's installed Chrome with its sandbox enabled,
+  runs real seeded project tests before accessibility checks, and retains
+  coverage diagnostics.
 - Added `npm run test:generated-theme` and `npm run smoke:generation-parity`.
 - Added release checks for generated documentation sections, the documentation
   token list across both generators, and the generated child theme contract.
