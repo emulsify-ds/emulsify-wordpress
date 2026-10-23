@@ -33,7 +33,13 @@ Title: `2.1.0`
 
 ### Added
 
-- A rendered WordPress accessibility audit covers six real fixture routes with
+- Optional privacy mode and JavaScript-free click-to-load posters for YouTube
+  and Vimeo oEmbeds, configured through `emulsify_theme_media_embed_options`.
+  Both features are off by default. Neutral posters avoid provider image
+  requests before activation; child themes can override the accessible
+  `srcdoc` document through the normal template namespace.
+- A rendered WordPress accessibility audit covers seven real fixture routes,
+  including YouTube and Vimeo click-to-load posters, with
   explicit WCAG 2.2 AA tags, menu/pagination assertions, and per-route HTML,
   axe JSON, and screen-reader-text evidence. Its sole `target-size` exception
   preserves the parent's no-frontend-CSS boundary; projects own final styling.

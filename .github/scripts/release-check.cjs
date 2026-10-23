@@ -324,6 +324,8 @@ function runStaticChecks() {
       '.github/scripts/fallback-navigation-smoke.php',
       '.github/scripts/rendered-a11y.cjs',
       '.github/scripts/rendered-a11y.test.cjs',
+      '.github/scripts/media-embed-smoke.php',
+      '.github/scripts/media-embed-browser.cjs',
       '.github/scripts/docs-command-check.cjs',
       '.github/scripts/pr-validation.cjs',
       '.github/scripts/semantic-release.cjs',
@@ -1096,7 +1098,8 @@ function runStaticChecks() {
     ensure(wordpressFixtureSmoke.includes('archiveCount < 12') && wordpressFixtureSmoke.includes("['option', 'update', 'posts_per_page', '1']"), 'Rendered archive audit needs at least 12 posts and one post per page.');
     const guide = readFile('docs/accessibility.md');
     ensure(guide.includes('target-size') && guide.includes('screen-reader-text') && guide.includes('focus'), 'Accessibility guide must document the sole rule exception and project styling responsibilities.');
-    return 'Six rendered routes use sandboxed Chrome, full WCAG tags, strict navigation assertions, and retained HTML/axe reports; only target-size is excluded.';
+    ensure(wordpressFixtureSmoke.includes("name: 'media-embeds'") && wordpressFixtureSmoke.includes('media-embed-smoke.php') && wordpressFixtureSmoke.includes('verifyMediaEmbeds'), 'The fixture must test media transforms and audit the rendered YouTube/Vimeo posters.');
+    return 'Seven rendered routes use sandboxed Chrome, full WCAG tags, strict navigation/media assertions, and retained HTML/axe reports; only target-size is excluded.';
   });
 
   runStaticCheck('Generated child theme documentation', () => {

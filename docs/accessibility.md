@@ -54,8 +54,9 @@ The fixture uses plain permalinks and audits these anonymous routes:
 | Page | `/?page_id=<page-id>` |
 | Single post | `/?p=<post-id>` |
 | Category archive | `/?cat=<category-id>` |
-| Search | `/?s=Smoke` |
+| Search | `/?s=Smoke%20post%20content` |
 | Category archive, page 2 | `/?cat=<category-id>&paged=2` |
+| Media embeds | `/?page_id=<media-page-id>` |
 
 During these audits, `posts_per_page` is 1 and at least 12 posts belong to the
 category. The second archive page therefore exercises the actual current page,
@@ -71,6 +72,15 @@ post, and category links and checks the matching current link on those routes.
 Current-state counts are scoped to each navigation region: a menu and pager
 may each correctly have a current item. The fallback marks current menu items
 only, leaving ancestors unmarked.
+
+The media page opts into privacy mode and neutral click-to-load posters for a
+classic YouTube embed and a Vimeo `core/embed` block. Axe also runs inside both
+`srcdoc` documents, and neutral posters must make no third-party requests.
+Separate browser checks disable page JavaScript, activate each player by
+keyboard inside the same frame, preserve Vimeo's unlisted `h` parameter, and
+check focus visibility, compact controls, thumbnail referrers, and Back history.
+The opt-in poster's styles live only inside its iframe document; see
+[media embeds](media-embeds.md) for the options and CSP requirements.
 
 Numbered pagination links include a translated `Page ` prefix in a
 `span.screen-reader-text`, giving a link such as `Page 2` an explicit name.

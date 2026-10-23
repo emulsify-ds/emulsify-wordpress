@@ -26,6 +26,7 @@ test('rendered accessibility gate rejects HTTP, content, axe, pagination, and me
     '/axe-violation': clean.replace('</main>', '<img src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22/%3E"></main>'),
     '/bad-pagination': clean.replace('<a href="?paged=1">', '<a href="?paged=1" aria-current="page">'),
     '/bad-menu': clean.replace('<ul><li><a href="/clean"', '<ul><li aria-current="page"><a href="/clean"'),
+    '/bad-media': clean.replace('</main>', '<iframe title="Poster fixture" srcdoc="&lt;!doctype html&gt;&lt;html lang=&quot;en&quot;&gt;&lt;title&gt;Poster&lt;/title&gt;&lt;body&gt;&lt;img src=&quot;data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22/%3E&quot;&gt;&lt;/body&gt;&lt;/html&gt;"></iframe></main>'),
   };
   const server = http.createServer((request, response) => {
     response.writeHead(request.url === '/http-error' ? 500 : 200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -46,7 +47,7 @@ test('rendered accessibility gate rejects HTTP, content, axe, pagination, and me
     }));
     await assert.rejects(auditRenderedPages({ themeDir, routes, outputDir }), (error) => {
       assert(error instanceof AggregateError);
-      assert.equal(error.errors.length, 5, 'Every failing route must be reported, including routes after the first failure.');
+      assert.equal(error.errors.length, 6, 'Every failing route must be reported, including routes after the first failure.');
       return true;
     });
     const reports = Object.fromEntries(routes.map(({ name }) => {
@@ -62,6 +63,7 @@ test('rendered accessibility gate rejects HTTP, content, axe, pagination, and me
     assert.match(reports['http-error'].error, /HTTP 500/);
     assert.match(reports['missing-content'].error, /missing expected rendered content/);
     assert(reports['axe-violation'].axe.violations.some(({ id }) => id === 'image-alt'));
+    assert(reports['bad-media'].axe.violations.some(({ id }) => id === 'image-alt'), 'Axe must audit the document inside srcdoc too.');
     assert.match(reports['axe-violation'].error, /accessibility violations: image-alt/);
     assert.match(reports['bad-pagination'].error, /exactly one current pagination item/);
     assert.match(reports['bad-menu'].error, /exactly one current primary-menu item/);

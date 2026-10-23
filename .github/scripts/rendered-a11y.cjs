@@ -121,10 +121,14 @@ async function auditRenderedPages({ themeDir, routes, outputDir }) {
   try {
     for (const route of routes) {
       const page = await browser.newPage();
-      const report = { name: route.name, requestedUrl: route.url, wcagTags, disabledRules, browserErrors: [], axe: null };
+      const report = { name: route.name, requestedUrl: route.url, wcagTags, disabledRules, browserErrors: [], externalRequests: [], axe: null };
       let html = '';
       reports.push(report);
       page.on('pageerror', (error) => report.browserErrors.push(error.message));
+      page.on('request', (request) => {
+        const url = new URL(request.url());
+        if (['http:', 'https:'].includes(url.protocol) && url.origin !== new URL(route.url).origin) report.externalRequests.push(url.href);
+      });
       try {
         await page.setViewport({ width: 1280, height: 900 });
         const response = await page.goto(route.url, { waitUntil: 'networkidle0', timeout: 30000 });
@@ -133,7 +137,12 @@ async function auditRenderedPages({ themeDir, routes, outputDir }) {
         report.finalUrl = page.url();
         assert(response?.ok(), `${route.name}: navigation returned HTTP ${report.status ?? 'no response'}.`);
         report.rendered = await renderedEvidence(page, route.selector || 'main');
-        await page.addScriptTag({ path: axePath });
+        if (route.mediaEmbeds !== undefined) {
+          assert.equal(await page.$$eval('iframe[srcdoc]', (frames) => frames.length), route.mediaEmbeds, `${route.name}: expected poster documents for every provider.`);
+          assert.equal(report.externalRequests.length, 0, `${route.name}: neutral posters must make no third-party requests.`);
+        }
+        // Same-origin srcdoc posters need axe in their documents as well.
+        for (const frame of page.frames()) await frame.addScriptTag({ path: axePath });
         report.axe = await page.evaluate((tags) => axe.run(document, {
           runOnly: { type: 'tag', values: tags },
           rules: { 'target-size': { enabled: false } },
@@ -176,4 +185,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { auditRenderedPages, wcagTags, disabledRules };
+module.exports = { auditRenderedPages, wcagTags, disabledRules, tooling };

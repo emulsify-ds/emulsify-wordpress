@@ -181,7 +181,7 @@ Pull requests targeting `main` or `release-2.x` additionally run the two extende
 The WordPress matrix blocks on the declared minimum (6.8) and `latest`.
 WP-CLI resolves `latest` at run time and the fixture logs the actual downloaded
 version. Nightly is advisory coverage for the next release. On October 23,
-2026, the packaged fixture and all six rendered accessibility audits passed
+2026, the packaged fixture and all seven rendered accessibility audits passed
 on WordPress 7.1.3; `Tested up to` therefore names 7.1. Raise that header only
 after a green fixture run for the newer stable line. The
 `readiness-matrix-contract.cjs` check and its negative tests run in `pr:check`

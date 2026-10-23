@@ -593,6 +593,41 @@ function createFixtureContent(wpPath) {
     '--post_content=Smoke post content',
     '--porcelain',
   ]);
+  const mediaPageId = wp(wpPath, [
+    'post', 'create', '--post_type=page', '--post_status=publish',
+    '--post_title=Media embed fixture', '--post_name=media-embeds',
+    '--post_content=[embed]https://www.youtube.com/watch?v=M7lc1UVf-VE[/embed]\n\n<!-- wp:embed {"url":"https://vimeo.com/76979871/fixturehash","type":"video","providerNameSlug":"vimeo"} -->\n<figure class="wp-block-embed is-type-video is-provider-vimeo"><div class="wp-block-embed__wrapper">\nhttps://vimeo.com/76979871/fixturehash\n</div></figure>\n<!-- /wp:embed -->',
+    '--porcelain',
+  ]);
+  fs.writeFileSync(path.join(wpPath, 'wp-content', 'mu-plugins', 'emulsify-media-fixture.php'), `<?php
+// Fixture-only provider responses keep CI independent of provider networks.
+add_filter( 'pre_oembed_result', function ( $result, $url ) {
+  if ( 'https://www.youtube.com/watch?v=M7lc1UVf-VE' === $url ) {
+    return '<iframe width="200" height="113" src="https://www.youtube.com/embed/M7lc1UVf-VE?feature=oembed&amp;rel=0" title="YouTube fixture" allowfullscreen></iframe>';
+  }
+  if ( 'https://vimeo.com/76979871/fixturehash' === $url ) {
+    return '<iframe width="320" height="180" src="https://player.vimeo.com/video/76979871?h=fixturehash&amp;badge=0" title="Vimeo fixture" allowfullscreen></iframe>';
+  }
+  return $result;
+}, 10, 2 );
+add_filter( 'emulsify_theme_media_embed_options', function ( $options ) {
+  $poster = isset( $_GET['media_poster'] ) && 'provider' === $_GET['media_poster'] ? 'provider' : 'neutral';
+  return is_page( 'media-embeds' ) ? array( 'privacy_mode' => true, 'click_to_load' => true, 'poster' => $poster ) : $options;
+} );
+add_action( 'template_redirect', function () {
+  if ( is_page( 'media-embeds' ) ) {
+    header( "Content-Security-Policy: frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; img-src 'self' https://i.ytimg.com https://i.vimeocdn.com data:; style-src 'self' 'unsafe-inline'" );
+    header( 'Referrer-Policy: no-referrer' );
+  }
+} );
+`);
+  wp(wpPath, ['eval', String.raw`
+apply_filters( 'oembed_dataparse',
+  '<iframe src="https://player.vimeo.com/video/76979871?h=fixturehash" title="Vimeo fixture"></iframe>',
+  (object) array( 'type' => 'video', 'thumbnail_url' => 'https://i.vimeocdn.com/video/fixture_640.jpg', 'title' => 'Vimeo fixture' ),
+  'https://vimeo.com/76979871/fixturehash'
+);
+`]);
   const authorId = wp(wpPath, [
     'user',
     'create',
@@ -648,7 +683,7 @@ for ( $number = 1; $number <= 11; $number++ ) {
   wp(wpPath, ['menu', 'item', 'add-term', menuId, 'category', categoryId]);
   wp(wpPath, ['menu', 'location', 'assign', menuId, 'primary']);
 
-  return { authorId, categoryId, pageId, postId };
+  return { authorId, categoryId, pageId, postId, mediaPageId };
 }
 
 function getAvailablePort() {
@@ -855,6 +890,7 @@ async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
       ],
     },
     { name: 'archive', path: `/?cat=${content.categoryId}`, includes: ['Smoke Category', 'Smoke Post'] },
+    { name: 'media-embeds', path: `/?page_id=${content.mediaPageId}`, includes: ['Media embed fixture', 'srcdoc=', 'YouTube fixture', 'Vimeo fixture'] },
     { name: 'search', path: '/?s=Smoke', includes: ['Search results for Smoke', 'Smoke Post'] },
     { name: 'author', path: `/?author=${content.authorId}`, includes: ['Archive of Smoke Author', 'Smoke Post'] },
     { name: '404', path: '/?p=9999999', status: 404, includes: ['Page not found'] },
@@ -903,6 +939,7 @@ async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
       { name: 'page', url: pageUrl, expectedText: ['Smoke Page', 'Smoke page content'], currentMenuHref: pageUrl },
       { name: 'single', url: singleUrl, expectedText: ['Smoke Post', 'Smoke post content'], currentMenuHref: singleUrl },
       { name: 'archive', url: archiveUrl, expectedText: ['Smoke Category', 'Smoke Post'], currentMenuHref: archiveUrl },
+      { name: 'media-embeds', url: `${baseUrl}/?page_id=${content.mediaPageId}`, expectedText: 'Media embed fixture', mediaEmbeds: 2 },
       // A unique content phrase avoids depending on core's relevance ordering.
       { name: 'search', url: `${baseUrl}/?s=Smoke%20post%20content`, expectedText: ['Search results for Smoke post content', 'Smoke Post'] },
       {
@@ -916,6 +953,8 @@ async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
     fs.mkdirSync(outputDir, { recursive: true });
     fs.writeFileSync(path.join(outputDir, 'routes.json'), `${JSON.stringify(routes, null, 2)}\n`);
     await auditRenderedPages({ themeDir, outputDir, routes });
+    const { verifyMediaEmbeds } = require('./media-embed-browser.cjs');
+    await verifyMediaEmbeds({ themeDir, url: `${baseUrl}/?page_id=${content.mediaPageId}`, outputDir });
     log(`Rendered accessibility reports: ${outputDir}`);
   }
 }
@@ -1029,6 +1068,7 @@ async function main() {
   runNativeBlockDiscovery(wpPath);
   installAcfStub(wpPath);
   runAcfDiscoveryWithStub(wpPath);
+  wp(wpPath, ['eval-file', path.join(repoRoot, '.github/scripts/media-embed-smoke.php')]);
   wp(wpPath, [
     'eval',
     'if ( ! class_exists( "\\\\Timber\\\\Timber" ) ) { fwrite( STDERR, "Timber is not loaded.\\n" ); exit( 1 ); }',
@@ -1039,7 +1079,7 @@ async function main() {
   stopServer();
   assertCleanDebugLog(wpPath);
 
-  log(`WordPress ${resolvedWordpressVersion} (requested ${wordpressVersion}): Generated and activated a child without Twig templates, checked block discovery, loaded assets, rendered parent page fallbacks and child block extensions without changing surrounding bytes, rendered home, single, archive, search, author, and 404 routes, and followed search pagination to page 2 with a clean debug log.` + (auditAccessibility ? ' Six rendered routes passed the WCAG accessibility audit.' : ''));
+  log(`WordPress ${resolvedWordpressVersion} (requested ${wordpressVersion}): Generated and activated a child without Twig templates, checked block discovery, loaded assets, rendered parent page fallbacks and child block extensions without changing surrounding bytes, rendered home, single, archive, search, author, 404, and media routes, and followed search pagination to page 2 with a clean debug log.` + (auditAccessibility ? ' Seven rendered routes passed the WCAG accessibility audit.' : ''));
   dropDatabase(env);
 
   if (!keepFixture) {

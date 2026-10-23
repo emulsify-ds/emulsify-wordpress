@@ -6,6 +6,15 @@ then decide which starter changes to adopt in each generated project.
 
 ## Upgrading from 2.0.0 to 2.1.0
 
+YouTube and Vimeo oEmbeds gain optional privacy mode and JavaScript-free
+click-to-load posters. Both are off by default; enable them with the
+`emulsify_theme_media_embed_options` filter. Existing child themes inherit the
+runtime and the parent poster fallback without copying starter files. Review
+your Content Security Policy before enabling click to load: its `srcdoc`
+document inherits the page policy, including restrictions on inline styles.
+Projects can override `templates/partials/oembed-poster.twig`. See
+[media embeds](docs/media-embeds.md) for the options and override contract.
+
 Argumentless Twig `bem()` and `add_attributes()` now read only inherited
 `attributes`, rather than interpreting unrelated Timber context variables as
 attributes or BEM options. Pass intended values explicitly if a template relied

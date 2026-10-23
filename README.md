@@ -157,7 +157,7 @@ The `.husky/pre-commit` hook already runs `npm run lint`, which delegates to thi
 | `npm run build:dist` | Build the installable `dist-artifact/emulsify.zip` release archive. |
 | `npm run publish-test -- --no-ci` | Run a local semantic-release dry run. |
 
-Every pull request to the configured branches runs two visible fast readiness jobs: practical smoke checks and dedicated PHPCS/PHPStan analysis. Pull requests targeting `main` or `release-2.x` additionally run the MySQL-backed WordPress fixture and Whisk Storybook accessibility audit. The WordPress job builds and extracts `emulsify.zip`, confirms its packaged generator and Whisk source, and sets `WP_SMOKE_REQUIRED=1`, so missing WP-CLI/MySQL prerequisites or route render failures fail the job instead of producing a skip. It also audits six actual WordPress routes with explicit WCAG 2.2 AA axe tags and saves rendered HTML, results, and navigation evidence. The sole `target-size` exclusion reflects the unstyled parent; projects own target sizing and focus/helper styles. See [accessibility checks](docs/accessibility.md).
+Every pull request to the configured branches runs two visible fast readiness jobs: practical smoke checks and dedicated PHPCS/PHPStan analysis. Pull requests targeting `main` or `release-2.x` additionally run the MySQL-backed WordPress fixture and Whisk Storybook accessibility audit. The WordPress job builds and extracts `emulsify.zip`, confirms its packaged generator and Whisk source, and sets `WP_SMOKE_REQUIRED=1`, so missing WP-CLI/MySQL prerequisites or route render failures fail the job instead of producing a skip. It also audits seven actual WordPress routes, including YouTube and Vimeo posters, with explicit WCAG 2.2 AA axe tags and saves rendered HTML, results, and navigation evidence. The sole `target-size` exclusion reflects the unstyled parent; projects own target sizing and focus/helper styles. See [accessibility checks](docs/accessibility.md).
 
 Practical checks block on PHP 8.3, 8.4, and 8.5. The WordPress fixture blocks on
 the minimum 6.8 and on `latest`, resolved at run time with the downloaded
@@ -204,6 +204,7 @@ its commands.
 - [Parent and child theme architecture](docs/parent-child-architecture.md)
 - [Timber and Twig authoring](docs/timber-and-twig-authoring.md)
 - [Accessibility checks and project responsibilities](docs/accessibility.md)
+- [Privacy and click-to-load media embeds](docs/media-embeds.md)
 - [Emulsify Core 4 and Vite workflow](docs/core-4-vite-workflow.md)
 - [Design token integration](docs/design-token-integration.md)
 - [Component recipes](docs/component-recipes.md)
