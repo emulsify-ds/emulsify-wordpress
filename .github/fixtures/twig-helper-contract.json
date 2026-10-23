@@ -156,11 +156,9 @@
       "context": {"id": "existing", "class": ["context"]},
       "contextVars": {"fixture_secret": "do-not-print"},
       "args": [],
-      "php": {"attributes": {"fixture_secret": "do-not-print", "attributes": ["existing", "context"]}, "html": "fixture_secret=\"do-not-print\" attributes=\"existing context\"", "contextAfter": {"id": "existing", "class": ["context"]}},
+      "php": {"attributes": {"id": "existing", "class": ["context"]}, "html": "id=\"existing\" class=\"context\"", "contextAfter": {"id": "existing", "class": ["context"]}},
       "js": {"attributes": {"id": "existing", "class": ["context"]}, "html": "id=\"existing\" class=\"context\"", "contextAfter": {}},
       "differences": [
-        {"field": "attributes", "reason": "Current parent context shifting requires a second argument, so a no-argument call mistakes the entire Twig context for additional attributes and exposes unrelated variables. This records a bug, not an approved behavior."},
-        {"field": "html", "reason": "The no-argument PHP context-shifting bug serializes unrelated context values instead of the intended id/class. Core correctly merges only context attributes."},
         {"field": "contextAfter", "reason": "WordPress leaves source attributes untouched, while Core consumes them."}
       ]
     },
@@ -170,11 +168,9 @@
       "context": {"id": "existing", "class": ["context"]},
       "contextVars": {"block": "unrelated-block"},
       "args": [],
-      "php": {"attributes": {"id": "existing", "class": ["context", "unrelated-block"]}, "html": "id=\"existing\" class=\"context unrelated-block\"", "contextAfter": {"id": "existing", "class": ["context"]}},
+      "php": {"attributes": {"id": "existing", "class": ["context"]}, "html": "id=\"existing\" class=\"context\"", "contextAfter": {"id": "existing", "class": ["context"]}},
       "js": {"attributes": {"id": "existing", "class": ["context"]}, "html": "id=\"existing\" class=\"context\"", "contextAfter": {}},
       "differences": [
-        {"field": "attributes", "reason": "The current no-argument parent call mistakes the entire Twig context for BEM options, allowing an unrelated context block variable to become a class. This records a bug, not an approved behavior."},
-        {"field": "html", "reason": "The context-shifting bug adds an unrelated class to no-argument bem output; Core only uses context attributes."},
         {"field": "contextAfter", "reason": "WordPress leaves source attributes untouched, while Core consumes them."}
       ]
     },

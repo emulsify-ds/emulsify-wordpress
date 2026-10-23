@@ -88,6 +88,10 @@ Title: `2.1.0`
 
 ### Fixed
 
+- Argumentless Twig `bem()` and `add_attributes()` calls no longer mistake the
+  whole Timber context for helper arguments. Unrelated variables cannot leak
+  into attributes or supply unintended BEM classes. Explicit-argument behavior
+  and the direct PHP API remain unchanged.
 - The document shell renders Timber's trusted WordPress language attributes as
   markup so `lang` is valid. The failing pale-blue normal link color is removed
   from parent `theme.json`; normal colors fall through to core, browser, or

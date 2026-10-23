@@ -162,6 +162,11 @@ The parent theme registers Core-style helpers for class and attribute handling:
 
 The helpers return an attribute bag that serializes safely in Twig string contexts.
 
+Argumentless Twig calls such as `{{ add_attributes() }}` and `{{ bem() }}` use
+only the context's `attributes`. Other context variables are not attributes or
+BEM options. The registered callbacks keep that injected context separate from
+explicit arguments; direct PHP helper calls retain their existing API.
+
 ## Helper characterization
 
 The parent implements `bem()` and `add_attributes()` in PHP; Storybook uses

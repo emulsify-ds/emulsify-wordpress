@@ -6,6 +6,12 @@ then decide which starter changes to adopt in each generated project.
 
 ## Upgrading from 2.0.0 to 2.1.0
 
+Argumentless Twig `bem()` and `add_attributes()` now read only inherited
+`attributes`, rather than interpreting unrelated Timber context variables as
+attributes or BEM options. Pass intended values explicitly if a template relied
+on that accidental output. Normal explicit-argument calls and the direct PHP
+helper API are unchanged; the parent update supplies this fix automatically.
+
 New generated themes include `AGENTS.md`, a WordPress integration guide, and
 the optional `.agents/skills/emulsify-wordpress-integration/` workflow skill.
 Existing child themes can copy these token-free files from a fresh comparison
