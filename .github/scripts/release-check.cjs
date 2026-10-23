@@ -405,6 +405,9 @@ function runStaticChecks() {
       '.github/scripts/editor-policy-smoke.php',
       '.github/scripts/pattern-registry-smoke.php',
       '.github/scripts/wordpress-starter-init-smoke.cjs',
+      '.github/scripts/lint-wrappers.test.cjs',
+      '.github/scripts/jest-project-smoke.cjs',
+      '.github/scripts/a11y-runner.test.cjs',
       '.github/scripts/theme-filters-smoke.php',
       '.github/scripts/twig-autoescape-smoke.php',
       '.github/scripts/twig-project-namespace-smoke.php',
@@ -451,6 +454,9 @@ function runStaticChecks() {
     ensure(rootPackage.scripts['pr:check'] === 'node .github/scripts/pr-validation.cjs', 'package.json should expose npm run pr:check.');
     ensure(rootPackage.scripts['release:check'] === 'node .github/scripts/release-check.cjs', 'package.json should expose npm run release:check.');
     ensure(rootPackage.scripts['docs:check-commands'] === 'node .github/scripts/docs-command-check.cjs', 'package.json should expose npm run docs:check-commands.');
+    ensure(rootPackage.scripts['test:lint-wrappers'] === 'node --test .github/scripts/lint-wrappers.test.cjs', 'package.json should expose the lint wrapper regression tests.');
+    ensure(rootPackage.scripts['smoke:jest-project'] === 'node .github/scripts/jest-project-smoke.cjs', 'package.json should expose generated project ESM/coverage smoke coverage.');
+    ensure(rootPackage.scripts['test:a11y-runner'] === 'node --test .github/scripts/a11y-runner.test.cjs', 'package.json should expose the Core accessibility wrapper tests.');
     ensure(rootPackage.scripts['build:dist'] === 'bash scripts/build-dist.sh', 'package.json should expose npm run build:dist.');
     ensure(rootPackage.scripts['lint:php'].includes('vendor/bin/phpcs -q'), 'package.json lint:php should run PHPCS.');
     ensure(rootPackage.scripts['lint:php'].includes('vendor/bin/phpstan analyse --no-progress'), 'package.json lint:php should run PHPStan.');
@@ -885,8 +891,10 @@ function runStaticChecks() {
     ensure(fs.existsSync(path.join(repoRoot, 'whisk/.nvmrc')), 'Whisk should use .nvmrc for Node version tooling.');
     ensure(!fs.existsSync(path.join(repoRoot, 'whisk/.nvm')), 'Whisk should not use the legacy .nvm filename.');
     ensure(fs.existsSync(path.join(repoRoot, 'whisk/config/jest.config.js')), 'Whisk should provide the Jest config referenced by package scripts.');
-    ensure(scripts.test === 'jest --coverage --passWithNoTests --config ./config/jest.config.js', 'whisk/package.json test script should point at the checked-in Jest config.');
+    ensure(scripts.test === 'node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage --config ./config/jest.config.js', 'whisk/package.json test should execute native project ESM and fail when no tests exist.');
+    ensure(scripts.twatch === 'node --experimental-vm-modules node_modules/jest/bin/jest.js --no-coverage --watch --verbose --config ./config/jest.config.js', 'whisk/package.json twatch should use the same native ESM runner.');
     ensure(jestConfig.includes("testEnvironment: 'node'"), 'whisk/config/jest.config.js should define a node test environment.');
+    ensure(jestConfig.includes('transform: {}') && jestConfig.includes("coverageProvider: 'v8'") && jestConfig.includes('collectCoverageFrom'), 'Whisk Jest config should execute ESM directly and collect project coverage.');
     ensure(initHook.includes('sanitizeLabelForSource'), 'Whisk init hook should sanitize human labels before writing source comments.');
     ensure(initHook.includes("replaceThemeHeader(contents, 'Theme Name', sourceLabel)"), 'Whisk init hook should update style.css with a source-safe Theme Name.');
     ensure(initHook.includes("replaceThemeHeader(contents, 'Text Domain', machineName)"), 'Whisk init hook should update style.css Text Domain.');
@@ -905,7 +913,7 @@ function runStaticChecks() {
     ensure(starterInitSmoke.includes("style.Template === 'emulsify'"), 'Starter init smoke should validate Template: emulsify.');
     ensure(starterInitSmoke.includes('*/ echo 1; /*'), 'Starter init smoke should cover hostile source-comment labels.');
     ensure(starterInitSmoke.includes('node_modules') && starterInitSmoke.includes('dist'), 'Starter init smoke should validate copied build and dependency output is absent.');
-    ensure(starterInitSmoke.includes("['--prefix', 'whisk', 'run', 'test']"), 'Starter init smoke should verify the starter npm test script works after Whisk dependencies are installed.');
+    ensure(starterInitSmoke.includes('No tests found'), 'Starter init smoke should verify an empty starter fails its npm test script.');
     ensure(starterInitSmoke.includes("['run', 'inspect:components', '--', '--json']"), 'Starter init smoke should run the component inspector JSON command from the generated theme root.');
     ensure(starterInitSmoke.includes('JSON.parse') && starterInitSmoke.includes('Array.isArray(report.components)'), 'Starter init smoke should validate the component inspector JSON report, including an empty components array.');
     ensure(fs.existsSync(path.join(repoRoot, 'whisk/src/components/.gitkeep')), 'whisk/src/components should remain as an empty optional component placeholder.');
@@ -940,9 +948,10 @@ function runStaticChecks() {
     ensure(whiskA11yConfig.includes("storybookBuildDir: '.out'"), 'Whisk accessibility config should target the generated theme Storybook output relative to the consuming project root.');
     ensure(whiskA11yConfig.includes('wait: 1000'), 'Whisk accessibility config should wait for the selected Storybook story to mount.');
     ensure(whiskA11yRunner.includes('resolvePa11yStoryIds') && whiskA11yRunner.includes('storyIds.length === 0'), 'Whisk accessibility runner should discover stories and reject an empty audit.');
-    ensure(whiskA11yRunner.includes('http.createServer') && whiskA11yRunner.includes('await pa11y') && whiskA11yRunner.includes('logReport'), 'Whisk accessibility runner should serve the static build over HTTP and report real Pa11y results.');
-    ensure(whiskA11yRunner.includes("process.env.CI === 'true' && process.platform === 'linux'") && whiskA11yRunner.includes('pa11yOptions.chromeLaunchConfig') && whiskA11yRunner.includes("'--no-sandbox'") && whiskA11yRunner.includes("'--disable-setuid-sandbox'"), 'Whisk accessibility runner should launch Chrome without its unavailable sandbox on isolated Linux CI runners.');
-    ensure(whiskA11yRunner.includes('if (hasIssues)') && whiskA11yRunner.includes('process.exitCode = 1'), 'Whisk accessibility runner should fail when Pa11y reports a non-ignored violation.');
+    ensure(whiskA11yRunner.includes('resolveProjectA11yConfig') && whiskA11yRunner.includes('applyProjectA11yConfig'), 'Whisk accessibility wrapper should load the consuming project config through Core.');
+    ensure(whiskA11yRunner.includes('startStorybookServer') && whiskA11yRunner.includes('lintReportAndExit') && whiskA11yRunner.includes('finally'), 'Whisk accessibility wrapper should delegate HTTP serving, bounded checks, failure reporting, and cleanup to Core.');
+    ensure(!whiskA11yRunner.includes('http.createServer') && !whiskA11yRunner.includes('await pa11y'), 'Whisk should not ship a copied accessibility engine.');
+    ensure(!whiskA11yRunner.includes('--no-sandbox') && !whiskA11yRunner.includes('--disable-setuid-sandbox'), 'Whisk accessibility code must keep Chrome sandboxing enabled.');
     ensure(!scriptText.includes('vite-if-inputs'), 'whisk/package.json scripts should not wrap missing-input build errors.');
     ensure(scripts.develop && scripts.develop.includes('npm:vite'), 'whisk/package.json develop script should run the Vite watcher.');
     ensure(!scripts.webpack, 'whisk/package.json should not expose a webpack script.');
@@ -1349,6 +1358,9 @@ function runStaticChecks() {
     ensure(whiskA11yTemplate.includes('<main>') && whiskA11yTemplate.includes('<article') && whiskA11yTemplate.includes('<h2') && whiskA11yTemplate.includes('<a href='), 'CI-only Whisk story should use native semantic landmarks, headings, and links.');
     ensure(prValidationScript.includes('composer') && prValidationScript.includes('validate'), 'PR validation should validate Composer metadata.');
     ensure(prValidationScript.includes('docs:check-commands'), 'PR validation should validate documented npm commands.');
+    for (const script of ['test:lint-wrappers', 'smoke:jest-project', 'test:a11y-runner']) {
+      ensure(prValidationScript.includes(script), `PR validation should run ${script}.`);
+    }
     ensure(prValidationScript.includes('composer') && prValidationScript.includes('install'), 'PR validation should install Composer dependencies for Twig smoke coverage.');
     ensure(!prValidationScript.includes("'lint:php'"), 'PR validation should leave PHP analysis to its dedicated status check.');
     ensure(prValidationScript.includes('smoke:acf-json'), 'PR validation should run the ACF Local JSON smoke test.');

@@ -73,6 +73,15 @@ Title: `2.1.0`
 
 ### Fixed
 
+- Copied lint, lint-fix, and format scripts run every step and propagate any
+  failure. Generated audit wrappers send documentation footers to stderr while
+  preserving JSON stdout, arguments, and Core's exit status.
+- Project Jest commands execute native ESM, collect project coverage including
+  untested source, and fail when no tests exist. Existing generated themes must
+  copy the updated scripts and Jest configuration to adopt this behavior.
+- The accessibility wrapper delegates to Core's bounded runner and complete
+  reporting, keeps the empty-audit failure, honors project `pa11y.wait`, and
+  never disables Chrome's sandbox.
 - Removed link hover, focus, and active color rules that referenced an undefined
   custom property instead of introducing replacement link-state colors. This
   can reveal existing link colors where the invalid declarations previously

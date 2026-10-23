@@ -89,7 +89,7 @@ npm install
 | `npm run audit:twig-stories` | Check Twig story compatibility. |
 | `npm run inspect:components` | Discover components and report metadata, dependencies, configuration issues, and orphaned files. |
 | `npm run a11y` | Build Storybook and run the Core accessibility check. |
-| `npm run test` | Run Jest with `--passWithNoTests` for starter projects. |
+| `npm run test` | Run project Jest tests with coverage; fails when no tests exist. |
 
 The component inspector comes from the installed `@emulsify/core` package and
 runs from the generated child theme root without requiring WordPress to be

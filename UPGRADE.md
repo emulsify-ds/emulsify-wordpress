@@ -28,6 +28,62 @@ optional `@emulsify/core/a11y/wcag22` preset. Its Twig resolver preserves every
 segment of bare paths: correct references that relied on a missing first
 segment falling back to another group.
 
+To adopt the copied tooling fixes, edit the existing project's `package.json`
+and copy the updated configs described below. Parent theme updates alone do
+not replace these files. Adoption is optional for an existing project, but the
+lint/format failure fixes are recommended so CI cannot silently pass a failed
+check. These commands still run both steps:
+
+```diff
+ "scripts": {
+-  "lint": "npm run lint-js; npm run lint-styles",
+-  "lint-fix": "npm run lint-js -- --fix; npm run lint-styles -- --fix",
+-  "format": "npm run lint-fix; npm run prettier-fix",
++  "lint": "sh -c 'status=0; npm run lint-js || status=$?; npm run lint-styles || status=$?; exit $status'",
++  "lint-fix": "sh -c 'status=0; npm run lint-js -- --fix || status=$?; npm run lint-styles -- --fix || status=$?; exit $status'",
++  "format": "sh -c 'status=0; npm run lint-fix || status=$?; npm run prettier-fix || status=$?; exit $status'"
+ }
+```
+
+The accessibility command stays the same before and after:
+
+```json
+{
+  "scripts": {
+    "a11y": "npm run storybook-build && node config/emulsify-core/run-a11y.js"
+  }
+}
+```
+
+For this optional migration, update Core to `^4.5.0` first and replace the copied
+`config/emulsify-core/run-a11y.js` with the current starter's thin wrapper.
+Changing `package.json` alone does not replace the old runner. The new wrapper
+uses Core's bounded concurrency, complete reporting, and static server, while
+retaining WordPress's failure when no stories are found. Core resolves project
+`a11y.config.js` from the working directory and defaults the Storybook output
+to `.out`; existing `pa11y.wait` settings still apply. Use a sandbox-capable
+Chrome rather than disabling its sandbox. The WCAG 2.2 preset is a separate,
+optional choice; it is not enabled by this migration.
+
+To adopt ESM tests and project coverage, copy `config/jest.config.js` from the
+current starter and update the test commands together:
+
+```diff
+ "scripts": {
+-  "test": "jest --coverage --passWithNoTests --config ./config/jest.config.js",
+-  "twatch": "jest --no-coverage --watch --verbose --passWithNoTests --config ./config/jest.config.js",
++  "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage --config ./config/jest.config.js",
++  "twatch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --no-coverage --watch --verbose --config ./config/jest.config.js"
+ }
+```
+
+This optional copied-tooling migration intentionally makes an empty project
+fail tests, matching new generated themes. Add at least one real test before
+enabling it in an existing project's CI. Keep project-specific Jest settings;
+the new defaults retain `rootDir: '..'` and the existing test locations, add
+`transform: {}` and V8 coverage, and exclude dependencies, built files, stories,
+and test files from source coverage.
+
 The parent no longer emits link hover, focus, and active color declarations
 that referenced an undefined custom property. Those declarations caused color
 inheritance; removing them can reveal existing link colors. In the default

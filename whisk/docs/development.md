@@ -89,7 +89,17 @@ npm run test
 npm run a11y
 ```
 
-`npm run test` succeeds when no tests have been added yet. The accessibility check builds Storybook first, so it takes longer than lint or unit tests.
+`npm run test` executes project ESM tests and collects coverage from project
+source, including untested files. It fails when no tests have been added yet;
+add tests alongside source under `src/`, `components/`, or `config/`.
+`npm run twatch` has the same discovery behavior in watch mode.
+
+The accessibility check builds Storybook first, then delegates to Core's
+bounded runner while rejecting an empty story list. Project options in
+`config/emulsify-core/a11y.config.js`, including `pa11y.wait`, are honored.
+Chrome's sandbox stays enabled; set `PUPPETEER_EXECUTABLE_PATH` to an installed
+Chrome when using a managed browser. The optional `@emulsify/core/a11y/wcag22`
+preset can be adopted in this config, preserving any existing project options.
 
 For machine-readable project audits, silence npm's command banner and keep the
 documentation footer on stderr:

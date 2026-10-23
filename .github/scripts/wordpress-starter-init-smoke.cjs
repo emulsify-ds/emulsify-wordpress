@@ -94,7 +94,7 @@ function runNodeScript(scriptPath) {
   }
 }
 
-function runWhiskTestScript() {
+function assertEmptyGeneratedTestFails(projectDir) {
   const jestBin = path.join(
     starterRoot,
     'node_modules',
@@ -108,17 +108,16 @@ function runWhiskTestScript() {
   );
 
   const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const result = childProcess.spawnSync(npm, ['--prefix', 'whisk', 'run', 'test'], {
-    cwd: repoRoot,
+  fs.symlinkSync(path.join(starterRoot, 'node_modules'), path.join(projectDir, 'node_modules'), 'junction');
+  const result = childProcess.spawnSync(npm, ['test', '--', '--runInBand'], {
+    cwd: projectDir,
     encoding: 'utf8',
-    env: process.env,
+    env: { ...process.env, CI: '1' },
+    timeout: 60000,
   });
-
-  if (result.status !== 0) {
-    throw new Error(
-      `npm --prefix whisk run test failed:\n${result.stdout || ''}${result.stderr || ''}`.trim(),
-    );
-  }
+  const output = `${result.stdout || ''}${result.stderr || ''}`;
+  assert(!result.error, `Generated npm test could not run: ${result.error && result.error.message}`);
+  assert(result.status !== 0 && /No tests found/.test(output), `An empty generated child theme must fail npm test because no tests exist:\n${output}`);
 }
 
 function runGeneratedComponentInspector(projectDir) {
@@ -361,7 +360,7 @@ try {
     );
   }
 
-  runWhiskTestScript();
+  assertEmptyGeneratedTestFails(target);
 
   console.log('WordPress starter init smoke checks passed.');
 } catch (error) {
