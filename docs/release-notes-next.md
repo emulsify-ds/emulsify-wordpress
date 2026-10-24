@@ -8,8 +8,8 @@ including the [Drupal 7.3.0 sync](sister-project-parity.md#sync-log).
 
 Latest published tag: `2.0.0`. This draft tracks the upcoming `2.1.0` release.
 
-Root `package.json` remains at `2.0.0` until a release PR prepares `2.1.0`
-together with every derived version surface. The version contract accepts the
+The release PR prepares `2.1.0` in root `package.json` together with every
+derived version surface. The version contract accepts the
 latest stable tag or an untagged next patch, minor, or major, and requires full
 Git history and tags. It rejects already-tagged draft versions and stale claims
 about the latest release.
@@ -65,6 +65,9 @@ lineage. See the [release process](release-process.md).
 
 ## Fixed
 
+- The media embed filter accepts missing post IDs and normalizes public-filter
+  inputs, including embeds rendered outside a post, without interrupting the
+  request.
 - Security: experimental mapped core-block rendering keeps parsed block data in
   `block_attributes` and starts HTML `attributes` as an empty array, preventing
   block comment data from becoming executable HTML attributes through Twig
@@ -82,9 +85,14 @@ lineage. See the [release process](release-process.md).
   grouped discovery, including `.html.twig` and the
   `@project_machine_name/component` alias. Each child root is searched completely
   before parent roots, with deterministic duplicates and root containment.
-- Twig helpers register Timber's safety/context options correctly. Argumentless
-  `bem()` and `add_attributes()` calls no longer consume unrelated context as
-  arguments or expose it as attributes.
+- In `2.0.0`, Timber 2.5 passed Twig only a function's `callable` and `options`
+  keys, so the helpers' top-level `needs_context` and `is_safe` settings were
+  ignored. Every `bem()` and `add_attributes()` call printed escaped attribute
+  markup, such as `<h2 class=&quot;heading&quot;>`, and never received context
+  attributes. The options are now registered correctly; `2.0.0` projects can
+  drop any `|raw` or other workaround they added. Argumentless `bem()` and
+  `add_attributes()` calls no longer consume unrelated context as arguments or
+  expose it as attributes.
 - The document shell preserves trusted WordPress language attributes as markup,
   producing a valid `lang` attribute.
 - Parent `theme.json` no longer sets the failing pale-blue normal link color or
@@ -136,7 +144,7 @@ before opting in. See the required and optional actions in
 - [ ] Prepare `2.1.0` following the [release procedure](release-process.md): bump
   root `package.json`, both theme `Version` headers, `whisk/package.json`, and
   `whisk/project.emulsify.json` lineage together, including applicable lockfile
-  metadata. This documentation change does not bump versions.
+  metadata.
 - [ ] Re-sync
   [`emulsify-wordpress-starter`](https://github.com/emulsify-ds/emulsify-wordpress-starter)
   from `whisk/`, including hidden `.agents/` guidance and the standalone
@@ -146,9 +154,10 @@ before opting in. See the required and optional actions in
   the npm registry on 2026-10-23 and requires Node.js 24.13.0 or newer.
 - [ ] Confirm the version resolved by a fresh generated theme lockfile still
   satisfies that range and the effective Node requirement.
-- [ ] Run the readiness checks below on the prepared committed files, push the
-  release PR, and confirm semantic-release computes exactly `2.1.0` before
-  merging. Rotate this draft after publication.
+- [ ] Run the readiness checks below on the prepared committed files and
+  confirm semantic-release computes exactly `2.1.0`. Have the maintainer review
+  and push the release PR, then confirm CI passes before merging. Rotate this
+  draft after publication.
 
 ## Validation notes
 
@@ -159,5 +168,5 @@ before opting in. See the required and optional actions in
   WordPress fixture path; set `WP_SMOKE_REQUIRED=1` so missing prerequisites fail.
 - Run `npm run release:check -- --skip-smoke` only for static validation; it
   does not replace the full release gate.
-- After pushing the release PR, run `npm run publish-test -- --no-ci` to verify
-  the prepared version matches semantic-release's calculation.
+- Run `npm run publish-test -- --no-ci` to verify the prepared version matches
+  semantic-release's calculation; a local dry run can analyze unpushed commits.
