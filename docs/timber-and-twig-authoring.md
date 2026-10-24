@@ -162,6 +162,18 @@ The parent theme registers Core-style helpers for class and attribute handling:
 
 The helpers return an attribute bag that serializes safely in Twig string contexts.
 
+Both helpers merge the context's `attributes` with their explicit attributes.
+Keep that context value for intentional HTML attributes, never raw block data
+or arbitrary user input. Mapped core-block templates receive parsed block data
+in `block_attributes`; see [core-block context](core-block-twig-rendering.md#twig-context).
+
+The PHP attribute bag rejects every attribute name beginning with `on`,
+case-insensitively, including `onclick` and `onMouseOver`. Construction, `set()`,
+`merge()`, and serialization all enforce this rule. This is intentional
+WordPress PHP hardening: Core's JavaScript helpers and Emulsify Drupal still
+accept these names. Attribute-value escaping alone does not make event-handler
+attributes safe.
+
 Argumentless Twig calls such as `{{ add_attributes() }}` and `{{ bem() }}` use
 only the context's `attributes`. Other context variables are not attributes or
 BEM options. The registered callbacks keep that injected context separate from
@@ -213,6 +225,7 @@ Selected differences remain explicit:
 | Numeric `0` as an extra class | `_0` | Omitted |
 | `true` in an `add_attributes()` class list | `_1` | `true` |
 | `true` in a non-class attribute list | `1` | `true` |
+| Attribute names starting with `on`, regardless of case | Dropped | Accepted |
 | Caller attributes supplied as an array or attribute bag | Copied; remain in caller context | Consumed from invocation context |
 
 The fixture cases `bem-boolean-and-numeric-values`,
@@ -222,6 +235,8 @@ The fixture cases `bem-boolean-and-numeric-values`,
 attributes again on a second call, whereas Core has consumed them. WordPress's
 own `AttributeBag` preserves the caller context too; changing from an array to
 that bag does not provide print-once behavior.
+`add-event-handler-names` records the intentional attribute-name hardening
+difference in both the returned map and serialized HTML.
 
 Both implementations currently treat boolean ARIA values like HTML booleans:
 `true` can produce a bare attribute, and `false` can be omitted rather than

@@ -64,6 +64,11 @@ lineage. See the [release process](release-process.md).
 
 ## Fixed
 
+- Security: experimental mapped core-block rendering keeps parsed block data in
+  `block_attributes` and starts HTML `attributes` as an empty array, preventing
+  block comment data from becoming executable HTML attributes through Twig
+  helpers. The PHP attribute bag also drops all case-insensitive `on*`
+  event-handler attribute names.
 - Pagination marks only the actual current page, renders a translated ellipsis
   character as non-interactive text, and preserves query arguments in numbered,
   previous, and next links. Numbered links now include a translated `Page `

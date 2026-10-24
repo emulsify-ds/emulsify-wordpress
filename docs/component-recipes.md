@@ -159,3 +159,9 @@ add_filter(
 ```
 
 Keep this opt-in narrow. Replacing core block markup can affect block validation, editor expectations, accessibility, and plugin integrations.
+
+Mapped templates read block data from `block_attributes`, for example
+`block_attributes.level` for a heading. The context's `attributes` starts as an
+empty array reserved for HTML attributes; do not copy block data into it because
+`bem()` and `add_attributes()` merge it into markup. See
+[the mapped template context](core-block-twig-rendering.md#twig-context).

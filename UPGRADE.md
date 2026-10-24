@@ -55,6 +55,18 @@ remain project-owned. New generated themes receive the updated defaults.
    removal can reveal an existing link color. Review normal, visited, and
    focused links against project backgrounds. The visited-link rule and other
    parent styles and presets remain.
+5. **Migrate block-data reads if the project opted into experimental core-block
+   Twig rendering.** In mapped templates and
+   `emulsify_theme_core_block_twig_context` filters, replace
+   `attributes.<key>` reads with `block_attributes.<key>` (in PHP,
+   `$context['block_attributes']['level']`, for example). Until migrated, those
+   reads return empty values because `attributes` is now an empty array reserved
+   for HTML attributes. Block data remains available as `block.attrs` and
+   `block_metadata.attrs`. Do not copy `anchor` or `className` into HTML
+   `attributes`: the wrapped WordPress content already carries them, and a
+   copied anchor would duplicate its ID. The PHP attribute bag also rejects
+   case-insensitive `on*` names to prevent event-handler attributes. See
+   [core-block context](docs/core-block-twig-rendering.md#twig-context).
 
 Render representative pages as both an administrator and an anonymous visitor,
 check the editor where blocks are used, and inspect `debug.log`. Storybook
