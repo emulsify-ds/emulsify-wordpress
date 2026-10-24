@@ -73,6 +73,8 @@ lineage. See the [release process](release-process.md).
   character as non-interactive text, and preserves query arguments in numbered,
   previous, and next links. Numbered links now include a translated `Page `
   prefix in a `screen-reader-text` span, with no added frontend CSS.
+- Localized pagination numbers decode HTML entities before autoescaping, so
+  non-breaking thousands separators render correctly instead of literal `&nbsp;`.
 - Fallback menus mark the current item with `aria-current="page"`, leaving
   ancestors unmarked.
 - Project component references follow Core's direct candidates and breadth-first

@@ -111,11 +111,12 @@ $pagination = $environment->render(
 );
 $pager_dom = emulsify_navigation_dom( $pagination );
 $checks    = array(
-	'pagination current page'     => array(),
-	'pagination literal ellipsis' => array(),
-	'pagination page prefixes'    => array(),
-	'pagination URL escaping'     => array(),
-	'menu current item'           => array(),
+	'pagination current page'      => array(),
+	'pagination literal ellipsis'  => array(),
+	'pagination page prefixes'     => array(),
+	'pagination URL escaping'      => array(),
+	'pagination localized numbers' => array(),
+	'menu current item'            => array(),
 );
 
 $current = $pager_dom->query( '//nav//*[@aria-current="page"]' );
@@ -154,6 +155,24 @@ $translated_dom        = emulsify_navigation_dom( $translated_pagination );
 $translated_prefixes   = $translated_dom->query( '//nav//span[contains(concat(" ", normalize-space(@class), " "), " screen-reader-text ")]' );
 emulsify_navigation_expect( $translated_prefixes->length > 0 && $hostile . ' ' === $translated_prefixes->item( 0 )->textContent && 0 === $translated_dom->query( '//script' )->length, 'Translated Page prefixes must remain HTML escaped and retain their separating space.', $checks['pagination page prefixes'] );
 unset( $GLOBALS['emulsify_navigation_translation_overrides'] );
+
+$localized_pagination = $environment->render(
+	'@templates/partials/pagination.twig',
+	array(
+		'pagination' => array(
+			'pages' => array(
+				array( 'title' => '1&nbsp;000', 'current' => true ),
+				array( 'title' => '1&nbsp;001', 'link' => '/?paged=1001', 'current' => false ),
+			),
+		),
+	)
+);
+$localized_dom     = emulsify_navigation_dom( $localized_pagination );
+$localized_current = $localized_dom->query( '//nav//span[@aria-current="page"]' );
+$localized_link    = $localized_dom->query( '//nav//a' );
+emulsify_navigation_expect( 1 === $localized_current->length && "1\u{00A0}000" === $localized_current->item( 0 )->textContent, 'Current page numbers must render a non-breaking thousands separator.', $checks['pagination localized numbers'] );
+emulsify_navigation_expect( 1 === $localized_link->length && "Page 1\u{00A0}001" === $localized_link->item( 0 )->textContent, 'Linked page numbers must retain the Page prefix and a non-breaking thousands separator.', $checks['pagination localized numbers'] );
+emulsify_navigation_expect( false === strpos( $localized_pagination, '&nbsp;' ) && false === strpos( $localized_pagination, '&amp;nbsp;' ), 'Localized numbers must contain the actual non-breaking space, not literal or double-escaped entity text.', $checks['pagination localized numbers'] );
 
 $expected_urls = array_values( $urls );
 foreach ( $links as $index => $link ) {

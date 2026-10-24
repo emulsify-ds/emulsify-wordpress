@@ -38,9 +38,9 @@
                 } %}
                 <li {{ add_attributes(page_item_attributes) }}>
                     {% if page.link|default(null) %}
-                        <a {{ add_attributes(page_link_attributes) }}><span {{ add_attributes({ class: 'screen-reader-text' }) }}>{{ function('__', 'Page', 'emulsify') }} </span>{{ page.title }}</a>
+                        <a {{ add_attributes(page_link_attributes) }}><span {{ add_attributes({ class: 'screen-reader-text' }) }}>{{ function('__', 'Page', 'emulsify') }} </span>{{ function('html_entity_decode', page.title) }}</a>
                     {% else %}
-                        <span {{ add_attributes(page_link_attributes) }}>{{ page.class|default('') == 'dots' ? function('__', '…', 'emulsify') : page.title }}</span>
+                        <span {{ add_attributes(page_link_attributes) }}>{{ page.class|default('') == 'dots' ? function('__', '…', 'emulsify') : function('html_entity_decode', page.title) }}</span>
                     {% endif %}
                 </li>
             {% endfor %}

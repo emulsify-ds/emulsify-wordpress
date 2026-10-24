@@ -31,6 +31,9 @@ remain project-owned. New generated themes receive the updated defaults.
      `aria-current="page"`; display a translated literal `…` in the existing
      non-interactive span; decode Timber's display-escaped URL entities before
      passing every page, previous, and next URL to `add_attributes`.
+     Decode numbered `page.title` entities once before Twig autoescaping,
+     for both linked and current numbers, so localized non-breaking thousands
+     separators display correctly. Never apply `|raw` to these titles.
    - Numbered pagination links: prefix the number with translated `Page ` in
      `span.screen-reader-text`. Keep the current-page span, ellipsis, and
      Previous/Next text unchanged.
