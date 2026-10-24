@@ -1,8 +1,13 @@
 # Accessibility checks
 
 The parent theme supplies semantic fallback markup and WordPress integration.
-It adds no frontend CSS. Projects own the final visual presentation, target
-sizes, focus indicators, and any visually hidden text helpers their pages need.
+It ships no stylesheet, but its `theme.json` produces WordPress global styles
+on the frontend: h1–h6 color and typography, visited-link color, root padding,
+button border radius/width and padding, and quote/cite typography and margins
+plus cite color. It also produces preset custom properties and `.has-*`
+classes, which style nothing until content uses them. Projects own the final
+visual presentation, target sizes, focus indicators, and any visually hidden
+text helpers their pages need.
 
 ## Check Storybook and WordPress
 
@@ -102,8 +107,9 @@ render/navigation assertions, and any reported violation of the enabled rules
 fail the audit.
 
 The sole disabled axe rule is `target-size`. This is a narrow test-policy
-exception for the unstyled parent fallback: the parent does not add frontend
-CSS to enlarge or space links. It is not an exemption from WCAG or a claim that
+exception for parent fallbacks without target-size styling: the retained
+global styles do not enlarge or space navigation links for this criterion.
+It is not an exemption from WCAG or a claim that
 the rendered site meets Target Size (Minimum). No other selected rule is
 disabled.
 

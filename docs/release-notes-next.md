@@ -85,8 +85,12 @@ lineage. See the [release process](release-process.md).
 - The document shell preserves trusted WordPress language attributes as markup,
   producing a valid `lang` attribute.
 - Parent `theme.json` no longer sets the failing pale-blue normal link color or
-  invalid hover, focus, and active color declarations. Other styles and editor
-  presets remain; review project link presentation after updating.
+  invalid hover, focus, and active color declarations. Quote text now inherits
+  the page's text color instead of the same failing pale blue; review project
+  quote presentation. The removed button color object never applied, and
+  quote spacing is unchanged: previously unresolved bottom quote and top cite
+  margins are now explicitly `0`. Other global styles and editor presets
+  remain; review project link presentation after updating.
 - Generated audit wrappers keep JSON stdout clean by sending documentation
   footers to stderr, while preserving arguments and Core's exit status.
 - Release tooling accepts prepared versions after `2.0.0`, rejects stale draft

@@ -115,11 +115,19 @@ correct fallback language markup and failing link-color declarations. See the
 
 | Sister feature | WordPress decision and reason |
 | --- | --- |
-| 24 px target-size rule and Drupal's parent asset build | Skip: the parent adds no frontend CSS to the surrounding page; projects own target size, `screen-reader-text`, and focus styles. Admin-only CSS is allowed. |
+| 24 px target-size rule and Drupal's parent asset build | Skip: the parent ships no stylesheet; its retained `theme.json` global styles are listed below, and projects own target size, `screen-reader-text`, and focus styles. Admin-only CSS is allowed. |
 | Regions: `status`, `breadcrumb`, `highlighted`, `sidebar_first`, `sidebar_second` | Skip: WordPress uses menus, block patterns, and template parts; the parent registers no widget areas. Maintainers may revisit this choice. |
 | Container and form template suggestions, inline form-error IDs, status-message/feed/progress template moves, and select option attributes | Skip: these belong to Drupal's render and Form APIs. |
 | Favicon dark-mode icons, SVG sanitization, and generated social share image | Skip: WordPress uses core Site Icon and `custom-logo`; SEO plugins own `og:image`. |
 | Default parent logo, library/breakpoint contract, Drupal.org channel-skew validation, Stable 9 parity, and the `dr` CLI | Skip: these are Drupal-only runtime and distribution contracts. |
+
+Although the parent ships no stylesheet, its `theme.json` produces WordPress
+global styles on the frontend: h1–h6 color and typography, visited-link color,
+root padding, button border radius/width and padding, and quote/cite typography
+and margins plus cite color. These remaining style rules are retained in 2.1.0
+and planned for removal in 3.0.0. Preset custom properties and `.has-*` classes
+are also generated; they style nothing until content uses them. Presets and
+editor configuration remain separate from that style-removal plan.
 
 The opt-in video poster is a separate iframe document with its own inline
 accessibility styles, as approved for that feature. It adds no stylesheet to
@@ -148,7 +156,12 @@ Use this contract when evaluating future changes:
 - Keep Whisk small enough to work as a starter.
 - Keep generated child theme source aligned with Emulsify Core 4 conventions.
 - Keep WordPress-specific behavior explicit rather than hiding it behind Drupal naming or assumptions.
-- The parent adds no frontend CSS to the surrounding page. Admin-only CSS is
-  allowed; projects own target size, `screen-reader-text`, and focus styles.
-  Opt-in video posters confine their accessibility styles to the iframe document.
+- The parent ships no stylesheet, but its `theme.json` produces frontend
+  WordPress global styles: h1–h6 color and typography, visited-link color,
+  root padding, button border radius/width and padding, and quote/cite
+  typography and margins plus cite color. These rules are retained in 2.1.0
+  and planned for removal in 3.0.0. Preset custom properties and `.has-*`
+  classes style nothing until content uses them. Admin-only CSS is allowed;
+  projects own target size, `screen-reader-text`, and focus styles. Opt-in
+  video posters confine their accessibility styles to the iframe document.
 - Keep `project.emulsify.json` on `"platform": "wordpress"` and `generatedFrom: "emulsify-wordpress"` so generated child themes advertise the WordPress platform adapter and starter lineage.

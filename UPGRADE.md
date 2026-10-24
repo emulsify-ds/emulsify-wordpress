@@ -45,7 +45,13 @@ remain project-owned. New generated themes receive the updated defaults.
      Explicit-argument calls and the direct PHP helper API are unchanged.
 4. **Check the rendered site's accessibility and link states.** Projects own
    `screen-reader-text`, visible focus styles, and pointer target sizing. The
-   parent adds no frontend CSS to supply them. The rendered audit disables
+   parent ships no stylesheet, but its `theme.json` produces WordPress global
+   styles on the frontend: h1–h6 color and typography, visited-link color,
+   root padding, button border radius/width and padding, and quote/cite
+   typography and margins plus cite color. It also produces preset custom
+   properties and `.has-*` classes, which style nothing until content uses
+   them. These rules do not supply the project's accessibility helpers. The
+   rendered audit disables
    only axe's `target-size` rule; that exception does not establish WCAG 2.2
    SC 2.5.8 compliance. See
    [project responsibilities](docs/accessibility.md#project-responsibilities).
@@ -53,8 +59,12 @@ remain project-owned. New generated themes receive the updated defaults.
    contrast on white. Its unresolved hover, focus, and active declarations
    have also been removed; those declarations caused color inheritance, so
    removal can reveal an existing link color. Review normal, visited, and
-   focused links against project backgrounds. The visited-link rule and other
-   parent styles and presets remain.
+   focused links against project backgrounds. Quote text now inherits the
+   page's text color instead of the pale blue that failed contrast on white;
+   review project quote presentation. The removed button color object never
+   applied, and quote spacing is unchanged: the previously unresolved bottom
+   quote and top cite margins are now explicitly `0`. Other styles and
+   presets remain.
 5. **Migrate block-data reads if the project opted into experimental core-block
    Twig rendering.** In mapped templates and
    `emulsify_theme_core_block_twig_context` filters, replace

@@ -26,9 +26,14 @@ in `docs/`, especially [sister-project parity](docs/sister-project-parity.md),
 The parent owns reusable WordPress integration, context, discovery, assets,
 and fallback rendering. Project-specific templates, components, stories,
 styling, and content mappings belong in the generated child; functionality
-independent of the theme belongs in a project plugin. The parent adds no
-frontend CSS. Keep WordPress behavior native rather than importing Drupal
-names or mechanics.
+independent of the theme belongs in a project plugin. The parent ships no
+stylesheet, but its `theme.json` produces WordPress global styles on the
+frontend: h1–h6 color and typography, visited-link color, root padding,
+button border radius/width and padding, and quote/cite typography and margins
+plus cite color. It also produces preset custom properties and `.has-*`
+classes, which style nothing until content uses them. Projects own final
+presentation, target size, `screen-reader-text`, and focus styles. Keep
+WordPress behavior native rather than importing Drupal names or mechanics.
 
 Keep the starter component-library-neutral. Discover the selected library's
 directories, APIs, namespaces, tokens, stories, and build inputs from its guide
