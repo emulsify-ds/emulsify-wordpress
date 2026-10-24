@@ -369,7 +369,7 @@ final class AttributeBag implements \Stringable {
 	 * @return bool TRUE when safe.
 	 */
 	private static function isSafeAttributeName( string $name ): bool {
-		return 1 === preg_match( '/^[A-Za-z_:][A-Za-z0-9:_.-]*$/', $name );
+		return 0 !== stripos( $name, 'on' ) && 1 === preg_match( '/^[A-Za-z_:][A-Za-z0-9:_.-]*$/', $name );
 	}
 
 	/**

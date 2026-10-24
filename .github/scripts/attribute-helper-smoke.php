@@ -144,6 +144,46 @@ function emulsify_attribute_helper_parse_parent_templates( Twig $helpers, string
 
 $helpers = new Twig();
 
+$event_attributes = array(
+	'onclick'     => 'x()',
+	'onMouseOver' => 'y()',
+	'ONFOCUS'     => 'z()',
+	'on'          => 'ignored',
+	'once'        => 'ignored',
+	'data-onload' => 'allowed',
+	'data-ok'     => '1',
+);
+$set_bag          = new AttributeBag();
+
+foreach ( $event_attributes as $name => $value ) {
+	$set_bag->set( $name, $value );
+}
+
+$merge_bag = new AttributeBag();
+$merge_bag->merge( $event_attributes );
+
+foreach (
+	array(
+		'constructor' => new AttributeBag( $event_attributes ),
+		'set'         => $set_bag,
+		'merge'       => $merge_bag,
+	) as $operation => $event_bag
+) {
+	emulsify_attribute_helper_assert_same(
+		'AttributeBag ' . $operation . ' drops event-handler names from its map',
+		array(
+			'data-onload' => 'allowed',
+			'data-ok'     => '1',
+		),
+		$event_bag->toArray()
+	);
+	emulsify_attribute_helper_assert_same(
+		'AttributeBag ' . $operation . ' does not serialize event-handler names',
+		'data-onload="allowed" data-ok="1"',
+		(string) $event_bag
+	);
+}
+
 emulsify_attribute_helper_assert_same(
 	'bem positional syntax',
 	'class="example-card example-card--featured"',

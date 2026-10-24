@@ -175,6 +175,17 @@
       ]
     },
     {
+      "id": "add-event-handler-names",
+      "helper": "add_attributes",
+      "args": [{"onclick": "x()", "onMouseOver": "y()", "data-ok": "1"}],
+      "php": {"attributes": {"data-ok": "1"}, "html": "data-ok=\"1\"", "contextAfter": {}},
+      "js": {"attributes": {"onclick": "x()", "onMouseOver": "y()", "data-ok": "1"}, "html": "onclick=\"x()\" onMouseOver=\"y()\" data-ok=\"1\"", "contextAfter": {}},
+      "differences": [
+        {"field": "attributes", "reason": "The WordPress parent intentionally rejects every case-insensitive on-prefixed attribute name to prevent inline event handlers. Core currently accepts those names."},
+        {"field": "html", "reason": "PHP omits event-handler attributes from serialized markup; Core currently serializes them. Both retain data-ok."}
+      ]
+    },
+    {
       "id": "add-empty",
       "helper": "add_attributes",
       "args": [{}],
