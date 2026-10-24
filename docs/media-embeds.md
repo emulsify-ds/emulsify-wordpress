@@ -25,6 +25,12 @@ add_filter(
 );
 ```
 
+The filter also receives the original `$url`, embed attributes `$attr`, and
+`$post_id`; register the callback with four accepted arguments to use them.
+The post ID is a positive `int`, or `null` outside a post (for example, an embed
+rendered outside the loop). Non-string URLs normalize to `''`, and non-array
+attributes normalize to `array()`.
+
 | Option | Default | Behavior |
 | --- | --- | --- |
 | `privacy_mode` | `false` | Uses YouTube's `www.youtube-nocookie.com` player host and adds Vimeo's `dnt=1`. Other parameters remain intact, including Vimeo's `h` for unlisted videos. |

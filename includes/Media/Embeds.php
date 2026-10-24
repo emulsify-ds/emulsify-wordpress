@@ -29,15 +29,22 @@ final class Embeds {
 	/**
 	 * Changes only supported, complete player iframes.
 	 *
-	 * @param string $html    Cached provider HTML.
-	 * @param string $url     Original embed URL.
-	 * @param array  $attr    Embed attributes.
-	 * @param int    $post_id Post ID.
-	 * @return string Rendered embed HTML.
+	 * @param mixed $html    Cached provider HTML; non-strings pass through unchanged.
+	 * @param mixed $url     Original embed URL, normalized to a string.
+	 * @param mixed $attr    Embed attributes, normalized to an array.
+	 * @param mixed $post_id Positive post ID or numeric string, otherwise null.
+	 * @return mixed Rendered embed HTML, or the unchanged non-string input.
 	 * @throws \RuntimeException When click-to-load rendering requires missing Timber.
 	 * @throws \UnexpectedValueException When the poster template renders no document.
 	 */
-	public function filter_html( string $html, string $url = '', array $attr = array(), int $post_id = 0 ): string {
+	public function filter_html( $html, $url = '', $attr = array(), $post_id = 0 ) {
+		if ( ! is_string( $html ) ) {
+			return $html;
+		}
+		$url     = is_string( $url ) ? $url : '';
+		$attr    = is_array( $attr ) ? $attr : array();
+		$post_id = is_string( $post_id ) ? filter_var( ctype_digit( $post_id ) ? ltrim( $post_id, '0' ) : $post_id, FILTER_VALIDATE_INT ) : $post_id;
+		$post_id = is_int( $post_id ) && $post_id > 0 ? $post_id : null;
 		$options = array(
 			'privacy_mode'  => false,
 			'click_to_load' => false,
@@ -46,10 +53,10 @@ final class Embeds {
 		/**
 		 * Filters opt-in media embed behavior without changing cached provider HTML.
 		 *
-		 * @param array  $options Media options: privacy_mode, click_to_load, poster.
-		 * @param string $url     Original embed URL.
-		 * @param array  $attr    Embed attributes.
-		 * @param int    $post_id Post ID.
+		 * @param array    $options Media options: privacy_mode, click_to_load, poster.
+		 * @param string   $url     Original embed URL.
+		 * @param array    $attr    Embed attributes.
+		 * @param int|null $post_id Positive post ID, or null outside a post.
 		 */
 		$filtered = apply_filters( 'emulsify_theme_media_embed_options', $options, $url, $attr, $post_id );
 		if ( is_array( $filtered ) ) {

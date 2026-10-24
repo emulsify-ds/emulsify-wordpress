@@ -69,7 +69,9 @@ function emulsify_media_smoke_markup( string $source, string $title = 'Fixture v
 }
 
 $options       = array();
-$options_hook  = static function ( array $defaults ) use ( &$options ): array {
+$embed_context = null;
+$options_hook  = static function ( array $defaults, $url, $attr, $post_id ) use ( &$options, &$embed_context ): array {
+	$embed_context = array( $url, $attr, $post_id );
 	return array_merge( $defaults, $options );
 };
 $translation   = static function ( string $translation, string $text, string $domain ): string {
@@ -97,13 +99,15 @@ $original_data = get_transient( $metadata_key );
 $created_posts = array();
 $original_post = $GLOBALS['post'] ?? null;
 $original_embed_post = $GLOBALS['wp_embed']->post_ID;
+$original_embed_url  = $GLOBALS['wp_embed']->last_url;
+$original_embed_attr = $GLOBALS['wp_embed']->last_attr;
 $child_dir     = get_stylesheet_directory();
 $override      = $child_dir . '/templates/partials/oembed-poster.twig';
 $original_file = is_file( $override ) ? file_get_contents( $override ) : null;
 $created_dirs  = array();
 $hostile_title = 'Fixture <img src=x onerror=alert(1)> & "title"';
 
-add_filter( 'emulsify_theme_media_embed_options', $options_hook, 999 );
+add_filter( 'emulsify_theme_media_embed_options', $options_hook, 999, 4 );
 add_filter( 'gettext', $translation, 999, 3 );
 add_filter( 'pre_http_request', $block_http, 999 );
 
@@ -112,6 +116,47 @@ try {
 	foreach ( $fixtures as $name => $fixture ) {
 		$html = " \n" . emulsify_media_smoke_markup( $fixture['source'] ) . "\n ";
 		emulsify_media_smoke_assert( apply_filters( 'embed_oembed_html', $html, $fixture['url'], array(), 0 ) === $html, 'Disabled options must preserve the exact ' . $name . ' bytes.' );
+		foreach ( array( null, false ) as $missing_post_id ) {
+			$options = array();
+			emulsify_media_smoke_assert( apply_filters( 'embed_oembed_html', $html, $fixture['url'], array(), $missing_post_id ) === $html, 'Missing post IDs must preserve disabled ' . $name . ' embeds byte for byte.' );
+			emulsify_media_smoke_assert( array( $fixture['url'], array(), null ) === $embed_context, 'The options filter must receive a null post ID outside a post.' );
+			$options = array( 'privacy_mode' => true, 'click_to_load' => true, 'poster' => 'neutral' );
+			$output  = apply_filters( 'embed_oembed_html', $html, $fixture['url'], array(), $missing_post_id );
+			$srcdoc  = emulsify_media_smoke_attribute( $output, 'srcdoc' );
+			emulsify_media_smoke_assert( is_string( $srcdoc ) && '' !== $srcdoc, 'Missing post IDs must allow ' . $name . ' poster rendering.' );
+			$document = emulsify_media_smoke_document( $srcdoc );
+			$player   = $document->getElementsByTagName( 'a' )->item( 0 )->getAttribute( 'href' );
+			emulsify_media_smoke_assert( str_contains( $player, 'autoplay=1' ) && str_contains( $player, 'youtube' === $name ? 'www.youtube-nocookie.com' : 'dnt=1' ), 'Missing post IDs must retain privacy and activation parameters.' );
+		}
+		$options = array();
+	}
+
+	// The public filter can be applied by code other than WP_Embed. Preserve
+	// non-string results and normalize optional context before exposing it.
+	// Core's earlier callbacks require strings, so test our pass-through directly.
+	foreach ( array( null, false, 42, array( 'provider' => 'unavailable' ), (object) array( 'provider' => 'unavailable' ) ) as $value ) {
+		emulsify_media_smoke_assert( $value === $service->filter_html( $value, null, false, null ), 'Non-string embed results must pass through unchanged.' );
+	}
+	foreach ( array(
+		array( 42, 42 ),
+		array( '42', 42 ),
+		array( '0042', 42 ),
+		array( PHP_INT_MAX, PHP_INT_MAX ),
+		array( (string) PHP_INT_MAX . '0', null ),
+		array( 'invalid', null ),
+		array( '-1', null ),
+		array( '1.5', null ),
+		array( '', null ),
+		array( -1, null ),
+		array( 0, null ),
+	) as list( $post_id, $expected_id ) ) {
+		$html = emulsify_media_smoke_markup( $fixtures['youtube']['source'] );
+		emulsify_media_smoke_assert( $html === apply_filters( 'embed_oembed_html', $html, null, false, $post_id ), 'Invalid optional context must not change disabled embeds.' );
+		emulsify_media_smoke_assert( array( '', array(), $expected_id ) === $embed_context, 'The options filter must receive normalized URLs, attributes, and positive post IDs.' );
+	}
+	foreach ( array( true, 1.0, 1.5, array(), (object) array() ) as $post_id ) {
+		apply_filters( 'embed_oembed_html', $html, '', array(), $post_id );
+		emulsify_media_smoke_assert( null === $embed_context[2], 'Non-integer post IDs must normalize to null.' );
 	}
 
 	// Cached data comes from WordPress's oEmbed parse pipeline, including the
@@ -267,6 +312,30 @@ try {
 			emulsify_media_smoke_assert( null === emulsify_media_smoke_attribute( $disabled, 'srcdoc' ) && $fixture['source'] === emulsify_media_smoke_attribute( $disabled, 'src' ), 'Disabling options must immediately restore the real ' . $type . ' cached player without a cache flush.' );
 		}
 	}
+	// WP_Embed prefers its post_ID property over the global post. Clear both to
+	// exercise the real no-post shortcode path, with local provider responses.
+	$post_before_no_post       = $GLOBALS['post'];
+	$embed_post_before_no_post = $GLOBALS['wp_embed']->post_ID;
+	try {
+		$GLOBALS['post']              = null;
+		$GLOBALS['wp_embed']->post_ID = null;
+		foreach ( $fixtures as $name => $fixture ) {
+			foreach ( array( false, true ) as $enabled ) {
+				$options = $enabled ? array( 'privacy_mode' => true, 'click_to_load' => true, 'poster' => 'neutral' ) : array();
+				$rendered = $GLOBALS['wp_embed']->shortcode( array(), $fixture['url'] );
+				emulsify_media_smoke_assert( is_string( $rendered ) && '' !== $rendered, 'A no-post shortcode must return ' . $name . ' embed markup.' );
+				emulsify_media_smoke_assert( null === $embed_context[2], 'The no-post shortcode must pass a null ID to the options filter.' );
+				if ( $enabled ) {
+					emulsify_media_smoke_assert( is_string( emulsify_media_smoke_attribute( $rendered, 'srcdoc' ) ), 'A no-post shortcode must render the enabled poster.' );
+				} else {
+					emulsify_media_smoke_assert( $fixture['source'] === emulsify_media_smoke_attribute( $rendered, 'src' ), 'A no-post shortcode must retain the disabled player.' );
+				}
+			}
+		}
+	} finally {
+		$GLOBALS['post']              = $post_before_no_post;
+		$GLOBALS['wp_embed']->post_ID = $embed_post_before_no_post;
+	}
 	remove_filter( 'pre_oembed_result', $provider_result, 999 );
 
 	// A project can override this document through the same child-first Twig
@@ -302,7 +371,7 @@ try {
 	}
 	emulsify_media_smoke_assert( $empty_rejected, 'An empty project poster must fail closed instead of silently loading a third-party player.' );
 
-	echo "PASS media embeds: off defaults, raw parameter preservation, privacy, translated srcdoc posters, safe URLs, asynchronous metadata, classic/block filters, child overrides, and fail-closed poster errors.\n";
+	echo "PASS media embeds: missing post IDs and no-post shortcodes, normalized public filter context, off defaults, raw parameter preservation, privacy, translated srcdoc posters, safe URLs, asynchronous metadata, classic/block filters, child overrides, and fail-closed poster errors.\n";
 } finally {
 	remove_filter( 'emulsify_theme_media_embed_options', $options_hook, 999 );
 	remove_filter( 'gettext', $translation, 999 );
@@ -312,6 +381,8 @@ try {
 	}
 	$GLOBALS['post'] = $original_post;
 	$GLOBALS['wp_embed']->post_ID = $original_embed_post;
+	$GLOBALS['wp_embed']->last_url = $original_embed_url;
+	$GLOBALS['wp_embed']->last_attr = $original_embed_attr;
 	foreach ( $created_posts as $post_id ) {
 		wp_delete_post( $post_id, true );
 	}
