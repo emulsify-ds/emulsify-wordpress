@@ -10,6 +10,7 @@ const childProcess = require('child_process');
 const yaml = require('js-yaml');
 const { validateReleaseVersionContract } = require('./release-version-contract.cjs');
 const { validateReadinessMatrix } = require('./readiness-matrix-contract.cjs');
+const { validateThemeJsonStyles } = require('./theme-json-style-contract.cjs');
 
 const repoRoot = path.resolve(__dirname, '../..');
 const skipSmoke = process.argv.slice(2).includes('--skip-smoke');
@@ -320,6 +321,8 @@ function runStaticChecks() {
       '.github/scripts/release-version-contract.test.cjs',
       '.github/scripts/readiness-matrix-contract.cjs',
       '.github/scripts/readiness-matrix-contract.test.cjs',
+      '.github/scripts/theme-json-style-contract.cjs',
+      '.github/scripts/theme-json-style-contract.test.cjs',
       '.github/scripts/semantic-release.test.cjs',
       '.github/scripts/fallback-navigation-smoke.php',
       '.github/scripts/rendered-a11y.cjs',
@@ -1797,6 +1800,13 @@ function runStaticChecks() {
     return 'No .DS_Store files were found outside .git.';
   });
 
+  runStaticCheck('Theme JSON styles', () => {
+    const errors = validateThemeJsonStyles(readJson('theme.json'));
+    ensure(errors.length === 0, errors.join('\n'));
+    return 'Style values are scalar where required and WordPress preset references resolve to settings.';
+  });
+
+  runCommandCheck('Theme JSON style contract tests', process.execPath, ['--test', '.github/scripts/theme-json-style-contract.test.cjs']);
   runCommandCheck('Release version contract tests', process.execPath, ['--test', '.github/scripts/release-version-contract.test.cjs']);
   runCommandCheck('Readiness matrix contract tests', process.execPath, ['--test', '.github/scripts/readiness-matrix-contract.test.cjs']);
   runCommandCheck('Semantic release guard tests', process.execPath, ['--test', '.github/scripts/semantic-release.test.cjs']);
