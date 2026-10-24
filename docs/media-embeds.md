@@ -78,14 +78,20 @@ The template receives a `media_embed` map:
 | `title` | Video title from the iframe or cached Vimeo metadata, falling back to a translated provider label; used in the document and hidden link label. |
 | `provider` | `YouTube` or `Vimeo`. |
 | `thumbnail_url` | HTTPS image URL, or an empty string for a neutral poster. |
-| `language_code` | Current WordPress locale formatted for the document's `lang`. |
+| `language_code` | WordPress locale used for the poster's translated strings, formatted for the document's `lang`. |
+| `language_direction` | `rtl` or `ltr` for that locale, used for the document's `dir`. |
 | `play_label` | Translated `Play video` text. |
+
+Language and direction are computed for each render and follow WordPress locale
+switching with `switch_to_locale()`. Poster overrides must keep both `lang` and
+`dir` on the document's `<html>` element.
 
 The fallback supplies its own inline CSS inside the frame. It adds no stylesheet
 to the surrounding page. Its translated play link has a visible focus ring, a
-visually hidden video title, and a document language. Controls become compact in
-frames 160 pixels high or shorter. Keep these accessibility details and Twig
-autoescaping in an override; provider titles and URLs are not trusted HTML.
+visually hidden video title, and a document language and direction. Controls
+become compact in frames 160 pixels high or shorter. Keep these accessibility
+details and Twig autoescaping in an override; provider titles and URLs are not
+trusted HTML.
 An invalid or empty poster template raises a rendering error. Fix or remove
 that override before enabling click to load; an error does not silently fall
 back to requesting the provider's player.

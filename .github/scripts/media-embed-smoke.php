@@ -159,6 +159,31 @@ try {
 		emulsify_media_smoke_assert( null === $embed_context[2], 'Non-integer post IDs must normalize to null.' );
 	}
 
+	// Simulate an Arabic interface without installing language packs. Restore it
+	// before a second render to catch language or direction cached per request.
+	$default_language  = get_bloginfo( 'language' );
+	$default_direction = $GLOBALS['wp_locale']->text_direction;
+	$rtl_locale        = static function (): string {
+		return 'ar';
+	};
+	$options = array( 'click_to_load' => true, 'poster' => 'neutral' );
+	emulsify_media_smoke_assert( 'ar' !== $default_language && 'ltr' === $default_direction, 'The locale fixture must start with a distinct left-to-right site default.' );
+	try {
+		add_filter( 'locale', $rtl_locale, 999 );
+		$GLOBALS['wp_locale']->text_direction = 'rtl';
+		$output   = apply_filters( 'embed_oembed_html', emulsify_media_smoke_markup( $fixtures['youtube']['source'] ), $fixtures['youtube']['url'], array(), 0 );
+		$document = emulsify_media_smoke_document( (string) emulsify_media_smoke_attribute( $output, 'srcdoc' ) );
+		emulsify_media_smoke_assert( 'ar' === $document->documentElement->getAttribute( 'lang' ), 'Poster documents must declare the Arabic interface language rather than the site default.' );
+		emulsify_media_smoke_assert( 'rtl' === $document->documentElement->getAttribute( 'dir' ), 'Poster documents must declare the right-to-left interface direction.' );
+	} finally {
+		remove_filter( 'locale', $rtl_locale, 999 );
+		$GLOBALS['wp_locale']->text_direction = $default_direction;
+	}
+	$output   = apply_filters( 'embed_oembed_html', emulsify_media_smoke_markup( $fixtures['youtube']['source'] ), $fixtures['youtube']['url'], array(), 0 );
+	$document = emulsify_media_smoke_document( (string) emulsify_media_smoke_attribute( $output, 'srcdoc' ) );
+	emulsify_media_smoke_assert( $default_language === $document->documentElement->getAttribute( 'lang' ) && 'ltr' === $document->documentElement->getAttribute( 'dir' ), 'A second poster must return to the default language and left-to-right direction after locale restoration.' );
+	$options = array();
+
 	// Cached data comes from WordPress's oEmbed parse pipeline, including the
 	// unlisted video's h value rather than merging distinct videos by ID.
 	$metadata = (object) array(
@@ -371,7 +396,7 @@ try {
 	}
 	emulsify_media_smoke_assert( $empty_rejected, 'An empty project poster must fail closed instead of silently loading a third-party player.' );
 
-	echo "PASS media embeds: missing post IDs and no-post shortcodes, normalized public filter context, off defaults, raw parameter preservation, privacy, translated srcdoc posters, safe URLs, asynchronous metadata, classic/block filters, child overrides, and fail-closed poster errors.\n";
+	echo "PASS media embeds: missing post IDs and no-post shortcodes, normalized public filter context, off defaults, raw parameter preservation, privacy, translated srcdoc posters with Arabic RTL and restored LTR locales, safe URLs, asynchronous metadata, classic/block filters, child overrides, and fail-closed poster errors.\n";
 } finally {
 	remove_filter( 'emulsify_theme_media_embed_options', $options_hook, 999 );
 	remove_filter( 'gettext', $translation, 999 );

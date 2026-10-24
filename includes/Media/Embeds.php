@@ -106,12 +106,13 @@ final class Embeds {
 			$language = get_bloginfo( 'language' );
 			$context  = array(
 				'media_embed' => array(
-					'player_url'    => $this->set_parameter( $player_url, 'autoplay' ),
-					'title'         => $title,
-					'provider'      => 'youtube' === $player['provider'] ? 'YouTube' : 'Vimeo',
-					'thumbnail_url' => $thumbnail,
-					'language_code' => '' !== $language ? $language : 'en',
-					'play_label'    => __( 'Play video', 'emulsify' ),
+					'player_url'         => $this->set_parameter( $player_url, 'autoplay' ),
+					'title'              => $title,
+					'provider'           => 'youtube' === $player['provider'] ? 'YouTube' : 'Vimeo',
+					'thumbnail_url'      => $thumbnail,
+					'language_code'      => '' !== $language ? $language : 'en',
+					'language_direction' => is_rtl() ? 'rtl' : 'ltr',
+					'play_label'         => __( 'Play video', 'emulsify' ),
 				),
 			);
 			$document = \Timber\Timber::compile( '@templates/partials/oembed-poster.twig', $context );
