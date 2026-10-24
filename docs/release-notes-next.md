@@ -25,7 +25,8 @@ lineage. See the [release process](release-process.md).
   and Vimeo oEmbeds. Both default to off. The
   `emulsify_theme_media_embed_options` filter controls privacy, activation, and
   provider or neutral posters; children can override the accessible `srcdoc`
-  document. See [media embeds](media-embeds.md) for CSP and privacy requirements.
+  document. Posters declare the document's language and direction. See
+  [media embeds](media-embeds.md) for CSP and privacy requirements.
 - Public `site_header`, `main`, and `page_title` Twig blocks let children extend
   the parent layout without copying it. Existing block names, boundaries, and
   default output are preserved and tested. See

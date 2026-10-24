@@ -85,7 +85,7 @@ This file may also hold Emulsify Core metadata such as `variant.structureImpleme
 
 | Sister reference | WordPress target | Status |
 | --- | --- | --- |
-| Drupal 7.3.0: [7.2.2](https://github.com/emulsify-ds/emulsify-drupal/tree/7.2.2) plus [PR #382](https://github.com/emulsify-ds/emulsify-drupal/pull/382), pinned at [`f5d7d4a`](https://github.com/emulsify-ds/emulsify-drupal/commit/f5d7d4ac572fc583c734213879a15dde2140f6c3) | WordPress 2.1.0 | Implemented in [PR #47](https://github.com/emulsify-ds/emulsify-wordpress/pull/47); pending merge and release. |
+| Drupal 7.3.0: [7.2.2](https://github.com/emulsify-ds/emulsify-drupal/tree/7.2.2) plus [PR #382](https://github.com/emulsify-ds/emulsify-drupal/pull/382), pinned at [`1bc8fb3`](https://github.com/emulsify-ds/emulsify-drupal/commit/1bc8fb3bb64ae7014f50349930216b863976a5b2) | WordPress 2.1.0 | Implemented in [PR #47](https://github.com/emulsify-ds/emulsify-wordpress/pull/47); pending merge and release. |
 
 This sync includes the 7.2.2 fixes underlying the Drupal 7.3.0 reference. The
 WordPress work is collected in one release branch by maintainer decision.
@@ -105,6 +105,12 @@ implementation references, not a claim that either release has been published.
 | PHP/JavaScript Twig helper characterization | Port/adapt: a shared corpus records intentional helper differences and catches runtime bugs without silently changing contracts. | [PR #47](https://github.com/emulsify-ds/emulsify-wordpress/pull/47); [Twig authoring](timber-and-twig-authoring.md). |
 | Action pins, blocking readiness matrix, dependency maintenance, and README assets | Port/adapt: shared validation policy uses WordPress versions and the supported PHP matrix. | [PR #47](https://github.com/emulsify-ds/emulsify-wordpress/pull/47); [dependency audit](dependency-audit-2026-10-23.md). |
 | Privacy video embeds | Adapt, implemented for 2.1.0: render-time oEmbed filters, overridable iframe `srcdoc`, and cached background Vimeo metadata replace Drupal's same-origin embed document. Both options default to off. | [PR #47](https://github.com/emulsify-ds/emulsify-wordpress/pull/47); [media embeds](media-embeds.md). |
+| Poster language and direction ([`dac2e49`](https://github.com/emulsify-ds/emulsify-drupal/commit/dac2e49), [`a2bcdc1`](https://github.com/emulsify-ds/emulsify-drupal/commit/a2bcdc1)) | Adapt: poster `lang` and `dir` follow the WordPress locale used for translated strings, with a non-default Arabic RTL regression and default-locale restoration. | [PR #47](https://github.com/emulsify-ds/emulsify-wordpress/pull/47); [poster override contract](media-embeds.md#poster-behavior-and-overrides). |
+
+The narrower settings help text in
+[`dac2e49`](https://github.com/emulsify-ds/emulsify-drupal/commit/dac2e49)
+needs no WordPress change: there is no media settings screen, and the
+[media guide](media-embeds.md) already limits these options to YouTube and Vimeo.
 
 WordPress companion fixes in the same PR align grouped component discovery with
 Core, raise the minimum WordPress version to 6.8 to match locked Timber, and
@@ -120,6 +126,10 @@ correct fallback language markup and failing link-color declarations. See the
 | Container and form template suggestions, inline form-error IDs, status-message/feed/progress template moves, and select option attributes | Skip: these belong to Drupal's render and Form APIs. |
 | Favicon dark-mode icons, SVG sanitization, and generated social share image | Skip: WordPress uses core Site Icon and `custom-logo`; SEO plugins own `og:image`. |
 | Default parent logo, library/breakpoint contract, Drupal.org channel-skew validation, Stable 9 parity, and the `dr` CLI | Skip: these are Drupal-only runtime and distribution contracts. |
+| Favicon SVG processing fixes ([`6cb1101`](https://github.com/emulsify-ds/emulsify-drupal/commit/6cb1101), [`16ecce0`](https://github.com/emulsify-ds/emulsify-drupal/commit/16ecce0), [`4a10b74`](https://github.com/emulsify-ds/emulsify-drupal/commit/4a10b74)) | Skip: WordPress uses core Site Icon. |
+| Favicon preview styling in dark admin themes ([`6b8b922`](https://github.com/emulsify-ds/emulsify-drupal/commit/6b8b922)) | Skip: WordPress has no favicon generator. |
+| PostCSS development dependency for parent asset tests ([`88bf3d9`](https://github.com/emulsify-ds/emulsify-drupal/commit/88bf3d9)) | Skip: the WordPress parent has no asset build. |
+| Wider strict-types check, favicon dark-mode test, and hook-contract documentation edits ([`1bc8fb3`](https://github.com/emulsify-ds/emulsify-drupal/commit/1bc8fb3bb64ae7014f50349930216b863976a5b2)) | Skip: these are Drupal-only conventions. |
 
 Although the parent ships no stylesheet, its `theme.json` produces WordPress
 global styles on the frontend: h1–h6 color and typography, visited-link color,
