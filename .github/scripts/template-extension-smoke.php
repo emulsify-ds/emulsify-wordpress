@@ -207,6 +207,28 @@ try {
 	emulsify_extension_expect( false !== strpos( $rtl_output, '<html lang="ar" dir="rtl">' ), 'Plain WordPress language attributes must preserve the language and RTL direction without escaping their quotes.', $errors );
 	emulsify_extension_expect( false !== strpos( $rtl_output, 'Fixture &lt;site&gt; &amp; WordPress' ) && false !== strpos( $rtl_output, 'Page &lt;title&gt; &amp; fixture' ), 'Trusting the core language attribute fragment must preserve autoescaping for site names and page titles.', $errors );
 	$page_expected = file_get_contents( __DIR__ . '/../fixtures/template-extension/page-post.html' );
+	$child_template = get_stylesheet_directory() . '/templates/page.twig';
+	$child_before   = '<!-- child page namespace start -->';
+	$child_after    = '<!-- child page namespace end -->';
+	$context         = emulsify_extension_context( false, true, true );
+	$context['post'] = array( 'id' => 42, 'type' => 'page', 'title' => 'Post <title> & fixture', 'content' => $context['fixture_content'] );
+
+	try {
+		if ( false === file_put_contents( $child_template, '{% extends "@emulsify-tpl/page.twig" %}{% block content %}' . $child_before . '{{ parent() }}' . $child_after . '{% endblock %}' ) ) {
+			throw new RuntimeException( 'Could not write the disposable child page template.' );
+		}
+		$output = $environment->render( '@templates/page.twig', $context );
+		emulsify_extension_expect( 1 === substr_count( $output, $child_before ) && 1 === substr_count( $output, $child_after ), 'The child-first namespace must select the physical child page override exactly once.', $errors );
+		emulsify_extension_expect( str_replace( array( $child_before, $child_after ), '', $output ) === $page_expected, 'The physical child page override must preserve every surrounding parent-page byte.', $errors );
+	} finally {
+		if ( is_file( $child_template ) ) {
+			unlink( $child_template );
+		}
+		// Refresh filesystem lookup caches after removing the temporary override.
+		$environment->setLoader( new \Twig\Loader\ChainLoader( array( $fixtures, $integration->loader_paths( new \Twig\Loader\FilesystemLoader() ) ) ) );
+	}
+	emulsify_extension_expect( $environment->render( '@templates/page.twig', $context ) === $page_expected, 'Removing the physical child page override must restore every parent-page byte.', $errors );
+
 	foreach ( array( 'head', 'header', 'content', 'footer', 'site_header', 'main', 'page_title' ) as $block ) {
 		$name   = 'child-page-' . $block . '.twig';
 		$marker = '<!-- child:' . $block . ' -->';
@@ -255,7 +277,7 @@ try {
 	if ( $errors ) {
 		throw new RuntimeException( implode( "\n", $errors ) );
 	}
-	echo "PASS plain language attributes, RTL, other field autoescaping, child page inheritance, seven block names, replacement boundaries, nested blocks, and structural WordPress hooks.\n";
+	echo "PASS plain language attributes, RTL, other field autoescaping, physical child page lookup and restoration, child page inheritance, seven block names, replacement boundaries, nested blocks, and structural WordPress hooks.\n";
 } catch ( Throwable $throwable ) {
 	fwrite( STDERR, $throwable->getMessage() . "\n" );
 	$exit_code = 1;
