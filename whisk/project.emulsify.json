@@ -4,7 +4,7 @@
     "name": "whisk",
     "machineName": "whisk",
     "generatedFrom": "emulsify-wordpress",
-    "generatedFromVersion": "2.0.0"
+    "generatedFromVersion": "2.1.0"
   },
   "starter": {
     "repository": "https://github.com/emulsify-ds/emulsify-wordpress-starter"

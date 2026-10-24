@@ -1,6 +1,6 @@
 {
   "name": "emulsify-wordpress",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Timber-first WordPress parent theme that generates child themes with Emulsify Core 4, Vite, Storybook, and Twig",
   "engines": {
     "node": ">=24.10"
