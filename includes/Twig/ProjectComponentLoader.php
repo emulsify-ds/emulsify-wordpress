@@ -20,6 +20,13 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 	private $prefix;
 
 	/**
+	 * Project at-namespace prefix.
+	 *
+	 * @var string
+	 */
+	private $at_prefix;
+
+	/**
 	 * Component root paths.
 	 *
 	 * @var array
@@ -41,6 +48,20 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 	private $cache = array();
 
 	/**
+	 * Breadth-first grouping directories, memoized for this loader's request.
+	 *
+	 * @var array
+	 */
+	private $group_directories = array();
+
+	/**
+	 * Directory names excluded by Emulsify Core source discovery.
+	 *
+	 * @var array
+	 */
+	private const SKIP_DIRECTORIES = array( 'node_modules', '.git', '.cache', '.vite', '.out', '.coverage', 'dist' );
+
+	/**
 	 * Constructs the project component loader wrapper.
 	 *
 	 * @param string                       $machine_name Active project machine name.
@@ -48,9 +69,18 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 	 * @param \Twig\Loader\LoaderInterface $loader       Wrapped Twig loader.
 	 */
 	public function __construct( string $machine_name, array $roots, \Twig\Loader\LoaderInterface $loader ) {
-		$this->prefix = $machine_name . ':';
-		$this->roots  = $roots;
-		$this->loader = $loader;
+		$this->prefix    = $machine_name . ':';
+		$this->at_prefix = '@' . $machine_name . '/';
+		$this->roots     = array();
+		$this->loader    = $loader;
+
+		foreach ( $roots as $root ) {
+			$real = realpath( $root );
+
+			if ( false !== $real && is_dir( $real ) && is_readable( $real ) ) {
+				$this->roots[] = str_replace( '\\', '/', $real );
+			}
+		}
 	}
 
 	/**
@@ -213,26 +243,162 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 			return null;
 		}
 
-		$parts    = explode( '/', $component );
-		$filename = end( $parts ) . '.twig';
-
 		foreach ( $this->roots as $root ) {
-			// Support the single-directory component convention first, then the
-			// older flat component.twig form. Roots are already child-first.
-			foreach ( array( $component . '/' . $filename, $component . '.twig' ) as $relative ) {
-				$path = $root . '/' . $relative;
+			$path = $this->find_in_directory( $root, $component, $root );
 
-				if ( is_file( $path ) && is_readable( $path ) ) {
-					$realpath = realpath( $path );
+			if ( null === $path ) {
+				foreach ( $this->group_directories( $root ) as $directory ) {
+					$path = $this->find_in_directory( $directory, $component, $root );
 
-					$this->cache[ $name ] = false !== $realpath ? $realpath : $path;
-
-					return $this->cache[ $name ];
+					if ( null !== $path ) {
+						break;
+					}
 				}
+			}
+
+			if ( null !== $path ) {
+				$this->cache[ $name ] = $path;
+
+				return $path;
+			}
+		}
+
+		$this->cache[ $name ] = null;
+
+		return null;
+	}
+
+	/**
+	 * Checks Core's ordered file candidates below one base directory.
+	 *
+	 * @param string $directory Base directory.
+	 * @param string $component Component-relative template name.
+	 * @param string $root      Owning component root.
+	 * @return string|null Canonical template path.
+	 */
+	private function find_in_directory( string $directory, string $component, string $root ): ?string {
+		$without_twig = (string) preg_replace( '/\.twig$/i', '', $component );
+		$stem         = basename( $without_twig );
+		$candidates   = array_unique(
+			array(
+				$component,
+				$component . '.twig',
+				$component . '.html.twig',
+				$without_twig . '/' . $stem . '.twig',
+				$without_twig . '/' . $stem . '.html.twig',
+			)
+		);
+
+		foreach ( $candidates as $candidate ) {
+			$path = $this->normalize_path( rtrim( $directory, '/' ) . '/' . $candidate );
+
+			if ( ! $this->is_within_root( $root, $path ) || ! is_file( $path ) || ! is_readable( $path ) ) {
+				continue;
+			}
+
+			$real = realpath( $path );
+
+			if ( false !== $real && $this->is_within_root( $root, str_replace( '\\', '/', $real ) ) ) {
+				return $real;
 			}
 		}
 
 		return null;
+	}
+
+	/**
+	 * Discovers groups in Core's breadth-first, UTF-16 sibling order.
+	 *
+	 * Directory symlinks are not traversed, matching Node's Dirent.isDirectory().
+	 *
+	 * @param string $root Canonical component root.
+	 * @return array Group directory paths.
+	 */
+	private function group_directories( string $root ): array {
+		if ( array_key_exists( $root, $this->group_directories ) ) {
+			return $this->group_directories[ $root ];
+		}
+
+		$groups  = array();
+		$pending = array( $root );
+
+		for ( $index = 0; isset( $pending[ $index ] ); ++$index ) {
+			$directory = $pending[ $index ];
+
+			try {
+				$entries = new \FilesystemIterator( $directory, \FilesystemIterator::SKIP_DOTS );
+			} catch ( \UnexpectedValueException $exception ) {
+				continue;
+			}
+
+			$children = array();
+
+			foreach ( $entries as $entry ) {
+				$name = $entry->getFilename();
+
+				if ( $entry->isLink() || ! $entry->isDir() || in_array( $name, self::SKIP_DIRECTORIES, true ) ) {
+					continue;
+				}
+
+				$path = str_replace( '\\', '/', $entry->getPathname() );
+				$real = realpath( $path );
+
+				if ( false !== $real && $this->is_within_root( $root, $path ) && $this->is_within_root( $root, str_replace( '\\', '/', $real ) ) ) {
+					$children[ mb_convert_encoding( $name, 'UTF-16BE', 'UTF-8' ) ] = $path;
+				}
+			}
+
+			ksort( $children, SORT_STRING );
+
+			foreach ( $children as $child ) {
+				$groups[]  = $child;
+				$pending[] = $child;
+			}
+		}
+
+		$this->group_directories[ $root ] = $groups;
+
+		return $groups;
+	}
+
+	/**
+	 * Checks a normalized absolute path against a canonical root boundary.
+	 *
+	 * @param string $root Component root.
+	 * @param string $path Candidate lexical or real path.
+	 * @return bool TRUE when the path stays inside the root.
+	 */
+	private function is_within_root( string $root, string $path ): bool {
+		$prefix = rtrim( $root, '/' ) . '/';
+
+		return $path === $root || (
+			str_starts_with( $path, $prefix )
+			&& ! str_starts_with( substr( $path, strlen( $prefix ) ), '..' )
+		);
+	}
+
+	/**
+	 * Resolves lexical dot segments after each candidate suffix is appended.
+	 *
+	 * @param string $path Absolute path with POSIX separators.
+	 * @return string Normalized absolute path.
+	 */
+	private function normalize_path( string $path ): string {
+		$parts = array();
+
+		foreach ( explode( '/', $path ) as $part ) {
+			if ( '' === $part || '.' === $part ) {
+				continue;
+			}
+
+			if ( '..' === $part ) {
+				array_pop( $parts );
+			} else {
+				$parts[] = $part;
+			}
+		}
+
+		return ( str_starts_with( $path, '/' ) ? '/' : '' ) . implode( '/', $parts );
 	}
 
 	/**
@@ -246,12 +412,28 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 			return null;
 		}
 
-		$component = substr( $name, strlen( $this->prefix ) );
+		$prefix    = str_starts_with( $name, $this->prefix ) ? $this->prefix : $this->at_prefix;
+		$component = str_replace( '\\', '/', substr( $name, strlen( $prefix ) ) );
 
-		if ( 1 !== preg_match( '/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?$/', $component ) ) {
-			// Keep project component references intentionally shallow:
-			// component-name or group/component-name. Legacy deep paths are
-			// still available through explicit @namespace configuration.
+		if ( '' === $component || str_contains( $component, "\0" ) || str_starts_with( $component, '/' ) || preg_match( '/^[A-Za-z]:/', $component ) ) {
+			return null;
+		}
+
+		$depth = 0;
+
+		foreach ( explode( '/', $component ) as $part ) {
+			if ( '..' === $part ) {
+				if ( 0 === $depth ) {
+					return null;
+				}
+
+				--$depth;
+			} elseif ( '' !== $part && '.' !== $part ) {
+				++$depth;
+			}
+		}
+
+		if ( 0 === $depth && 1 !== preg_match( '/[^.\/]/', $component ) ) {
 			return null;
 		}
 
@@ -265,7 +447,7 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 	 * @return bool TRUE when the name targets this project namespace.
 	 */
 	private function is_project_reference( string $name ): bool {
-		return 0 === strncmp( $name, $this->prefix, strlen( $this->prefix ) );
+		return str_starts_with( $name, $this->prefix ) || str_starts_with( $name, $this->at_prefix );
 	}
 
 	/**
@@ -275,9 +457,7 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 	 * @return string Error message.
 	 */
 	private function project_loader_error( string $name ): string {
-		$component = substr( $name, strlen( $this->prefix ) );
-
-		if ( '' === $component || false !== strpos( $component, "\0" ) || null === $this->project_component_name( $name ) ) {
+		if ( null === $this->project_component_name( $name ) ) {
 			return sprintf( 'Project component template name "%s" is invalid.', $name );
 		}
 

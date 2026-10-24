@@ -279,7 +279,6 @@ try {
 	$style       = file_get_contents( $destination . '/style.css' );
 	$package     = emulsify_cli_smoke_json( $destination . '/package.json' );
 	$project     = emulsify_cli_smoke_json( $destination . '/project.emulsify.json' );
-	$page        = file_get_contents( $destination . '/templates/page.twig' );
 	$functions   = file_get_contents( $destination . '/functions.php' );
 	$smoke_pattern = emulsify_cli_smoke_json( $destination . '/patterns/smoke-pattern.json' );
 
@@ -297,8 +296,7 @@ try {
 	emulsify_cli_smoke_assert( 'acme-child' === $project['project']['machineName'], 'project.emulsify.json should update machineName.' );
 	emulsify_cli_smoke_assert( 'emulsify-wordpress' === $project['project']['generatedFrom'], 'project.emulsify.json should identify the generated child theme source.' );
 	emulsify_cli_smoke_assert( emulsify_cli_smoke_expected_version() === $project['project']['generatedFromVersion'], 'project.emulsify.json should record the generated child theme source version.' );
-	emulsify_cli_smoke_assert( false !== strpos( $page, 'acme-child-page' ), 'Example template should update slug class.' );
-	emulsify_cli_smoke_assert( false === strpos( $page, 'whisk-page' ), 'Example template should not keep the whisk slug class.' );
+	emulsify_cli_smoke_assert( ! file_exists( $destination . '/templates' ), 'Fresh generated child themes should inherit parent templates without a local templates directory.' );
 	emulsify_cli_smoke_assert( false !== strpos( $functions, 'Acme Theme child theme hooks.' ), 'functions.php should update visible Whisk label.' );
 	emulsify_cli_smoke_assert( is_file( $destination . '/src/components/.gitkeep' ), 'Generated child theme should keep the empty component source placeholder.' );
 	emulsify_cli_smoke_assert( is_file( $destination . '/patterns/.gitkeep' ), 'Generated child theme should keep the empty pattern placeholder.' );
@@ -515,7 +513,7 @@ try {
 
 	$GLOBALS['emulsify_mkdir_failure'] = static function ( string $target ): bool {
 		$normalized = str_replace( '\\', '/', $target );
-		return false !== strpos( $normalized, '/rollback-child.tmp-' ) && str_ends_with( $normalized, '/templates' );
+		return false !== strpos( $normalized, '/rollback-child.tmp-' ) && str_ends_with( $normalized, '/config' );
 	};
 
 	try {

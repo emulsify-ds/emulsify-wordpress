@@ -22,6 +22,9 @@ vendor
 # Storybook
 .out
 
+# Rendered WordPress accessibility reports.
+/.artifacts/
+
 # Local AI/release working notes
 /*-PROMPTS.md
 /PROMPTS-*.md

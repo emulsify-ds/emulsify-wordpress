@@ -7,16 +7,23 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   add-contributors:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v2
-      - uses: BobAnkh/add-contributors@master
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: BobAnkh/add-contributors@de6c43a0c154b093a210d8bdf7ab283aba8452dd # v0.2.2
         with:
           CONTRIBUTOR: '### Contributors'
           COLUMN_PER_ROW: '6'
-          ACCESS_TOKEN: ${{secrets.ADD_TO_PROJECT_PAT}}
+          ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           IMG_WIDTH: '100'
           FONT_SIZE: '14'
           PATH: '/README.md'

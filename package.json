@@ -1,6 +1,6 @@
 {
   "name": "emulsify-wordpress",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Timber-first WordPress parent theme that generates child themes with Emulsify Core 4, Vite, Storybook, and Twig",
   "engines": {
     "node": ">=24.10"
@@ -35,6 +35,10 @@
     "pr:check": "node .github/scripts/pr-validation.cjs",
     "release:check": "node .github/scripts/release-check.cjs",
     "test:generated-theme": "node --test .github/scripts/generated-theme-contract.test.cjs",
+    "test:audit-wrappers": "node --test .github/scripts/generated-audit-wrappers.test.cjs",
+    "test:a11y-runner": "node --test .github/scripts/a11y-runner.test.cjs",
+    "test:lint-wrappers": "node --test .github/scripts/lint-wrappers.test.cjs",
+    "test:twig-helpers": "node .github/scripts/twig-helper-contract.cjs",
     "smoke:acf-json": "php .github/scripts/acf-local-json-smoke.php",
     "smoke:asset-manifest": "php .github/scripts/asset-manifest-smoke.php",
     "smoke:attributes": "php .github/scripts/attribute-helper-smoke.php",
@@ -46,8 +50,11 @@
     "smoke:core-block-twig": "php .github/scripts/core-block-twig-renderer-smoke.php",
     "smoke:editor-enhancements": "php .github/scripts/editor-enhancements-smoke.php",
     "smoke:editor-policy": "php .github/scripts/editor-policy-smoke.php",
+    "smoke:navigation": "php .github/scripts/fallback-navigation-smoke.php",
+    "smoke:jest-project": "node .github/scripts/jest-project-smoke.cjs",
     "smoke:patterns": "php .github/scripts/pattern-registry-smoke.php",
     "smoke:starter-init": "node .github/scripts/wordpress-starter-init-smoke.cjs",
+    "smoke:template-extension": "php .github/scripts/template-extension-smoke.php",
     "smoke:theme-filters": "php .github/scripts/theme-filters-smoke.php",
     "smoke:twig-autoescape": "php .github/scripts/twig-autoescape-smoke.php",
     "smoke:twig-switch": "php .github/scripts/twig-switch-smoke.php",
@@ -66,6 +73,7 @@
     "@semantic-release/github": "^12.0.9",
     "@semantic-release/release-notes-generator": "^14.1.1",
     "husky": "^9.1.7",
+    "js-yaml": "4.3.2",
     "lint-staged": "^17.3.0",
     "semantic-release": "^25.0.8"
   }

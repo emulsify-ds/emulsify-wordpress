@@ -6,7 +6,7 @@ This guide covers local setup, the frontend workflow, and what this project owns
 
 - An existing WordPress site with the Emulsify parent theme and this generated theme installed in `wp-content/themes/%%EMULSIFY_MACHINE_NAME%%` (or the equivalent themes directory).
 - The Timber plugin or Composer package available to the parent theme. The parent theme owns Timber bootstrapping, Twig namespaces, and route fallbacks.
-- Node.js 24 or newer. `package.json` declares the supported range and `.nvmrc` records the recommended version.
+- Node.js 24.13.0 or newer for Emulsify Core 4.5.0. The theme advertises `>=24`, but Core requires `>=24.13.0`; `.nvmrc` selects the Node 24 line without pinning a minor version. Check the resolved Core package's `engines` after dependency updates.
 - nvm is optional but keeps the Node version aligned with the project.
 - npm, which ships with Node.js.
 
@@ -53,7 +53,33 @@ npm run inspect:components -- --json
 npm run inspect:components -- --help
 ```
 
-The inspector is safe to run before a component library exists. A component-neutral project returns a valid empty report.
+The inspector locates non-partial Twig templates recognized by Emulsify Core
+and reports source/output paths, references, and namespace collisions. It is
+safe to run before a component library exists; a component-neutral project
+returns a valid empty report. Read component schemas, stories, and source for
+their APIs. The inventory does not prove WordPress block registration or cover
+every component type.
+
+## AI-assisted development
+
+The theme's [AGENTS.md](../AGENTS.md) routes assistants to project facts and
+guides. The optional
+[WordPress integration skill](../.agents/skills/emulsify-wordpress-integration/SKILL.md)
+uses [the integration guide](wordpress-integration.md) for Timber template
+selection, WordPress data mapping, assets, and site verification.
+
+Start a session from this generated theme directory when an assistant discovers
+local `.agents/skills/` from its working directory. A session started at the
+WordPress site root may need an explicit instruction to read the theme's
+`AGENTS.md` and skill. Teams can add that routing to existing site-root
+instructions or install the skill through their assistant's supported
+mechanism. Generation leaves site-root instructions unchanged and does not
+configure a developer's AI tool.
+
+Read `docs/component-library.md` when the installed library supplies it, plus
+local component instructions and contracts. Its directories, props, slots,
+tokens, entrypoints, and build integration remain library-specific; WordPress
+data mappings and project conventions belong to this theme or a project plugin.
 
 ## Development workflow
 
@@ -89,7 +115,50 @@ npm run test
 npm run a11y
 ```
 
-`npm run test` succeeds when no tests have been added yet. The accessibility check builds Storybook first, so it takes longer than lint or unit tests.
+`npm run test` executes project ESM tests and collects coverage from project
+source, including untested files. It fails when no tests have been added yet;
+add tests alongside source under `src/`, `components/`, or `config/`.
+`npm run twatch` has the same discovery behavior in watch mode.
+
+The accessibility check builds Storybook first, then delegates to Core's
+bounded runner while rejecting an empty story list. Project options in
+`config/emulsify-core/a11y.config.js`, including `pa11y.wait`, are honored.
+Chrome's sandbox stays enabled; set `PUPPETEER_EXECUTABLE_PATH` to an installed
+Chrome when using a managed browser. The optional `@emulsify/core/a11y/wcag22`
+preset can be adopted in this config, preserving any existing project options.
+
+For machine-readable project audits, silence npm's command banner and keep the
+documentation footer on stderr:
+
+```bash
+npm run audit --silent -- --json
+npm run audit:twig-stories --silent -- --json
+```
+
+Both wrappers preserve Core's exit status and forward arguments unchanged. Use
+`npm run audit --silent -- --json --fail-on warn` or
+`npm run audit:twig-stories --silent -- --json --fail-on-found` to fail when
+migration findings are present. Quote paths containing spaces, for example
+`npm run audit --silent -- --root "../theme source" --json`. Existing generated
+themes must copy the updated audit scripts from the current starter; updating
+Core alone does not change a project's `package.json`.
+
+To update an existing wrapper, keep `"$@"`, the `status=$?` immediately after
+Core runs, and `exit $status`. Add only `>&2` after the footer's `printf`:
+
+```diff
+- printf "\nAudit docs: https://github.com/emulsify-ds/emulsify-core/blob/4.x/docs/migration-4x.md#storybook-migration\n"; exit $status
++ printf "\nAudit docs: https://github.com/emulsify-ds/emulsify-core/blob/4.x/docs/migration-4x.md#storybook-migration\n" >&2; exit $status
+```
+
+Apply the same redirection to `audit:twig-stories`, retaining its existing
+`Migration docs:` footer. Alternatively, bypass the project wrappers and run
+the installed Core executables directly without downloading another version:
+
+```bash
+npx --no-install emulsify-audit --json
+npx --no-install emulsify-audit-twig-stories --json
+```
 
 ## Project ownership
 

@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 1,
+  "description": "Observed WordPress parent and Core helper behavior, including known differences. Expectations are reviewed literals; this check never rewrites them. repeat joins call output with | and records the final attributes/context.",
+  "reference": {
+    "coreVersion": "4.5.0",
+    "corpus": "emulsify-core/src/extensions/twig/__fixtures__/parity-v1.json",
+    "documentation": "emulsify-core/docs/twig-php-parity.md"
+  },
+  "cases": [
+    {
+      "id": "bem-block",
+      "helper": "bem",
+      "args": ["button"],
+      "php": {"attributes": {"class": ["button"]}, "html": "class=\"button\"", "contextAfter": {}},
+      "js": {"attributes": {"class": ["button"]}, "html": "class=\"button\"", "contextAfter": {}}
+    },
+    {
+      "id": "bem-element-modifiers-and-extras",
+      "helper": "bem",
+      "args": ["title", ["small", "small"], "card", ["js-click", "title"]],
+      "php": {"attributes": {"class": ["card__title", "card__title--small", "js-click", "title"]}, "html": "class=\"card__title card__title--small js-click title\"", "contextAfter": {}},
+      "js": {"attributes": {"class": ["card__title", "card__title--small", "js-click", "title"]}, "html": "class=\"card__title card__title--small js-click title\"", "contextAfter": {}}
+    },
+    {
+      "id": "bem-object-block-element",
+      "helper": "bem",
+      "args": [{"block": "card", "element": "title", "modifiers": ["small"]}],
+      "php": {"attributes": {"class": ["card__title", "card__title--small"]}, "html": "class=\"card__title card__title--small\"", "contextAfter": {}},
+      "js": {"attributes": {"class": ["card__title", "card__title--small"]}, "html": "class=\"card__title card__title--small\"", "contextAfter": {}}
+    },
+    {
+      "id": "bem-object-camelcase-aliases",
+      "helper": "bem",
+      "args": [{"baseClass": "button", "blockName": "card", "extra": ["utility"]}],
+      "php": {"attributes": {"class": ["card__button", "utility"]}, "html": "class=\"card__button utility\"", "contextAfter": {}},
+      "js": {"attributes": {"class": ["card__button", "utility"]}, "html": "class=\"card__button utility\"", "contextAfter": {}}
+    },
+    {
+      "id": "bem-object-explicit-snakecase-keys",
+      "helper": "bem",
+      "args": [{"base_class": "title", "blockname": "card", "block": "ignored", "element": "ignored", "attributes": {"data-count": 0}}],
+      "php": {"attributes": {"data-count": "0", "class": ["card__title"]}, "html": "data-count=\"0\" class=\"card__title\"", "contextAfter": {}},
+      "js": {"attributes": {"data-count": "0", "class": ["card__title"]}, "html": "data-count=\"0\" class=\"card__title\"", "contextAfter": {}}
+    },
+    {
+      "id": "bem-nested-lists-and-punctuation",
+      "helper": "bem",
+      "args": ["Ünicode card/1", ["wide space", ["nested"], "", null, false], "", ["u:wide", "2xl"]],
+      "php": {"attributes": {"class": ["nicode", "card-1", "card-1--wide", "space", "card-1--nested", "u-wide", "_2xl"]}, "html": "class=\"nicode card-1 card-1--wide space card-1--nested u-wide _2xl\"", "contextAfter": {}},
+      "js": {"attributes": {"class": ["nicode", "card-1", "card-1--wide", "space", "card-1--nested", "u-wide", "_2xl"]}, "html": "class=\"nicode card-1 card-1--wide space card-1--nested u-wide _2xl\"", "contextAfter": {}}
+    },
+    {
+      "id": "bem-boolean-and-numeric-values",
+      "helper": "bem",
+      "args": ["card", [false, 0, true, ["nested"]], "", [0, "u:wide", "2xl"]],
+      "php": {"attributes": {"class": ["card", "card--0", "card--1", "card--nested", "_0", "u-wide", "_2xl"]}, "html": "class=\"card card--0 card--1 card--nested _0 u-wide _2xl\"", "contextAfter": {}},
+      "js": {"attributes": {"class": ["card", "card--0", "card--true", "card--nested", "u-wide", "_2xl"]}, "html": "class=\"card card--0 card--true card--nested u-wide _2xl\"", "contextAfter": {}},
+      "differences": [
+        {"field": "attributes", "reason": "PHP casts true modifiers to 1 and retains numeric zero extra classes; Core stringifies true and drops numeric zero class values. Both omit false modifiers and retain zero modifiers."},
+        {"field": "html", "reason": "The differing boolean modifier and numeric zero class tokens remain visible in the exact serialized HTML."}
+      ]
+    },
+    {
+      "id": "bem-array-context-and-attribute-precedence",
+      "helper": "bem",
+      "context": {"id": "context", "class": ["context", "seed"], "title": "present"},
+      "args": ["button", ["wide"], "", ["utility"], {"id": "option", "class": ["seed", "button"]}],
+      "php": {"attributes": {"id": "context", "class": ["seed", "button", "button--wide", "utility", "context"], "title": "present"}, "html": "id=\"context\" class=\"seed button button--wide utility context\" title=\"present\"", "contextAfter": {"id": "context", "class": ["context", "seed"], "title": "present"}},
+      "js": {"attributes": {"id": "context", "class": ["seed", "button", "button--wide", "utility", "context"], "title": "present"}, "html": "id=\"context\" class=\"seed button button--wide utility context\" title=\"present\"", "contextAfter": {}},
+      "differences": [{"field": "contextAfter", "reason": "The parent copies caller attributes without consuming them; Core clears invocation context attributes after a helper call."}]
+    },
+    {
+      "id": "bem-bag-context",
+      "helper": "bem",
+      "contextKind": "bag",
+      "context": {"id": "existing", "class": ["context", "button"]},
+      "args": ["button", ["wide"]],
+      "php": {"attributes": {"class": ["button", "button--wide", "context"], "id": "existing"}, "html": "class=\"button button--wide context\" id=\"existing\"", "contextAfter": {"id": "existing", "class": ["context", "button"]}},
+      "js": {"attributes": {"class": ["button", "button--wide", "context"], "id": "existing"}, "html": "class=\"button button--wide context\" id=\"existing\"", "contextAfter": {}},
+      "differences": [{"field": "contextAfter", "reason": "The parent also copies its AttributeBag context without mutating the original bag; Core clears the caller's context slot."}]
+    },
+    {
+      "id": "bem-empty",
+      "helper": "bem",
+      "args": ["", [], "", []],
+      "php": {"attributes": {}, "html": "", "contextAfter": {}},
+      "js": {"attributes": {}, "html": "", "contextAfter": {}}
+    },
+    {
+      "id": "add-class-merging-and-list-replacement",
+      "helper": "add_attributes",
+      "context": {"class": ["base", "shared"], "aria-describedby": ["old", "same"]},
+      "args": [{"class": ["shared", "new"], "aria-describedby": ["new", "same"]}],
+      "php": {"attributes": {"class": ["base", "shared", "new"], "aria-describedby": ["new", "same"]}, "html": "class=\"base shared new\" aria-describedby=\"new same\"", "contextAfter": {"class": ["base", "shared"], "aria-describedby": ["old", "same"]}},
+      "js": {"attributes": {"class": ["base", "shared", "new"], "aria-describedby": ["new", "same"]}, "html": "class=\"base shared new\" aria-describedby=\"new same\"", "contextAfter": {}},
+      "differences": [{"field": "contextAfter", "reason": "Class merging and non-class list replacement agree, but only Core consumes caller attributes."}]
+    },
+    {
+      "id": "add-booleans-aria-and-falsy-classes",
+      "helper": "add_attributes",
+      "args": [{"disabled": true, "hidden": false, "data-null": null, "aria-expanded": false, "aria-selected": true, "aria-checked": "false", "class": [true, false, 0, null, ""]}],
+      "php": {"attributes": {"disabled": true, "aria-selected": true, "aria-checked": "false", "class": ["_1", "_0"]}, "html": "disabled aria-selected aria-checked=\"false\" class=\"_1 _0\"", "contextAfter": {}},
+      "js": {"attributes": {"disabled": true, "aria-selected": true, "aria-checked": "false", "class": ["true"]}, "html": "disabled aria-selected aria-checked=\"false\" class=\"true\"", "contextAfter": {}},
+      "differences": [
+        {"field": "attributes", "reason": "PHP class casts keep true as 1 and numeric zero; Core retains true as the token true and drops numeric zero. Both treat boolean ARIA input like HTML booleans; ARIA string values are the portable form."},
+        {"field": "html", "reason": "The class token differences remain serialized; neither runtime silently coerces boolean ARIA input into the strings required by ARIA."}
+      ]
+    },
+    {
+      "id": "add-boolean-overrides-and-empty-string",
+      "helper": "add_attributes",
+      "context": {"disabled": true, "aria-expanded": "true", "title": "before", "data-null": "before"},
+      "args": [{"disabled": false, "aria-expanded": false, "title": "", "data-null": null}],
+      "php": {"attributes": {"disabled": true, "aria-expanded": "true", "title": "", "data-null": "before"}, "html": "disabled aria-expanded=\"true\" title=\"\" data-null=\"before\"", "contextAfter": {"disabled": true, "aria-expanded": "true", "title": "before", "data-null": "before"}},
+      "js": {"attributes": {"disabled": true, "aria-expanded": "true", "title": "", "data-null": "before"}, "html": "disabled aria-expanded=\"true\" title=\"\" data-null=\"before\"", "contextAfter": {}},
+      "differences": [{"field": "contextAfter", "reason": "Both ignore false/null replacements and preserve empty strings; WordPress retains the source context and Core consumes it."}]
+    },
+    {
+      "id": "add-escaping-and-bag-context",
+      "helper": "add_attributes",
+      "contextKind": "bag",
+      "context": {"id": "old"},
+      "args": [{"title": "A & \"B\" <C> 'D'", "href": "/?a=1&b=2", "data-count": 0, "disabled": true}],
+      "php": {"attributes": {"id": "old", "title": "A & \"B\" <C> 'D'", "href": "/?a=1&b=2", "data-count": "0", "disabled": true}, "html": "id=\"old\" title=\"A &amp; &quot;B&quot; &lt;C&gt; 'D'\" href=\"/?a=1&amp;b=2\" data-count=\"0\" disabled", "contextAfter": {"id": "old"}},
+      "js": {"attributes": {"id": "old", "title": "A & \"B\" <C> 'D'", "href": "/?a=1&b=2", "data-count": "0", "disabled": true}, "html": "id=\"old\" title=\"A &amp; &quot;B&quot; &lt;C&gt; 'D'\" href=\"/?a=1&amp;b=2\" data-count=\"0\" disabled", "contextAfter": {}},
+      "differences": [{"field": "contextAfter", "reason": "The exact escaping, numeric stringification, and boolean serialization agree; only Core consumes the caller's bag context."}]
+    },
+    {
+      "id": "add-invalid-names-and-nested-values",
+      "helper": "add_attributes",
+      "args": [{"bad name": "ignored", "_keys": ["ignored"], "data-good": [true, false, 0, "a&b", ["nested"]], "aria-expanded": "false", "aria-selected": "true", "class": "class=\"legacy legacy extra\""}],
+      "php": {"attributes": {"data-good": ["1", "0", "a&b", "nested"], "aria-expanded": "false", "aria-selected": "true", "class": ["legacy", "extra"]}, "html": "data-good=\"1 0 a&amp;b nested\" aria-expanded=\"false\" aria-selected=\"true\" class=\"legacy extra\"", "contextAfter": {}},
+      "js": {"attributes": {"data-good": ["true", "0", "a&b", "nested"], "aria-expanded": "false", "aria-selected": "true", "class": ["legacy", "extra"]}, "html": "data-good=\"true 0 a&amp;b nested\" aria-expanded=\"false\" aria-selected=\"true\" class=\"legacy extra\"", "contextAfter": {}},
+      "differences": [
+        {"field": "attributes", "reason": "Inside non-class attribute lists PHP casts true to 1, while Core stringifies it to true. Invalid names, _keys, legacy class strings, and explicit ARIA strings agree."},
+        {"field": "html", "reason": "The true list-item cast difference remains visible in serialized data-good."}
+      ]
+    },
+    {
+      "id": "add-repeated-context-consumption",
+      "helper": "add_attributes",
+      "repeat": 2,
+      "context": {"id": "existing", "class": ["context"]},
+      "args": [{"class": ["extra"]}],
+      "php": {"attributes": {"id": "existing", "class": ["context", "extra"]}, "html": "id=\"existing\" class=\"context extra\"|id=\"existing\" class=\"context extra\"", "contextAfter": {"id": "existing", "class": ["context"]}},
+      "js": {"attributes": {"class": ["extra"]}, "html": "id=\"existing\" class=\"context extra\"|class=\"extra\"", "contextAfter": {}},
+      "differences": [
+        {"field": "attributes", "reason": "The second WordPress helper call still merges source context attributes, whereas Core consumed them during the first call."},
+        {"field": "html", "reason": "WordPress repeats source context attributes in the second output; Core prints them only on the first call."},
+        {"field": "contextAfter", "reason": "The parent preserves caller context on both calls; Core clears it after the first call."}
+      ]
+    },
+    {
+      "id": "add-no-arguments-context-leak",
+      "helper": "add_attributes",
+      "context": {"id": "existing", "class": ["context"]},
+      "contextVars": {"fixture_secret": "do-not-print"},
+      "args": [],
+      "php": {"attributes": {"id": "existing", "class": ["context"]}, "html": "id=\"existing\" class=\"context\"", "contextAfter": {"id": "existing", "class": ["context"]}},
+      "js": {"attributes": {"id": "existing", "class": ["context"]}, "html": "id=\"existing\" class=\"context\"", "contextAfter": {}},
+      "differences": [
+        {"field": "contextAfter", "reason": "WordPress leaves source attributes untouched, while Core consumes them."}
+      ]
+    },
+    {
+      "id": "bem-no-arguments-context-options-leak",
+      "helper": "bem",
+      "context": {"id": "existing", "class": ["context"]},
+      "contextVars": {"block": "unrelated-block"},
+      "args": [],
+      "php": {"attributes": {"id": "existing", "class": ["context"]}, "html": "id=\"existing\" class=\"context\"", "contextAfter": {"id": "existing", "class": ["context"]}},
+      "js": {"attributes": {"id": "existing", "class": ["context"]}, "html": "id=\"existing\" class=\"context\"", "contextAfter": {}},
+      "differences": [
+        {"field": "contextAfter", "reason": "WordPress leaves source attributes untouched, while Core consumes them."}
+      ]
+    },
+    {
+      "id": "add-event-handler-names",
+      "helper": "add_attributes",
+      "args": [{"onclick": "x()", "onMouseOver": "y()", "data-ok": "1"}],
+      "php": {"attributes": {"data-ok": "1"}, "html": "data-ok=\"1\"", "contextAfter": {}},
+      "js": {"attributes": {"onclick": "x()", "onMouseOver": "y()", "data-ok": "1"}, "html": "onclick=\"x()\" onMouseOver=\"y()\" data-ok=\"1\"", "contextAfter": {}},
+      "differences": [
+        {"field": "attributes", "reason": "The WordPress parent intentionally rejects every case-insensitive on-prefixed attribute name to prevent inline event handlers. Core currently accepts those names."},
+        {"field": "html", "reason": "PHP omits event-handler attributes from serialized markup; Core currently serializes them. Both retain data-ok."}
+      ]
+    },
+    {
+      "id": "add-empty",
+      "helper": "add_attributes",
+      "args": [{}],
+      "php": {"attributes": {}, "html": "", "contextAfter": {}},
+      "js": {"attributes": {}, "html": "", "contextAfter": {}}
+    }
+  ]
+}

@@ -54,6 +54,7 @@ mkdir -p "${staging_root}"
 
 runtime_files=(
   "404.php"
+  "AGENTS.md"
   "LICENSE"
   "README.md"
   "UPGRADE.md"
@@ -127,11 +128,15 @@ if [[ ! -f "${staging_root}/vendor/autoload.php" ]]; then
 fi
 
 required_release_paths=(
+  "AGENTS.md"
   "UPGRADE.md"
   "docs/wp-cli-child-theme-generation.md"
   "functions.php"
   "vendor/autoload.php"
   "whisk/README.md"
+  "whisk/AGENTS.md"
+  "whisk/.agents/skills/emulsify-wordpress-integration/SKILL.md"
+  "whisk/docs/wordpress-integration.md"
   "whisk/package.json"
   "whisk/project.emulsify.json"
   "whisk/style.css"
@@ -209,6 +214,14 @@ echo "Creating ${artifact_path}..."
   cd "${staging_parent}"
   find emulsify -type f -print | LC_ALL=C sort | zip -X -q "${temporary_archive}" -@
 )
+
+archive_listing="$(zip -sf "${temporary_archive}")"
+for relative_path in "${required_release_paths[@]}"; do
+  if ! grep -Fqx "  emulsify/${relative_path}" <<< "${archive_listing}"; then
+    echo "Required release path not found in ZIP: ${relative_path}" >&2
+    exit 1
+  fi
+done
 
 mv "${temporary_archive}" "${artifact_path}"
 echo "Built ${artifact_path}"

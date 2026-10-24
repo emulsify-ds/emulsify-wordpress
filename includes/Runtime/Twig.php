@@ -129,16 +129,32 @@ final class Twig {
 	 * @return array Updated Timber functions.
 	 */
 	public function functions( array $functions ): array {
+		// Timber injects context even when Twig supplies no arguments. Pad that
+		// case so it cannot be mistaken for the direct PHP single-argument form.
 		$functions['bem'] = array(
-			'callable'      => array( $this, 'bem' ),
-			'needs_context' => true,
-			'is_safe'       => array( 'html' ),
+			'callable' => function ( array $context, ...$arguments ): AttributeBag {
+				if ( empty( $arguments ) ) {
+					$arguments[] = '';
+				}
+				return $this->bem( $context, ...$arguments );
+			},
+			'options'  => array(
+				'needs_context' => true,
+				'is_safe'       => array( 'html' ),
+			),
 		);
 
 		$functions['add_attributes'] = array(
-			'callable'      => array( $this, 'add_attributes' ),
-			'needs_context' => true,
-			'is_safe'       => array( 'html' ),
+			'callable' => function ( array $context, ...$arguments ): AttributeBag {
+				if ( empty( $arguments ) ) {
+					$arguments[] = array();
+				}
+				return $this->add_attributes( $context, ...$arguments );
+			},
+			'options'  => array(
+				'needs_context' => true,
+				'is_safe'       => array( 'html' ),
+			),
 		);
 
 		return $functions;

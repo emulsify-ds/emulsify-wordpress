@@ -1,5 +1,6 @@
 {# Shared document shell. Keep structural WordPress hooks here so child page
-   templates can focus on content blocks and component composition. #}
+   templates can focus on content blocks and component composition.
+   Timber supplies language_attributes as the trusted WordPress core attribute fragment. #}
 {% set body_attributes = {
     class: body_class|default('')
 } %}
@@ -36,7 +37,7 @@
 } %}
 {% set menu_items = menu|default(null) ? menu.get_items : [] %}
 <!doctype html>
-<html {{ site.language_attributes|default('') }}>
+<html {{ site.language_attributes|default('')|raw }}>
     {% block head %}
         {% include '@templates/partials/head.twig' %}
     {% endblock %}
@@ -45,6 +46,7 @@
         {{ function('wp_body_open') }}
         <a {{ add_attributes(skip_link_attributes) }}>{{ function('__', 'Skip to content', 'emulsify') }}</a>
 
+{% block site_header %}
         <header {{ add_attributes(site_header_attributes) }}>
             <div {{ add_attributes(site_header_inner_attributes) }}>
                 {% block header %}
@@ -63,16 +65,21 @@
                 {% endblock %}
             </div>
         </header>
+{% endblock %}
 
+{% block main %}
         <main {{ add_attributes(site_main_attributes) }}>
+{% block page_title %}
             {% if title|default(null) %}
                 <header {{ add_attributes(page_header_attributes) }}>
                     <h1 {{ add_attributes(page_header_title_attributes) }}>{{ title }}</h1>
                 </header>
             {% endif %}
+{% endblock %}
 
             {% block content %}{% endblock %}
         </main>
+{% endblock %}
 
         {% block footer %}
             {% include '@templates/partials/footer.twig' %}

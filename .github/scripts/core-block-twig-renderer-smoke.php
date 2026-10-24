@@ -51,7 +51,7 @@ namespace Timber {
 				'<p class="wp-block wp-block-paragraph mapped">%s:%s:%s</p>',
 				$template,
 				$context['block_name'] ?? '',
-				$context['attributes']['className'] ?? ''
+				$context['block_attributes']['className'] ?? ''
 			);
 		}
 	}
@@ -310,6 +310,8 @@ namespace {
 			'blockName'    => 'core/paragraph',
 			'attrs'        => array(
 				'className' => 'intro',
+				'level'     => 2,
+				'anchor'    => 'saved-anchor',
 			),
 			'innerContent' => array( 'Original' ),
 			'innerBlocks'  => array(),
@@ -342,13 +344,15 @@ namespace {
 			'emulsify_theme_core_block_twig_context',
 			static function ( array $context ): array {
 				$context['smoke_context'] = true;
+				$context['legacy_level']  = $context['attributes']['level'] ?? 'empty';
 
 				return $context;
 			}
 		);
 
 		\Timber\Timber::$context = array(
-			'site' => 'Smoke Site',
+			'site'       => 'Smoke Site',
+			'attributes' => array( 'data-global' => 'must not leak' ),
 		);
 
 		$enabled = new \Emulsify\Theme\Blocks\CoreBlockTwigRenderer();
@@ -362,8 +366,23 @@ namespace {
 		$mapped = apply_filters( 'render_block', $original, $block, null );
 
 		emulsify_core_block_twig_smoke_assert(
+			array() === \Timber\Timber::$compiled[0]['context']['attributes'],
+			'Mapped blocks must start with an empty HTML attributes array.'
+		);
+		foreach ( array( 'block_attributes', 'block', 'block_metadata' ) as $key ) {
+			$actual = \Timber\Timber::$compiled[0]['context'][ $key ];
+			emulsify_core_block_twig_smoke_assert(
+				$block['attrs'] === ( 'block_attributes' === $key ? $actual : $actual['attrs'] ),
+				'Mapped block data must remain available through ' . $key . '.'
+			);
+		}
+		emulsify_core_block_twig_smoke_assert(
+			'empty' === \Timber\Timber::$compiled[0]['context']['legacy_level'],
+			'Legacy array reads must be empty without throwing or falling back to core markup.'
+		);
+		emulsify_core_block_twig_smoke_assert(
 			false !== strpos( $mapped, 'dist/components/paragraph/paragraph.twig:core/paragraph:intro' ),
-			'Mapped block should render through Timber compile with attributes.'
+			'Mapped block should render through Timber compile with block_attributes.'
 		);
 		emulsify_core_block_twig_smoke_assert(
 			true === \Timber\Timber::$compiled[0]['context']['smoke_context'],

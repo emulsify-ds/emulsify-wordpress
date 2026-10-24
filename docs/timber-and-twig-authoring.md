@@ -25,6 +25,11 @@ The parent theme registers these namespaces:
 
 Use `@templates` for normal includes. Use `@emulsify-tpl` when a child override extends the parent template with the same relative path.
 
+New generated themes inherit parent fallbacks without local Twig templates.
+Create `templates/` when an override is needed. The [template extension
+contract](template-extension.md) documents layout blocks, stable boundaries,
+and the same-path inheritance recursion pitfall.
+
 ```twig
 {% extends '@emulsify-tpl/page.twig' %}
 
@@ -45,9 +50,34 @@ Install or author project components in the structure defined by the selected Em
 } only %}
 ```
 
-The general form is `project_machine_name:component_name`.
+The general form is `project_machine_name:component_name`. Both `project_machine_name:example-card` and `@project_machine_name/example-card` follow Emulsify Core's resolution rules. WordPress searches these compatibility roots in order:
 
-This reference resolves child-first compatibility roots, including `src/components/example-card/example-card.twig`, `src/components/example-card.twig`, `components/example-card/example-card.twig`, and `components/example-card.twig`. One-level grouped names such as `project_machine_name:ui/heading` resolve to paths like `src/components/ui/heading/heading.twig`.
+1. Child theme `src/components`.
+2. Child theme `components`.
+3. Parent theme `src/components`.
+4. Parent theme `components`.
+
+Each root is searched completely before moving to the next. For a requested path `x`, direct candidates are tried in this order:
+
+1. `x`.
+2. `x.twig`.
+3. `x.html.twig`.
+4. `<x without a final .twig>/<stem>.twig`.
+5. `<x without a final .twig>/<stem>.html.twig`.
+
+Here, `stem` is the last segment after removing a final `.twig`; an explicit `.html.twig` therefore keeps `.html` in the nested stem. For example, `example-card` can resolve to `example-card.twig`, `example-card.html.twig`, `example-card/example-card.twig`, or `example-card/example-card.html.twig`.
+
+If no direct candidate exists, the same candidates are tried below group directories in breadth-first order. Sibling directories are sorted by UTF-16 code unit, matching Core's JavaScript ordering. Thus `project_machine_name:button` can find `src/components/atoms/button/button.twig` or a component inside deeper groups. A grouped child component takes precedence over a direct parent component.
+
+Duplicate names resolve deterministically: the first root wins, direct candidates precede grouped candidates, and shallower groups precede deeper groups. Use an explicit group or template path, such as `project_machine_name:atoms/button/button.twig`, to select an otherwise ambiguous component.
+
+Group discovery skips `node_modules`, `.git`, `.cache`, `.vite`, `.out`, `.coverage`, and `dist`. It does not follow directory symlinks discovered during the walk. Explicit file or directory symlinks can resolve when both their lexical and real paths remain inside the component root. Internal `.` and `..` segments are normalized like Core; leading traversal outside the root is rejected.
+
+The project resolver leaves bare paths and unrelated namespaces to the normal Twig loader, preserving every path segment. A missing `atoms/button` never falls back to `molecules/button`.
+
+Discovery and successful or missing resolutions are memoized for the current request. Direct hits do not scan groups. Group directories are not added to the persistent discovery cache: new groups inside existing groups can leave the root directory's modification time, theme version, and build manifest unchanged, so a persisted index could miss their components. The existing persistent cache continues to serve built `dist/components` discovery.
+
+In a local PHP 8.3 benchmark with a warm filesystem cache (seven-run medians), the first grouped lookup took about 32 ms for 500 directories and 127 ms for 2,000; 1,000 memoized hits took about 0.15 ms. These synthetic results depend on the component tree and filesystem. A simulated persistent index reduced the first lookup to about 0.3 ms before cache I/O, but safely persisting source directories needs separate invalidation.
 
 The legacy `@components/example-card/example-card.twig` namespace remains supported for compatible component libraries, existing projects, shared templates, and migration work:
 
@@ -57,7 +87,7 @@ The legacy `@components/example-card/example-card.twig` namespace remains suppor
 } only %}
 ```
 
-Use `emulsify_theme_project_component_roots` to adjust roots for `project_machine_name:component_name` references. Use `emulsify_theme_twig_namespaces` for advanced runtime-only `@namespace/path.twig` paths.
+Use `emulsify_theme_project_component_roots` to adjust roots for both project reference forms. Use `emulsify_theme_twig_namespaces` for advanced runtime-only `@namespace/path.twig` paths.
 
 Root-level `components` and `src/components` directories are compatibility paths, not starter requirements. Do not remove existing `@components` includes during migration; both forms are supported.
 
@@ -131,6 +161,94 @@ The parent theme registers Core-style helpers for class and attribute handling:
 ```
 
 The helpers return an attribute bag that serializes safely in Twig string contexts.
+
+Both helpers merge the context's `attributes` with their explicit attributes.
+Keep that context value for intentional HTML attributes, never raw block data
+or arbitrary user input. Mapped core-block templates receive parsed block data
+in `block_attributes`; see [core-block context](core-block-twig-rendering.md#twig-context).
+
+The PHP attribute bag rejects every attribute name beginning with `on`,
+case-insensitively, including `onclick` and `onMouseOver`. Construction, `set()`,
+`merge()`, and serialization all enforce this rule. This is intentional
+WordPress PHP hardening: Core's JavaScript helpers and Emulsify Drupal still
+accept these names. Attribute-value escaping alone does not make event-handler
+attributes safe.
+
+Argumentless Twig calls such as `{{ add_attributes() }}` and `{{ bem() }}` use
+only the context's `attributes`. Other context variables are not attributes or
+BEM options. The registered callbacks keep that injected context separate from
+explicit arguments; direct PHP helper calls retain their existing API.
+
+## Helper characterization
+
+The parent implements `bem()` and `add_attributes()` in PHP; Storybook uses
+Emulsify Core's JavaScript helpers. Their shared API does not guarantee identical
+behavior for every input. The maintainer contract records each implementation's
+observed behavior separately in
+`.github/fixtures/twig-helper-contract.json` in the repository checkout.
+It uses the WordPress parent's own `AttributeBag`; Core's
+[4.5.0 PHP corpus](https://github.com/emulsify-ds/emulsify-core/blob/v4.5.0/docs/twig-php-parity.md)
+instead records a pinned Emulsify Tools counterpart. That corpus's portable
+subset is not a guarantee about this WordPress implementation.
+
+This check is for a maintainer checkout; its `.github` scripts and fixtures are
+excluded from released parent ZIPs. Install the parent Composer dependencies
+and the starter's declared Core dependency, then run it from the repository root:
+
+```sh
+composer install
+npm run whisk:install
+npm run test:twig-helpers
+```
+
+The command uses `whisk/` by default. To characterize the Core version installed
+in another generated theme, pass its directory:
+
+```sh
+npm run test:twig-helpers -- "/path/to/generated-theme"
+```
+
+Each case compares three observations against that runtime's own expectations:
+the exact serialized HTML string, the returned attribute map, and
+`contextAfter`, the attributes remaining in the caller's context. Whitespace,
+escaping, attribute types and order, and context mutation remain visible. The
+check does not trim output, rewrite escaping, or normalize known differences
+to make the PHP and JavaScript results appear equal.
+
+The recorded ordinary positional/object BEM cases, aliases, nested lists, class
+sanitization, list replacement, scalar number serialization, and escaping agree.
+Selected differences remain explicit:
+
+| Recorded input | WordPress PHP | Core 4.5.0 JavaScript |
+| --- | --- | --- |
+| A `true` BEM modifier | `card--1` | `card--true` |
+| Numeric `0` as an extra class | `_0` | Omitted |
+| `true` in an `add_attributes()` class list | `_1` | `true` |
+| `true` in a non-class attribute list | `1` | `true` |
+| Attribute names starting with `on`, regardless of case | Dropped | Accepted |
+| Caller attributes supplied as an array or attribute bag | Copied; remain in caller context | Consumed from invocation context |
+
+The fixture cases `bem-boolean-and-numeric-values`,
+`add-booleans-aria-and-falsy-classes`, and
+`add-invalid-names-and-nested-values` record the coercion differences.
+`add-repeated-context-consumption` demonstrates that WordPress prints caller
+attributes again on a second call, whereas Core has consumed them. WordPress's
+own `AttributeBag` preserves the caller context too; changing from an array to
+that bag does not provide print-once behavior.
+`add-event-handler-names` records the intentional attribute-name hardening
+difference in both the returned map and serialized HTML.
+
+Both implementations currently treat boolean ARIA values like HTML booleans:
+`true` can produce a bare attribute, and `false` can be omitted rather than
+replacing an existing value. Supply explicit strings such as
+`{ 'aria-expanded': 'false' }` for ARIA state values. This describes the tested
+inputs, not equivalence for arbitrary attributes or Twig expressions.
+
+Review changed expectations when updating a helper or Core dependency. A
+characterization fixture records compatibility evidence; it does not decide
+which runtime should change or promise universal PHP/JavaScript parity. The
+check does not replace Twig autoescaping coverage or rendering the affected
+template in WordPress with its actual Timber context and hooks.
 
 ## Switch statements
 

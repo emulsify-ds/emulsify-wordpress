@@ -37,7 +37,10 @@ The bundled Whisk starter is an example child theme. Real projects can generate 
 
 ## Template fallback model
 
-The parent `templates/` directory contains complete minimal fallbacks. The generated child theme only ships a small example override at `whisk/templates/page.twig`.
+The parent `templates/` directory contains complete minimal fallbacks. Generated
+child themes ship no Twig templates or `templates/` directory. Pages render
+through the parent's `page.php` and Twig fallback until the project creates an
+intentional override. See the [public Twig extension points](template-extension.md).
 
 Timber resolves the `@templates` namespace child-first:
 

@@ -4,7 +4,7 @@ Work through the troubleshooting list first. If the problem persists, collect th
 
 ## Troubleshooting
 
-- **Wrong Node.js version:** run `nvm use`, then compare `node --version` with `.nvmrc` and the `engines.node` range in `package.json`.
+- **Wrong Node.js version:** run `nvm use` and compare `node --version` with the resolved Emulsify Core package's `engines.node`. Core 4.5.0 requires at least 24.13.0 even though the theme advertises `>=24`; `.nvmrc` selects only the Node 24 line.
 - **Missing package or command:** rerun `npm install`. A generated theme has no lockfile until the project commits one.
 - **WordPress cannot find project assets:** confirm a component library is installed and that a build has produced output under `dist/`. The parent theme enqueues discovered build output; it does not invent asset paths.
 - **The parent theme is not being used:** confirm the `Template` header in `style.css` names the installed Emulsify parent theme directory and that the parent theme is present in the themes directory.

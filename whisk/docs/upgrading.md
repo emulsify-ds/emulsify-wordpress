@@ -20,12 +20,19 @@ An npm dependency update is different from adopting a newer starter release. A n
 3. Compare the two themes, focusing on:
    - `package.json`, `project.emulsify.json`, and `.nvmrc`;
    - `config/emulsify-core/` plus the Vite, Storybook, Jest, lint, and formatting scripts;
-   - `style.css` headers, `functions.php`, `templates/`, and `patterns/`;
+   - `style.css` headers, `functions.php`, and `patterns/`;
    - the README, development guide, upgrade guidance, and support checklist.
 4. Port only the changes that benefit this project. Project-owned templates and components are not overwritten by a starter release.
 5. Delete the temporary comparison theme.
 
 Starter releases do not provide an automatic project diff or migration.
+
+New generated themes ship no Twig templates or `templates/` directory. Existing
+2.x page overrides still inherit parent fixes when they extend
+`@emulsify-tpl/page.twig` and call `parent()`. Before deleting an old page
+override, search project CSS for its machine-name page wrapper class and keep
+the override if that wrapper is used. Create project templates only as needed;
+the parent's `docs/template-extension.md` documents the supported layout blocks.
 
 ## Validate the result
 

@@ -13,6 +13,7 @@ use Emulsify\Theme\Blocks\Patterns;
 use Emulsify\Theme\Cli\GenerateChildThemeCommand;
 use Emulsify\Theme\Editor\Enhancements;
 use Emulsify\Theme\Editor\Policy;
+use Emulsify\Theme\Media\Embeds;
 use Emulsify\Theme\Runtime\Assets;
 use Emulsify\Theme\Runtime\Context;
 use Emulsify\Theme\Runtime\MissingTimber;
@@ -76,6 +77,7 @@ final class Bootstrap {
 		( new Patterns() )->register();
 		( new Blocks\Registry( $asset_manifest ) )->register();
 		( new GenerateChildThemeCommand() )->register();
+		( new Embeds() )->register();
 
 		$timber = new TimberIntegration();
 

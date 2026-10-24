@@ -24,6 +24,7 @@ function run(label, command, args) {
 
 run('Validate Composer metadata', 'composer', ['validate', '--no-check-publish', '--strict']);
 run('Validate documented npm commands', 'npm', ['run', 'docs:check-commands']);
+run('Protect blocking readiness coverage', 'node', ['--test', '.github/scripts/readiness-matrix-contract.test.cjs']);
 run('Install Composer dependencies for Twig smoke coverage', 'composer', [
   'install',
   '--no-interaction',
@@ -43,7 +44,13 @@ run('Run editor policy smoke test', 'npm', ['run', 'smoke:editor-policy']);
 run('Run pattern registry smoke test', 'npm', ['run', 'smoke:patterns']);
 run('Run parent theme filter smoke test', 'npm', ['run', 'smoke:theme-filters']);
 run('Run Twig autoescape smoke test', 'npm', ['run', 'smoke:twig-autoescape']);
+run('Run parent template extension smoke test', 'npm', ['run', 'smoke:template-extension']);
+run('Run fallback navigation smoke test', 'npm', ['run', 'smoke:navigation']);
 run('Run Twig switch smoke test', 'npm', ['run', 'smoke:twig-switch']);
 run('Run Twig project namespace smoke test', 'npm', ['run', 'smoke:twig-project-namespace']);
 run('Install Whisk dependencies', 'npm', ['run', 'whisk:install']);
+run('Compare PHP and JavaScript Twig helper contracts', 'npm', ['run', 'test:twig-helpers']);
+run('Verify lint and format failure propagation', 'npm', ['run', 'test:lint-wrappers']);
+run('Run generated project Jest smoke test', 'npm', ['run', 'smoke:jest-project']);
+run('Run accessibility runner tests', 'npm', ['run', 'test:a11y-runner']);
 run('Run WordPress starter init smoke test', 'npm', ['run', 'smoke:starter-init']);

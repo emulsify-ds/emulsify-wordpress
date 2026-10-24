@@ -35,12 +35,20 @@ Mapped templates receive the normal Timber context plus these values:
 - `block`: parsed block metadata from `render_block`.
 - `block_metadata`: alias for `block`.
 - `block_name`: block name such as `core/paragraph`.
-- `attributes`: parsed block attributes.
+- `attributes`: an empty array reserved for HTML attributes.
+- `block_attributes`: the parsed block attributes, also available as
+  `block.attrs` and `block_metadata.attrs`.
 - `content`: WordPress' original rendered block content.
 - `inner_content`: rendered inner content fallback for templates.
 - `inner_blocks`: parsed inner block records when available.
 - `wp_block`: the `WP_Block` instance when WordPress passes one.
 - `twig_template`: the mapped Twig template.
+
+Keep block data separate from HTML attributes: `bem()` and `add_attributes()`
+merge the context's `attributes` into their output. Never put block data or
+untrusted user input there. The renderer does not copy `anchor` or `className`
+into this array; WordPress' rendered `content` already carries those values,
+and copying an anchor would duplicate its ID.
 
 Use `emulsify_theme_core_block_twig_context` to add project-specific values:
 
@@ -49,7 +57,7 @@ add_filter(
 	'emulsify_theme_core_block_twig_context',
 	function ( array $context, array $block ): array {
 		if ( 'core/heading' === ( $block['blockName'] ?? '' ) ) {
-			$context['heading_level'] = $context['attributes']['level'] ?? 2;
+			$context['heading_level'] = $context['block_attributes']['level'] ?? 2;
 		}
 
 		return $context;

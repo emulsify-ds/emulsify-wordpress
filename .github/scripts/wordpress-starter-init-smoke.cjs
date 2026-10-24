@@ -94,7 +94,7 @@ function runNodeScript(scriptPath) {
   }
 }
 
-function runWhiskTestScript() {
+function assertEmptyGeneratedTestFails(projectDir) {
   const jestBin = path.join(
     starterRoot,
     'node_modules',
@@ -108,17 +108,16 @@ function runWhiskTestScript() {
   );
 
   const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const result = childProcess.spawnSync(npm, ['--prefix', 'whisk', 'run', 'test'], {
-    cwd: repoRoot,
+  fs.symlinkSync(path.join(starterRoot, 'node_modules'), path.join(projectDir, 'node_modules'), 'junction');
+  const result = childProcess.spawnSync(npm, ['test', '--', '--runInBand'], {
+    cwd: projectDir,
     encoding: 'utf8',
-    env: process.env,
+    env: { ...process.env, CI: '1' },
+    timeout: 60000,
   });
-
-  if (result.status !== 0) {
-    throw new Error(
-      `npm --prefix whisk run test failed:\n${result.stdout || ''}${result.stderr || ''}`.trim(),
-    );
-  }
+  const output = `${result.stdout || ''}${result.stderr || ''}`;
+  assert(!result.error, `Generated npm test could not run: ${result.error && result.error.message}`);
+  assert(result.status !== 0 && /No tests found/.test(output), `An empty generated child theme must fail npm test because no tests exist:\n${output}`);
 }
 
 function runGeneratedComponentInspector(projectDir) {
@@ -275,7 +274,6 @@ try {
   const project = readJson(path.join(target, 'project.emulsify.json'));
   const pattern = readJson(path.join(target, 'patterns/smoke-pattern.json'));
   const functionsPhp = fs.readFileSync(path.join(target, 'functions.php'), 'utf8');
-  const pageTwig = fs.readFileSync(path.join(target, 'templates/page.twig'), 'utf8');
 
   assert(style['Theme Name'] === 'Acme echo 1 Theme', 'style.css should use a source-safe Theme Name.');
   assert(!style['Theme Name'].includes('*/'), 'style.css should not contain a crafted comment terminator.');
@@ -295,8 +293,7 @@ try {
   );
   assert(functionsPhp.includes('Acme echo 1 Theme child theme hooks.'), 'functions.php should use a source-safe visible label.');
   assert(!functionsPhp.includes('*/ echo 1; /*'), 'functions.php should not contain the attempted docblock breakout.');
-  assert(pageTwig.includes('acme-theme-page'), 'templates/page.twig should update the page class.');
-  assert(!pageTwig.includes('whisk-page'), 'templates/page.twig should not keep the starter page class.');
+  assert(!fs.existsSync(path.join(target, 'templates')), 'Fresh generated child themes should inherit parent templates without a local templates directory.');
   assert(pattern.name === 'acme-theme/smoke-pattern', 'JSON pattern names should update the whisk namespace.');
   assert(
     !fs.existsSync(path.join(target, '.cli')),
@@ -361,7 +358,7 @@ try {
     );
   }
 
-  runWhiskTestScript();
+  assertEmptyGeneratedTestFails(target);
 
   console.log('WordPress starter init smoke checks passed.');
 } catch (error) {

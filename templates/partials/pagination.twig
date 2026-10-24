@@ -17,7 +17,7 @@
                 } %}
                 {% set previous_link_attributes = {
                     class: bem('link', [], 'pagination'),
-                    href: pagination.prev.link
+                    href: function('html_entity_decode', pagination.prev.link)
                 } %}
                 <li {{ add_attributes(previous_item_attributes) }}>
                     <a {{ add_attributes(previous_link_attributes) }}>{{ function('__', 'Previous', 'emulsify') }}</a>
@@ -28,28 +28,19 @@
                 {% set page_item_attributes = {
                     class: bem('item', [page.current|default(false) ? 'current' : ''], 'pagination')
                 } %}
-                {% if page.link|default(null) %}
-                    {% set page_link_attributes = {
-                        class: [
-                            bem('link', [], 'pagination'),
-                            page.class|default('')
-                        ],
-                        href: page.link
-                    } %}
-                {% else %}
-                    {% set page_link_attributes = {
-                        class: [
-                            bem('link', [], 'pagination'),
-                            page.class|default('')
-                        ],
-                        'aria-current': 'page'
-                    } %}
-                {% endif %}
+                {% set page_link_attributes = {
+                    class: [
+                        bem('link', [], 'pagination'),
+                        page.class|default('')
+                    ],
+                    href: page.link|default(null) ? function('html_entity_decode', page.link) : null,
+                    'aria-current': page.current|default(false) ? 'page' : null
+                } %}
                 <li {{ add_attributes(page_item_attributes) }}>
                     {% if page.link|default(null) %}
-                        <a {{ add_attributes(page_link_attributes) }}>{{ page.title }}</a>
+                        <a {{ add_attributes(page_link_attributes) }}><span {{ add_attributes({ class: 'screen-reader-text' }) }}>{{ function('__', 'Page', 'emulsify') }} </span>{{ function('html_entity_decode', page.title) }}</a>
                     {% else %}
-                        <span {{ add_attributes(page_link_attributes) }}>{{ page.title }}</span>
+                        <span {{ add_attributes(page_link_attributes) }}>{{ page.class|default('') == 'dots' ? function('__', '…', 'emulsify') : function('html_entity_decode', page.title) }}</span>
                     {% endif %}
                 </li>
             {% endfor %}
@@ -60,7 +51,7 @@
                 } %}
                 {% set next_link_attributes = {
                     class: bem('link', [], 'pagination'),
-                    href: pagination.next.link
+                    href: function('html_entity_decode', pagination.next.link)
                 } %}
                 <li {{ add_attributes(next_item_attributes) }}>
                     <a {{ add_attributes(next_link_attributes) }}>{{ function('__', 'Next', 'emulsify') }}</a>

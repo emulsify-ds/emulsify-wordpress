@@ -109,18 +109,22 @@ final class CoreBlockTwigRenderer {
 		// Keep WordPress' original rendered content available to Twig templates so
 		// mapped blocks can wrap or progressively replace markup instead of being
 		// forced into an all-or-nothing rewrite.
-		$context['block']          = $block;
-		$context['block_metadata'] = $block;
-		$context['block_name']     = $this->block_name( $block );
-		$context['attributes']     = $attributes;
-		$context['content']        = $block_content;
-		$context['inner_content']  = $this->inner_content( $block, $block_content );
-		$context['inner_blocks']   = isset( $block['innerBlocks'] ) && is_array( $block['innerBlocks'] ) ? $block['innerBlocks'] : array();
-		$context['wp_block']       = $instance;
-		$context['twig_template']  = $template;
+		$context['block']            = $block;
+		$context['block_metadata']   = $block;
+		$context['block_name']       = $this->block_name( $block );
+		$context['block_attributes'] = $attributes;
+		$context['attributes']       = array();
+		$context['content']          = $block_content;
+		$context['inner_content']    = $this->inner_content( $block, $block_content );
+		$context['inner_blocks']     = isset( $block['innerBlocks'] ) && is_array( $block['innerBlocks'] ) ? $block['innerBlocks'] : array();
+		$context['wp_block']         = $instance;
+		$context['twig_template']    = $template;
 
 		/**
 		 * Filters Twig context for mapped block rendering.
+		 *
+		 * The attributes array is reserved for HTML attributes only and must
+		 * never hold block data or user input. Read block_attributes for block data.
 		 *
 		 * @param array  $context       Twig context.
 		 * @param array  $block         Parsed block metadata.

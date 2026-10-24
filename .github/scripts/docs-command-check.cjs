@@ -9,6 +9,14 @@ const repoRoot = path.resolve(__dirname, '../..');
 // heading so unrelated prose in the same file cannot satisfy the check.
 const ROOT_CHECKS = [
   {
+    relativePath: 'docs/timber-and-twig-authoring.md',
+    heading: 'Helper characterization',
+    packagePath: 'package.json',
+    packageLabel: 'the maintainer checkout',
+    includeInlineCode: true,
+    expectedScripts: ['test:twig-helpers', 'whisk:install'],
+  },
+  {
     relativePath: 'README.md',
     heading: 'Working inside a generated child theme',
     packagePath: 'whisk/package.json',
@@ -98,6 +106,16 @@ const ROOT_CHECKS = [
 // against the Whisk source and once against real generated output, so a command
 // cannot drift between the template and the theme a project actually receives.
 const THEME_DOC_CHECKS = [
+  ...[
+    'AGENTS.md',
+    'docs/wordpress-integration.md',
+    '.agents/skills/emulsify-wordpress-integration/SKILL.md',
+  ].map((relativePath) => ({
+    relativePath,
+    packagePath: 'package.json',
+    packageLabel: 'the generated child theme',
+    includeInlineCode: true,
+  })),
   {
     relativePath: 'README.md',
     packagePath: 'package.json',

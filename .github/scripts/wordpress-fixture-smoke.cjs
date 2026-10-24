@@ -17,8 +17,9 @@ const expectedGeneratedFromVersion = JSON.parse(
 ).version;
 const required = process.env.WP_SMOKE_REQUIRED === '1';
 const keepFixture = process.env.WP_SMOKE_KEEP === '1';
+const auditAccessibility = process.env.WP_SMOKE_A11Y === '1';
 const host = process.env.WP_SMOKE_HOST || '127.0.0.1';
-const wordpressVersion = process.env.WP_SMOKE_WORDPRESS_VERSION || '6.7';
+const wordpressVersion = process.env.WP_SMOKE_WORDPRESS_VERSION || '6.8';
 let workDir = null;
 let logDir = null;
 let server = null;
@@ -223,9 +224,11 @@ function copyThemes(themesDir) {
     if ([
       '.git',
       '.github',
+      '.artifacts',
       '.coverage',
       '.out',
       '.publish',
+      'dist-artifact',
       'node_modules',
       'vendor',
     ].includes(first)) {
@@ -274,7 +277,6 @@ function assertGeneratedChildTheme(themePath, slug) {
     'patterns/.gitkeep',
     'src/components/.gitkeep',
     'project.emulsify.json',
-    'templates/page.twig',
   ];
 
   if (!style.includes('Theme Name: Smoke Generated') || !style.includes('Template: emulsify')) {
@@ -312,6 +314,14 @@ function assertGeneratedChildTheme(themePath, slug) {
     throw new Error('Generated child theme should not include an empty child theme.json by default.');
   }
 
+  if (fs.existsSync(path.join(themePath, 'templates'))) {
+    throw new Error('Generated child theme should not include a templates directory by default.');
+  }
+
+  if (fs.readdirSync(themePath, { recursive: true }).some((file) => file.endsWith('.twig'))) {
+    throw new Error('Generated child theme should not include Twig templates by default.');
+  }
+
   for (const directory of ['src/editor', 'src/foundation', 'src/layout']) {
     if (fs.existsSync(path.join(themePath, directory))) {
       throw new Error(`Generated child theme should not include assumed source directory: ${directory}`);
@@ -328,9 +338,27 @@ function assertGeneratedChildTheme(themePath, slug) {
 function installGeneratedChildFixtures(themePath) {
   const globalDirectory = path.join(themePath, 'dist', 'global');
   const acfDirectory = path.join(themePath, 'dist', 'components', 'smoke-acf');
+  const groupedDirectory = path.join(themePath, 'src', 'components', 'atoms', 'layout', 'smoke-grouped');
+  const themeSlug = path.basename(themePath);
 
   fs.mkdirSync(globalDirectory, { recursive: true });
   fs.mkdirSync(path.join(acfDirectory, 'css'), { recursive: true });
+  fs.mkdirSync(groupedDirectory, { recursive: true });
+  fs.mkdirSync(path.join(themePath, 'templates'), { recursive: true });
+  fs.writeFileSync(
+    path.join(groupedDirectory, 'smoke-grouped.html.twig'),
+    '<p class="smoke-grouped-project-component">{{ label }}</p>\n'
+  );
+  fs.writeFileSync(
+    path.join(themePath, 'templates', 'single.twig'),
+    `{% extends '@emulsify-tpl/single.twig' %}
+{% block content %}
+  {{ parent() }}
+  {% include "${themeSlug}:smoke-grouped" with { label: 'Grouped project component via colon' } only %}
+  {% include "@${themeSlug}/smoke-grouped" with { label: 'Grouped project component via namespace' } only %}
+{% endblock %}
+`
+  );
   fs.writeFileSync(
     path.join(globalDirectory, 'smoke.css'),
     '.smoke-generated-global { color: inherit; }\n'
@@ -528,10 +556,10 @@ if ( ! $found ) {
 }
 
 function configureDebugLog(wpPath) {
+  wp(wpPath, ['config', 'set', 'WP_DEBUG', 'true', '--raw']);
   const configPath = path.join(wpPath, 'wp-config.php');
   const config = fs.readFileSync(configPath, 'utf8');
   const debugConfig = `
-define( 'WP_DEBUG', true );
 define( 'WP_DEBUG_LOG', true );
 define( 'WP_DEBUG_DISPLAY', false );
 define( 'WP_ENVIRONMENT_TYPE', 'local' );
@@ -565,6 +593,41 @@ function createFixtureContent(wpPath) {
     '--post_content=Smoke post content',
     '--porcelain',
   ]);
+  const mediaPageId = wp(wpPath, [
+    'post', 'create', '--post_type=page', '--post_status=publish',
+    '--post_title=Media embed fixture', '--post_name=media-embeds',
+    '--post_content=[embed]https://www.youtube.com/watch?v=M7lc1UVf-VE[/embed]\n\n<!-- wp:embed {"url":"https://vimeo.com/76979871/fixturehash","type":"video","providerNameSlug":"vimeo"} -->\n<figure class="wp-block-embed is-type-video is-provider-vimeo"><div class="wp-block-embed__wrapper">\nhttps://vimeo.com/76979871/fixturehash\n</div></figure>\n<!-- /wp:embed -->',
+    '--porcelain',
+  ]);
+  fs.writeFileSync(path.join(wpPath, 'wp-content', 'mu-plugins', 'emulsify-media-fixture.php'), `<?php
+// Fixture-only provider responses keep CI independent of provider networks.
+add_filter( 'pre_oembed_result', function ( $result, $url ) {
+  if ( 'https://www.youtube.com/watch?v=M7lc1UVf-VE' === $url ) {
+    return '<iframe width="200" height="113" src="https://www.youtube.com/embed/M7lc1UVf-VE?feature=oembed&amp;rel=0" title="YouTube fixture" allowfullscreen></iframe>';
+  }
+  if ( 'https://vimeo.com/76979871/fixturehash' === $url ) {
+    return '<iframe width="320" height="180" src="https://player.vimeo.com/video/76979871?h=fixturehash&amp;badge=0" title="Vimeo fixture" allowfullscreen></iframe>';
+  }
+  return $result;
+}, 10, 2 );
+add_filter( 'emulsify_theme_media_embed_options', function ( $options ) {
+  $poster = isset( $_GET['media_poster'] ) && 'provider' === $_GET['media_poster'] ? 'provider' : 'neutral';
+  return is_page( 'media-embeds' ) ? array( 'privacy_mode' => true, 'click_to_load' => true, 'poster' => $poster ) : $options;
+} );
+add_action( 'template_redirect', function () {
+  if ( is_page( 'media-embeds' ) ) {
+    header( "Content-Security-Policy: frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; img-src 'self' https://i.ytimg.com https://i.vimeocdn.com data:; style-src 'self' 'unsafe-inline'" );
+    header( 'Referrer-Policy: no-referrer' );
+  }
+} );
+`);
+  wp(wpPath, ['eval', String.raw`
+apply_filters( 'oembed_dataparse',
+  '<iframe src="https://player.vimeo.com/video/76979871?h=fixturehash" title="Vimeo fixture"></iframe>',
+  (object) array( 'type' => 'video', 'thumbnail_url' => 'https://i.vimeocdn.com/video/fixture_640.jpg', 'title' => 'Vimeo fixture' ),
+  'https://vimeo.com/76979871/fixturehash'
+);
+`]);
   const authorId = wp(wpPath, [
     'user',
     'create',
@@ -595,7 +658,32 @@ function createFixtureContent(wpPath) {
     '--comment_approved=1',
   ]);
 
-  return { authorId, categoryId, pageId, postId };
+  wp(wpPath, ['eval', String.raw`
+update_option( 'permalink_structure', '' );
+update_option( 'posts_per_page', 10 );
+for ( $number = 1; $number <= 11; $number++ ) {
+  $result = wp_insert_post( array(
+    'post_type' => 'post',
+    'post_status' => 'publish',
+    'post_title' => sprintf( 'PaginationProbe result %02d', $number ),
+    'post_content' => sprintf( 'PaginationProbe content %02d', $number ),
+    'post_date' => sprintf( '2001-01-%02d 12:00:00', $number ),
+    'post_category' => array( ${Number(categoryId)} ),
+  ), true );
+  if ( is_wp_error( $result ) ) {
+    fwrite( STDERR, $result->get_error_message() . "\n" );
+    exit( 1 );
+  }
+}
+`]);
+
+  const menuId = wp(wpPath, ['menu', 'create', 'Smoke Primary', '--porcelain']);
+  wp(wpPath, ['menu', 'item', 'add-post', menuId, pageId]);
+  wp(wpPath, ['menu', 'item', 'add-post', menuId, postId]);
+  wp(wpPath, ['menu', 'item', 'add-term', menuId, 'category', categoryId]);
+  wp(wpPath, ['menu', 'location', 'assign', menuId, 'primary']);
+
+  return { authorId, categoryId, pageId, postId, mediaPageId };
 }
 
 function getAvailablePort() {
@@ -650,7 +738,7 @@ async function checkRoute(baseUrl, route) {
   const expectedStatus = route.status || 200;
 
   appendLog('http.log', `\n${route.name} ${route.path}\nStatus: ${response.status}\n`);
-  appendLog('http.log', body.slice(0, 4000));
+  appendLog('http.log', body);
   appendLog('http.log', '\n');
 
   if (response.status !== expectedStatus) {
@@ -688,6 +776,92 @@ async function checkGeneratedAssets(baseUrl, themeSlug) {
   await checkGeneratedAsset(baseUrl, themeSlug, 'dist/components/smoke-acf/css/smoke-acf.css', '.smoke-acf');
 }
 
+async function checkSearchPagination(baseUrl) {
+  const firstPage = await checkRoute(baseUrl, {
+    name: 'search pagination page 1',
+    path: '/?s=PaginationProbe',
+    includes: ['Search results for PaginationProbe', 'PaginationProbe result 11'],
+  });
+  appendLog('search-pagination.html', firstPage);
+  const nextLink = firstPage.match(/<li\b[^>]*\bclass="[^"]*\bpagination__item--next\b[^"]*"[^>]*>\s*<a\b[^>]*\bhref="([^"]+)"/);
+  if (!nextLink) {
+    const navigation = firstPage.match(/<nav\b[^>]*>[\s\S]*?<\/nav>/g) || [];
+    throw new Error(`Search page 1 did not render a next pagination link. Navigation: ${navigation.join('\n') || '(none)'}`);
+  }
+
+  // Decode HTML attribute ampersands once, as the browser does. A double-escaped
+  // &#038; must remain a fragment in the URL so the regression cannot pass.
+  const href = nextLink[1].replace(/&(?:amp|#0*38|#x0*26);/gi, '&');
+  const nextUrl = new URL(href, baseUrl);
+  if (
+    nextUrl.origin !== baseUrl ||
+    nextUrl.searchParams.get('s') !== 'PaginationProbe' ||
+    nextUrl.searchParams.get('paged') !== '2' ||
+    nextUrl.hash !== ''
+  ) {
+    throw new Error(`Search pagination should retain its search and request page 2; received ${nextUrl.href}.`);
+  }
+
+  const secondPage = await checkRoute(baseUrl, {
+    name: 'search pagination page 2',
+    path: `${nextUrl.pathname}${nextUrl.search}`,
+    includes: ['Search results for PaginationProbe', 'PaginationProbe result 01'],
+  });
+  if (!/<span\b[^>]*\baria-current="page"[^>]*>\s*2\s*<\/span>/.test(secondPage)) {
+    throw new Error('Following the search pagination link did not render current page 2.');
+  }
+  if (secondPage.includes('PaginationProbe result 11')) {
+    throw new Error('Search page 2 incorrectly includes the first-page-only result.');
+  }
+}
+
+async function checkChildBlockExtension(baseUrl, pagePath, themePath, baseline) {
+  const childTemplate = path.join(themePath, 'templates', 'page.twig');
+  const original = fs.existsSync(childTemplate) ? fs.readFileSync(childTemplate, 'utf8') : null;
+  const before = '<!-- child content extension start -->';
+  const after = '<!-- child content extension end -->';
+
+  try {
+    fs.mkdirSync(path.dirname(childTemplate), { recursive: true });
+    fs.writeFileSync(
+      childTemplate,
+      `{% extends '@emulsify-tpl/page.twig' %}{% block content %}${before}{{ parent() }}${after}{% endblock %}`
+    );
+    const extended = await checkRoute(baseUrl, {
+      name: 'child page block extension',
+      path: pagePath,
+      includes: [before, after, 'Smoke Page', 'Smoke page content'],
+    });
+
+    // Anonymous fixture responses are deterministic. Compare raw bytes, including
+    // whitespace and WordPress hook output, without normalizing the document.
+    if (
+      extended.split(before).length !== 2 ||
+      extended.split(after).length !== 2 ||
+      extended.replace(before, '').replace(after, '') !== baseline
+    ) {
+      throw new Error('Child block extension must preserve every surrounding byte.');
+    }
+  }
+  finally {
+    if (original === null) {
+      fs.rmSync(childTemplate, { force: true });
+    }
+    else {
+      fs.writeFileSync(childTemplate, original);
+    }
+  }
+
+  const restored = await checkRoute(baseUrl, {
+    name: 'parent page after child extension cleanup',
+    path: pagePath,
+    includes: ['Smoke Page', 'Smoke page content'],
+  });
+  if (restored !== baseline) {
+    throw new Error('Removing the child block extension must restore the parent page bytes.');
+  }
+}
+
 async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
   startServer(wpPath, port);
   await waitForServer(baseUrl);
@@ -695,25 +869,101 @@ async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
   const pageIncludes = [
     'Smoke Page',
     'Smoke page content',
-    `${themeSlug}-page`,
+    `<article class="entry" id="post-${content.pageId}">`,
+    '<h1 class="entry__title">Smoke Page</h1>',
+    '<div class="entry__content">',
     `/wp-content/themes/${themeSlug}/dist/global/smoke.css`,
     `/wp-content/themes/${themeSlug}/dist/components/smoke-acf/css/smoke-acf.css`,
   ];
   const routes = [
     { name: 'home', path: '/', includes: ['Emulsify Smoke', 'Smoke Post'] },
     { name: 'page', path: `/?page_id=${content.pageId}`, includes: pageIncludes },
-    { name: 'single', path: `/?p=${content.postId}`, includes: ['Smoke Post', 'Smoke post content', 'Smoke comment content'] },
+    {
+      name: 'single',
+      path: `/?p=${content.postId}`,
+      includes: [
+        'Smoke Post',
+        'Smoke post content',
+        'Smoke comment content',
+        'Grouped project component via colon',
+        'Grouped project component via namespace',
+      ],
+    },
     { name: 'archive', path: `/?cat=${content.categoryId}`, includes: ['Smoke Category', 'Smoke Post'] },
+    { name: 'media-embeds', path: `/?page_id=${content.mediaPageId}`, includes: ['Media embed fixture', 'srcdoc=', 'YouTube fixture', 'Vimeo fixture'] },
     { name: 'search', path: '/?s=Smoke', includes: ['Search results for Smoke', 'Smoke Post'] },
     { name: 'author', path: `/?author=${content.authorId}`, includes: ['Archive of Smoke Author', 'Smoke Post'] },
     { name: '404', path: '/?p=9999999', status: 404, includes: ['Page not found'] },
   ];
 
+  let parentPage = null;
   for (const route of routes) {
-    await checkRoute(baseUrl, route);
+    const body = await checkRoute(baseUrl, route);
+    if (route.name === 'page') {
+      parentPage = body;
+    }
   }
 
+  await checkChildBlockExtension(
+    baseUrl,
+    `/?page_id=${content.pageId}`,
+    path.join(wpPath, 'wp-content', 'themes', themeSlug),
+    parentPage
+  );
+  await checkSearchPagination(baseUrl);
   await checkGeneratedAssets(baseUrl, themeSlug);
+
+  if (auditAccessibility) {
+    const archiveCount = Number(wp(wpPath, ['post', 'list', '--post_type=post', '--post_status=publish', `--cat=${content.categoryId}`, '--format=count']));
+    if (!Number.isInteger(archiveCount) || archiveCount < 12) {
+      throw new Error(`Rendered accessibility archive needs at least 12 published posts; found ${archiveCount}.`);
+    }
+    wp(wpPath, ['option', 'update', 'posts_per_page', '1']);
+    const themeDir = path.join(wpPath, 'wp-content', 'themes', themeSlug);
+    run('Install generated child accessibility dependencies', 'npm', [
+      'install', '--ignore-scripts', '--package-lock=false',
+    ], {
+      cwd: themeDir,
+      env: { ...process.env, PUPPETEER_SKIP_DOWNLOAD: 'true' },
+    });
+    run('Verify rendered accessibility failure gates', 'node', [
+      '--test', path.join(repoRoot, '.github/scripts/rendered-a11y.test.cjs'),
+    ], { env: { ...process.env, EMULSIFY_A11Y_THEME: themeDir } });
+    const { auditRenderedPages } = require('./rendered-a11y.cjs');
+    const outputDir = path.resolve(process.env.WP_SMOKE_A11Y_OUTPUT || path.join(repoRoot, '.artifacts', 'wordpress-a11y'));
+    const pageUrl = `${baseUrl}/?page_id=${content.pageId}`;
+    const singleUrl = `${baseUrl}/?p=${content.postId}`;
+    const archiveUrl = `${baseUrl}/?cat=${content.categoryId}`;
+    const routes = [
+      { name: 'home', url: `${baseUrl}/`, expectedText: 'Smoke Post' },
+      { name: 'page', url: pageUrl, expectedText: ['Smoke Page', 'Smoke page content'], currentMenuHref: pageUrl },
+      { name: 'single', url: singleUrl, expectedText: ['Smoke Post', 'Smoke post content'], currentMenuHref: singleUrl },
+      { name: 'archive', url: archiveUrl, expectedText: ['Smoke Category', 'Smoke Post'], currentMenuHref: archiveUrl },
+      { name: 'media-embeds', url: `${baseUrl}/?page_id=${content.mediaPageId}`, expectedText: 'Media embed fixture', mediaEmbeds: 2 },
+      // A unique content phrase avoids depending on core's relevance ordering.
+      { name: 'search', url: `${baseUrl}/?s=Smoke%20post%20content`, expectedText: ['Search results for Smoke post content', 'Smoke Post'] },
+      {
+        name: 'archive-page-2',
+        url: `${archiveUrl}&paged=2`,
+        expectedText: ['Smoke Category', 'PaginationProbe result 11'],
+        paginationPage: 2,
+        currentMenuHref: archiveUrl,
+      },
+    ];
+    fs.mkdirSync(outputDir, { recursive: true });
+    fs.writeFileSync(path.join(outputDir, 'routes.json'), `${JSON.stringify(routes, null, 2)}\n`);
+    await auditRenderedPages({ themeDir, outputDir, routes });
+    const { verifyMediaEmbeds } = require('./media-embed-browser.cjs');
+    await verifyMediaEmbeds({ themeDir, url: `${baseUrl}/?page_id=${content.mediaPageId}`, outputDir });
+    log(`Rendered accessibility reports: ${outputDir}`);
+  }
+}
+
+function assertCleanDebugLog(wpPath) {
+  const debugLog = path.join(wpPath, 'wp-content', 'debug.log');
+  if (fs.existsSync(debugLog) && fs.readFileSync(debugLog, 'utf8').trim() !== '') {
+    throw new Error(`WordPress fixture debug log must remain clean. See ${debugLog}.`);
+  }
 }
 
 function dumpLogs(wpPath) {
@@ -768,6 +1018,8 @@ async function main() {
     `--version=${wordpressVersion}`,
     '--force',
   ]);
+  const resolvedWordpressVersion = wp(wpPath, ['core', 'version']);
+  log(`WordPress version: requested ${wordpressVersion}; resolved ${resolvedWordpressVersion}`);
 
   run('Create wp-config.php', 'wp', [
     '--allow-root',
@@ -816,6 +1068,7 @@ async function main() {
   runNativeBlockDiscovery(wpPath);
   installAcfStub(wpPath);
   runAcfDiscoveryWithStub(wpPath);
+  wp(wpPath, ['eval-file', path.join(repoRoot, '.github/scripts/media-embed-smoke.php')]);
   wp(wpPath, [
     'eval',
     'if ( ! class_exists( "\\\\Timber\\\\Timber" ) ) { fwrite( STDERR, "Timber is not loaded.\\n" ); exit( 1 ); }',
@@ -824,8 +1077,9 @@ async function main() {
   const content = createFixtureContent(wpPath);
   await renderRoutes(wpPath, content, baseUrl, port, generatedChildSlug);
   stopServer();
+  assertCleanDebugLog(wpPath);
 
-  log('Generated and activated a child theme, checked block discovery, loaded assets, and rendered home, page, single, archive, search, author, and 404 routes.');
+  log(`WordPress ${resolvedWordpressVersion} (requested ${wordpressVersion}): Generated and activated a child without Twig templates, checked block discovery, loaded assets, rendered parent page fallbacks and child block extensions without changing surrounding bytes, rendered home, single, archive, search, author, 404, and media routes, and followed search pagination to page 2 with a clean debug log.` + (auditAccessibility ? ' Seven rendered routes passed the WCAG accessibility audit.' : ''));
   dropDatabase(env);
 
   if (!keepFixture) {
