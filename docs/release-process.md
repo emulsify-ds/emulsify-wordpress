@@ -63,9 +63,10 @@ match the latest stable tag.
    `npm run release:check` with WP-CLI and
    MySQL available. The release job packages these committed files, including
    their version strings, into the ZIP.
-4. Push the release PR branch, then run `npm run publish-test -- --no-ci`.
-   This explicit local dry run analyzes the current pushed branch; publishing
-   remains restricted to `main`. Semantic-release must compute exactly
+4. Push the release PR branch, then follow the
+   [local dry-run requirements](#local-release-dry-runs) and run
+   `npm run publish-test -- --no-ci`. Publishing remains restricted to `main`.
+   Semantic-release must compute exactly
    the prepared version from the Conventional Commits. A mismatch fails with
    an actionable message; resolve the version or commit classification before
    merging.
@@ -92,9 +93,29 @@ Local dry runs on release branches and valid unprepared-release skips are
 unaffected.
 
 When `package.json` still equals the latest stable tag, no release is prepared.
-The guarded runner skips publishing successfully, even if newer commits would
-otherwise trigger semantic-release. Ordinary change PRs do not need to bump
-versions; the release PR prepares them together.
+In CI, the guarded runner first verifies that the tag has a published stable
+GitHub release with a nonempty, uploaded `emulsify.zip`. It then skips publishing
+successfully, even if newer commits would otherwise trigger semantic-release.
+Local unprepared-release skips need no GitHub token. Ordinary change PRs do not
+need to bump versions; the release PR prepares them together.
+
+## Recovering a partial release
+
+Semantic-release pushes the tag before uploading and publishing the GitHub
+release. The release workflow checks publication state with read-only access
+before readiness, so stale draft documentation cannot hide a missing release or
+ZIP. A failure prints the relevant `gh release upload` or `gh release edit`
+commands. A read-only token may also see a draft as missing; inspect it with a
+maintainer account before creating anything.
+
+Use the ZIP and checksum from the successful readiness run for that exact tag.
+Verify the checksum before uploading. If that artifact has expired, check out
+the tag in a full clone, rebuild it with `npm run build:dist`, and run readiness
+against that ZIP before recovering the release. Do not rebuild from a newer
+branch tip, move the tag, or prepare another version to hide a partial release.
+Review release notes before publishing a recovered draft. After recovery,
+rotate the release draft as described above and start a new workflow dispatch
+on `main`; the publication check should pass and publishing should skip.
 
 ## Release checks
 
@@ -130,7 +151,8 @@ npm run lint:php
 npm run test:generated-theme
 npm run smoke:generation-parity
 npm run pr:check
-npm run release:check
+npm run build:dist
+WP_SMOKE_REQUIRED=1 WP_SMOKE_THEME_ARCHIVE=dist-artifact/emulsify.zip npm run release:check
 npm run publish-test -- --no-ci
 ```
 
@@ -163,6 +185,28 @@ Use `npm run release:check -- --skip-smoke` for static checks and focused
 contract tests without runtime smoke commands. This is a quick local check;
 the release PR and publishing workflow still require the full fixture path.
 
+## Local release dry runs
+
+Before `npm run publish-test -- --no-ci`:
+
+- Use an attached local branch with full history and tags. Detached `HEAD`
+  checkouts cannot supply the release branch.
+- Push that branch to `origin` first, fetch it, and make sure the checkout is
+  not behind its remote branch. Push new commits before repeating the dry run.
+- Set `GH_TOKEN` or `GITHUB_TOKEN` to a GitHub token with push permission for
+  this repository. The GitHub plugin verifies that permission even in dry runs;
+  an authenticated Git CLI alone does not supply the environment variable.
+- Build `dist-artifact/emulsify.zip` with `npm run build:dist` and test that exact
+  archive with `WP_SMOKE_THEME_ARCHIVE=dist-artifact/emulsify.zip`. Configure the
+  disposable database with the `WP_SMOKE_DB_*` variables used in
+  `.github/workflows/theme-readiness.yml`.
+
+The dry run analyzes the current pushed release branch and must compute the
+prepared version exactly. It creates no tags or releases. Use the guarded
+`publish-test` command; the root npm package is private and exposes no raw
+`semantic-release` script. A missing or empty ZIP fails release verification
+before any tag is created, including during dry runs.
+
 ## Installable release artifact
 
 Run `npm run build:dist` to create `dist-artifact/emulsify.zip`. The build stages an explicit parent-theme runtime file list under a top-level `emulsify/` directory, copies only tracked Whisk generator files, and installs the versions pinned in `composer.lock` with `--no-dev --optimize-autoloader` directly into that staged tree. The ZIP therefore bundles `vendor/` and can be installed without running Composer after download.
@@ -171,7 +215,14 @@ The archive includes the runtime PHP entry points, `includes/`, `templates/`, `s
 
 Composer/GitHub distributions are a separate channel. They retain `composer.json` so the consuming application can resolve dependencies, and `.gitattributes` removes repository-only CI, release scripts, and root npm tooling while retaining user documentation. A direct Git clone remains a full development checkout. For a manual WordPress upload, always use the named `emulsify.zip` release asset rather than GitHub's automatic **Source code** archive.
 
-The semantic-release publish job sets up PHP 8.3 and Composer, builds this archive, and lets `@semantic-release/github` attach it to the GitHub release as **Emulsify WordPress theme (with dependencies)**. WordPress.org SVN deployment remains a future step after the project has a WordPress.org profile; it is not performed by this workflow.
+Read-only readiness builds the archive once in its PHP 8.3 practical lane.
+WordPress fixture jobs download that archive and verify its SHA-256 checksum
+before testing it. The publishing job downloads the same artifact and checks
+the checksum before its dry run and publish command. It installs no PHP or
+Composer and does not rebuild the ZIP. `@semantic-release/github` attaches it
+as **Emulsify WordPress theme (with dependencies)**. WordPress.org SVN
+deployment remains a future step after the project has a WordPress.org profile;
+it is not performed by this workflow.
 
 For pre-release client testing, the PHP 8.3 `Practical theme readiness` lane also builds the archive and uploads `emulsify.zip` directly for 14 days. This provides the packaged theme before a public GitHub Release exists without publishing an untagged stable release or wrapping the installable ZIP inside another archive.
 
@@ -181,7 +232,11 @@ The WordPress Theme Readiness workflow runs on pull requests, manual dispatch, a
 
 Every configured pull request runs two independently visible fast jobs:
 
-- `Practical theme readiness`: clean root npm installation, Composer validation, npm audits, the practical `pr:check` suite, and static `release:check` assertions.
+- `Practical theme readiness`: clean root npm installation, Composer validation,
+  blocking `composer audit --locked --no-dev` for the dependencies bundled in
+  the ZIP, root npm audits, the practical `pr:check` suite, and static
+  `release:check` assertions. The root runtime npm audit alone covers no shipped
+  packages because the root package contains only development dependencies.
 - `PHP coding standards and static analysis`: PHP 8.3, Composer development dependencies, PHPCS, and PHPStan through `npm run lint:php`.
 
 The practical matrix blocks on PHP 8.3, 8.4, and 8.5. PHP 8.5 was promoted
@@ -206,13 +261,22 @@ silently bypassing fixture checks.
 Every action is pinned to a full commit SHA with a release-version comment;
 weekly GitHub Actions Dependabot updates maintain those pins. Validation jobs
 use read-only credentials and disable persisted checkout credentials. Only
-the publishing job receives release writes. Its dry run runs immediately
+the publishing job receives release writes. Its checkout also disables
+persisted credentials, npm lifecycle scripts stay disabled, and the token is
+provided only to the release commands. Its dry run runs immediately
 before publishing because semantic-release verifies push permission even in
 dry-run mode. Contributor updates use reviewed pull requests rather than a
 bot with repository-content write permission. Adding issues to the organization
 project still requires the configured Projects token. See the
 [dated dependency audit](dependency-audit-2026-10-23.md) for remaining
 development-tool findings and their owners.
+
+The Whisk job creates an ephemeral lock snapshot after installation and logs
+`npm audit` findings without blocking readiness. This covers its selected
+dependency tree; `whisk:install` intentionally does not commit a starter lockfile.
+Every concrete release job has an explicit timeout. The reusable-workflow call
+uses the limits on its called jobs, since GitHub does not accept a timeout on a
+job that only calls another workflow.
 
 Weekly scheduled runs repeat both extended jobs. Manual dispatch runs the WordPress fixture when `wordpress_fixture` is enabled and the Whisk build/audit when `extended_checks` is enabled. The workflow concurrency group cancels superseded pull-request runs, and both extended jobs have explicit runtime limits.
 
@@ -229,7 +293,15 @@ The two fast pull-request jobs run automatically for every configured target bra
 
 Success means `Practical theme readiness`, `PHP coding standards and static analysis`, `WordPress fixture smoke`, and `Extended Whisk Storybook and a11y` pass. The fixture job installs WP-CLI, starts MySQL, sets `WP_SMOKE_REQUIRED=1`, and runs `npm run release:check` against the isolated WordPress fixture. Record the successful workflow run in the release PR before merging.
 
-The semantic-release workflow remains release-gated. Read-only release readiness requires the full WordPress fixture smoke path with WP-CLI and MySQL. After readiness succeeds, the publishing job runs a semantic-release dry run before the actual publish command. Release publishing must not proceed when the full fixture path is skipped or failed.
+The semantic-release workflow calls the full WordPress Theme Readiness workflow
+with release coverage enabled. It waits for PHP 8.3, 8.4 and 8.5 practical checks,
+PHP analysis, required generation parity, `pr:check`, minimum/latest WordPress
+fixtures with rendered accessibility, and the Whisk tests/Storybook/accessibility
+job. Nightly WordPress runs too and retains its advisory policy. Release dispatch
+always enables this coverage regardless of the ordinary manual-input defaults.
+After readiness succeeds, the publishing job verifies the tested artifact and
+runs a semantic-release dry run before publishing. Parsed YAML contracts and
+negative tests reject skipped smoke paths, failure bypasses and weakened needs.
 
 ## License
 

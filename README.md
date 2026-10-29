@@ -147,7 +147,10 @@ npm run lint:php
 
 `lint:php` runs PHPCS with `phpcs.xml.dist`, followed by PHPStan with `phpstan.neon.dist`. Both configurations cover `includes/` and the parent theme's root PHP entry points, including `functions.php`. Use `npm run lint:php:fix` to apply safe PHPCBF coding-standard fixes, then rerun `npm run lint:php` to confirm PHPStan and the remaining PHPCS checks.
 
-The `.husky/pre-commit` hook already runs `npm run lint`, which delegates to this PHP check.
+The `.husky/pre-commit` hook runs `npm run lint`, which delegates to this PHP
+check. A normal `npm install` installs Husky 9 hooks in clones and worktrees.
+After installing with `npm ci --ignore-scripts`, enable local hooks with
+`npx --no-install husky`.
 
 | Command | Purpose |
 | --- | --- |
@@ -155,9 +158,9 @@ The `.husky/pre-commit` hook already runs `npm run lint`, which delegates to thi
 | `npm run pr:check` | Run the practical, stubbed pull request validation suite. |
 | `npm run release:check` | Run release-readiness checks. |
 | `npm run build:dist` | Build the installable `dist-artifact/emulsify.zip` release archive. |
-| `npm run publish-test -- --no-ci` | Run a local semantic-release dry run. |
+| `npm run publish-test -- --no-ci` | Run a local release dry run after meeting the [prerequisites](docs/release-process.md#local-release-dry-runs). |
 
-Every pull request to the configured branches runs two visible fast readiness jobs: practical smoke checks and dedicated PHPCS/PHPStan analysis. Pull requests targeting `main` or `release-2.x` additionally run the MySQL-backed WordPress fixture and Whisk Storybook accessibility audit. The WordPress job builds and extracts `emulsify.zip`, confirms its packaged generator and Whisk source, and sets `WP_SMOKE_REQUIRED=1`, so missing WP-CLI/MySQL prerequisites or route render failures fail the job instead of producing a skip. It also audits seven actual WordPress routes, including YouTube and Vimeo posters, with explicit WCAG 2.2 AA axe tags and saves rendered HTML, results, and navigation evidence. The sole `target-size` exclusion reflects the unstyled parent; projects own target sizing and focus/helper styles. See [accessibility checks](docs/accessibility.md).
+Every pull request to the configured branches runs two visible fast readiness jobs: practical smoke checks and dedicated PHPCS/PHPStan analysis. Pull requests targeting `main` or `release-2.x` additionally run the MySQL-backed WordPress fixture and Whisk Storybook accessibility audit. The PHP 8.3 practical lane builds `emulsify.zip`; the WordPress jobs verify and extract that same archive, confirm its packaged generator and Whisk source, and set `WP_SMOKE_REQUIRED=1`, so missing WP-CLI/MySQL prerequisites or route render failures fail the job instead of producing a skip. They also audit seven actual WordPress routes, including YouTube and Vimeo posters, with explicit WCAG 2.2 AA axe tags and save rendered HTML, results, and navigation evidence. The sole `target-size` exclusion reflects the unstyled parent; projects own target sizing and focus/helper styles. See [accessibility checks](docs/accessibility.md).
 
 Practical checks block on PHP 8.3, 8.4, and 8.5. The WordPress fixture blocks on
 the minimum 6.8 and on `latest`, resolved at run time with the downloaded
@@ -243,7 +246,9 @@ This repository uses [Conventional Commits](https://www.conventionalcommits.org/
 - `feat!:` or a `BREAKING CHANGE:` footer produces a major release.
 - `docs:`, `test:`, `ci:`, and `chore:` produce no release.
 
-A commit-msg hook validates the format with commitlint. See [docs/release-process.md](docs/release-process.md) for the full version strategy.
+The `.husky/commit-msg` hook validates the format with commitlint after local
+hooks are installed. See [docs/release-process.md](docs/release-process.md) for
+the full version strategy.
 
 ### Release readiness
 

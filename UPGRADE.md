@@ -260,7 +260,9 @@ The release-tooling changes need no site runtime or generated-theme edits.
 Maintainers need a full Git checkout with stable tags to run release checks.
 Prepare root `package.json` and every derived version together in a release PR,
 then confirm semantic-release computes that exact version. A checkout still at
-the latest tagged version skips publishing. Follow the
+the latest tagged version verifies GitHub publication in CI before skipping.
+Use the [local dry-run requirements](docs/release-process.md#local-release-dry-runs)
+for pushed branches and token setup. Follow the
 [release PR procedure](docs/release-process.md#release-pr-procedure), including
 re-syncing the standalone starter before release.
 

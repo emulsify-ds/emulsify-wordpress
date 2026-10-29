@@ -16,7 +16,8 @@ latest stable tag or an untagged next patch, minor, or major, and requires full
 Git history and tags. It rejects already-tagged draft versions and stale claims
 about the latest release.
 
-Publishing skips successfully when no version is prepared. Once `2.1.0` is
+Publishing skips successfully when no version is prepared after CI verifies
+that the latest tag has a published GitHub release and its ZIP. Once `2.1.0` is
 prepared, semantic-release must compute exactly `2.1.0` from Conventional
 Commits before publishing the committed theme headers, ZIP, and generated-theme
 lineage. See the [release process](release-process.md).
@@ -49,6 +50,12 @@ lineage. See the [release process](release-process.md).
 
 ## Changed
 
+- Release publishing waits for the full reusable readiness workflow and reuses
+  its tested ZIP with a SHA-256 checksum. Readiness audits the shipped Composer
+  dependencies and logs Whisk dependency findings. Release credentials remain
+  scoped to the commands that need them; all concrete release jobs have time
+  limits. The root npm package is private, and Husky 9 installs a real commit
+  message hook in clones and worktrees.
 - Root development-only release tooling adopts Drupal 7.3.0's refreshed
   semantic-release, GitHub plugin, commitlint, and lint-staged baselines.
   WordPress retains its prepared, committed release-version model.
@@ -70,6 +77,10 @@ lineage. See the [release process](release-process.md).
 
 ## Fixed
 
+- Release reruns report an incomplete tagged GitHub release or missing ZIP with
+  recovery commands, before stale release-draft documentation can mask it.
+- Release test fixtures ignore maintainer commit/tag signing settings, and the
+  organization-project workflow skips fork and Dependabot pull requests.
 - Recursive file discovery skips unreadable or disappearing directories and
   reports failures when debugging, so a broken component folder no longer makes
   frontend or admin requests fatal.
@@ -197,5 +208,6 @@ before opting in. See the required and optional actions in
   WordPress fixture path; set `WP_SMOKE_REQUIRED=1` so missing prerequisites fail.
 - Run `npm run release:check -- --skip-smoke` only for static validation; it
   does not replace the full release gate.
-- Run `npm run publish-test -- --no-ci` to verify the prepared version matches
-  semantic-release's calculation; a local dry run can analyze unpushed commits.
+- Push the branch, then follow the
+  [local dry-run requirements](release-process.md#local-release-dry-runs) before
+  `npm run publish-test -- --no-ci` to verify the prepared version calculation.
