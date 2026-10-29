@@ -333,8 +333,10 @@ final class Assets {
 		}
 
 		$asset_paths = $this->component_asset_paths();
+		$path        = (string) $file['path'];
+		$real        = realpath( $path );
 
-		return isset( $asset_paths[ $file['path'] ] );
+		return isset( $asset_paths[ false === $real ? $path : $real ] );
 	}
 
 	/**
@@ -390,7 +392,9 @@ final class Assets {
 			}
 
 			foreach ( $this->metadata_asset_paths( $metadata['assets'] ) as $path ) {
-				$paths[ dirname( $metadata_file ) . '/' . $path ] = true;
+				$absolute = dirname( $metadata_file ) . '/' . $path;
+				$real     = realpath( $absolute );
+				$paths[ false === $real ? $absolute : $real ] = true;
 			}
 		}
 

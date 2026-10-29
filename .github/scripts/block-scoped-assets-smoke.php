@@ -456,12 +456,12 @@ try {
 			'title'  => 'Scanner Card',
 			'assets' => array(
 				'frontend' => array(
-					'css' => array( array( 'path' => 'card.css' ), array( 'path' => 'styles/nested.css' ) ),
-					'js'  => array( array( 'path' => 'scripts/nested.js' ) ),
+					'css' => array( array( 'path' => 'card.css' ), array( 'path' => 'styles/./nested.css' ) ),
+					'js'  => array( array( 'path' => 'scripts//nested.js' ) ),
 				),
 				'editor'   => array(
-					'css' => array( array( 'path' => 'editor/editor.css' ) ),
-					'js'  => array( array( 'path' => 'editor/editor.js' ) ),
+					'css' => array( array( 'path' => 'editor/./editor.css' ) ),
+					'js'  => array( array( 'path' => 'editor//editor.js' ) ),
 				),
 			),
 		)
@@ -502,7 +502,7 @@ try {
 		&& ! isset( $GLOBALS['emulsify_block_assets_smoke_script_modules']['emulsify-component-card-scripts-nested'] )
 		&& ! isset( $GLOBALS['emulsify_block_assets_smoke_scripts']['emulsify-component-card-editor-editor'] )
 		&& ! isset( $GLOBALS['emulsify_block_assets_smoke_script_modules']['emulsify-component-card-editor-editor'] ),
-		'Global component scanning must skip frontend and editor-only metadata assets in component subdirectories without a manifest.'
+		'Global component scanning must skip frontend and editor-only subfolder assets, including internal dots and repeated separators, without a manifest.'
 	);
 	emulsify_block_assets_smoke_assert(
 		! isset( $GLOBALS['emulsify_block_assets_smoke_styles']['emulsify-component-card-styles-filtered'] ),
