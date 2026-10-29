@@ -32,7 +32,7 @@
     "lint:php": "vendor/bin/phpcs -q && vendor/bin/phpstan analyse --no-progress --memory-limit=1G",
     "lint:php:fix": "vendor/bin/phpcbf",
     "lint-staged": "lint-staged",
-    "prepare": "[ -d '.git' ] && (husky install) || true",
+    "prepare": "husky",
     "pr:check": "node .github/scripts/pr-validation.cjs",
     "release:check": "node .github/scripts/release-check.cjs",
     "test:generated-theme": "node --test .github/scripts/generated-theme-contract.test.cjs",
