@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const yaml = require('js-yaml');
-const { validateReadinessMatrix, validateReleaseWorkflow } = require('./readiness-matrix-contract.cjs');
+const { validateReadinessMatrix, validateReleaseWorkflow, validateProjectsWorkflow } = require('./readiness-matrix-contract.cjs');
 
 function fixture() {
   return {
@@ -207,5 +207,15 @@ test('rejects release credential persistence and rebuilding instead of reusing t
     const workflow = releaseFixture();
     mutation(workflow);
     assert.throws(() => validateRelease(workflow));
+  }
+});
+
+test('project integration skips fork and Dependabot pull requests without skipping issues or manual runs', () => {
+  const repoRoot = path.resolve(__dirname, '../..');
+  const workflow = yaml.load(fs.readFileSync(path.join(repoRoot, '.github/workflows/addtoprojects.yml'), 'utf8'));
+  validateProjectsWorkflow(yaml.dump(workflow));
+  for (const condition of [undefined, 'true', "github.actor != 'dependabot[bot]'"]) {
+    workflow.jobs['add-to-project'].if = condition;
+    assert.throws(() => validateProjectsWorkflow(yaml.dump(workflow)));
   }
 });

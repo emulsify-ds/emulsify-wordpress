@@ -9,7 +9,7 @@ const path = require('path');
 const childProcess = require('child_process');
 const yaml = require('js-yaml');
 const { validateReleaseVersionContract } = require('./release-version-contract.cjs');
-const { validateReadinessMatrix, validateReleaseWorkflow } = require('./readiness-matrix-contract.cjs');
+const { validateReadinessMatrix, validateReleaseWorkflow, validateProjectsWorkflow } = require('./readiness-matrix-contract.cjs');
 const { validateThemeJsonStyles } = require('./theme-json-style-contract.cjs');
 
 const repoRoot = path.resolve(__dirname, '../..');
@@ -1329,6 +1329,7 @@ function runStaticChecks() {
     ensureBreakingParser('@semantic-release/commit-analyzer', analyzerOptions.parserOpts);
     ensureBreakingParser('@semantic-release/release-notes-generator', notesOptions.parserOpts);
     validateReleaseWorkflow(semanticReleaseWorkflow, themeReadinessWorkflow);
+    validateProjectsWorkflow(readFile('.github/workflows/addtoprojects.yml'));
     ensure(semanticReleaseRunner.includes('Refusing to publish local-only stable tag(s)'), 'The guarded runner should refuse to push unpublished local stable tags.');
     return 'Semantic release requires a prepared package version, non-prefixed tags, main-only publishing, and the tested installable ZIP asset.';
   });

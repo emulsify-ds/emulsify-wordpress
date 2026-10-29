@@ -176,4 +176,11 @@ function validateReleaseWorkflow(releaseSource, readinessSource) {
   return { release, readiness };
 }
 
-module.exports = { validateReadinessMatrix, validateReleaseWorkflow };
+function validateProjectsWorkflow(source) {
+  const workflow = yaml.load(source);
+  assert.equal(workflow.jobs?.['add-to-project']?.if?.replace(/\s+/g, ' ').trim(),
+    "github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')",
+    'Project token must not be requested for fork or Dependabot pull requests.');
+}
+
+module.exports = { validateReadinessMatrix, validateReleaseWorkflow, validateProjectsWorkflow };
