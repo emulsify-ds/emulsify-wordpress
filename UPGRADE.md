@@ -130,8 +130,9 @@ remain project-owned. New generated themes receive the updated defaults.
    [WordPress-formatted text](docs/timber-and-twig-authoring.md#wordpress-formatted-text).
 
 8. **Review values passed to `bem()` and `add_attributes()`.** The PHP bag now
-   rejects `srcdoc`, expression-bearing Alpine/Vue and htmx directives, and
-   leading `:` bindings in addition to native `on*` and `@` handlers. URL
+   rejects `srcdoc`, all Alpine `x-*` and Vue `v-*` directives, and the
+   documented htmx expression-bearing families (including `data-hx-*` aliases).
+   Leading `:` bindings, native `on*` and `@` handlers are also rejected. URL
    attributes use WordPress's allowed protocols; default policy strips
    `javascript:` and `data:`. Replace data-URI image sources with permitted
    URLs. Pass attribute maps as arrays, Traversables or `AttributeBag`, rather

@@ -1,6 +1,6 @@
 # 2.1.0 Release Notes Draft
 
-Status date: 2026-10-28. WordPress 2.1.0 remains unreleased; the parity work and
+Status date: 2026-10-29. WordPress 2.1.0 remains unreleased; the parity work and
 release preparation must merge before publication. These notes describe changes
 since `2.0.0`, including the sync with [Drupal 7.3.0, published on October 28](https://github.com/emulsify-ds/emulsify-drupal/releases/tag/7.3.0).
 The [sync log](sister-project-parity.md#sync-log) records the published tag and
@@ -77,6 +77,10 @@ lineage. See the [release process](release-process.md).
 
 ## Fixed
 
+- Contributor updates no longer commit directly to `main`. The release runner
+  detects `main` moving during readiness and gives recovery steps for a new
+  `workflow_dispatch` on `main`.
+
 - Global context reuses its body-class calculation and creates logout URLs
   only when read or JSON-serialized. Both body-class keys and `wp.logout_url`
   remain available; PHP context caches can serialize the lazy URL.
@@ -97,9 +101,10 @@ lineage. See the [release process](release-process.md).
   refuse symlinks instead of packaging their targets.
 
 - Both child-theme generators preserve JSON object/list types, rewrite nested
-  patterns, sanitize metadata consistently, and stop on invalid JSON without
-  installing a partially processed starter. Standalone generation rejects
-  noncanonical machine names and HTML-bearing labels before changing files.
+  patterns, apply matching sanitization to accepted plain-text metadata, and
+  stop on invalid JSON without installing a partially processed starter.
+  Standalone generation rejects noncanonical machine names and display names
+  or descriptions containing `<` before changing files.
 
 - Native robots, favicon, feed, trackback and sitemap responses remain
   available when Timber is missing, while theme pages retain a clear error.
@@ -222,10 +227,10 @@ before opting in. See the required and optional actions in
 
 - [ ] Merge the parity implementation PRs and review the
   [sync log](sister-project-parity.md#sync-log) against the final changes.
-- [ ] Prepare `2.1.0` following the [release procedure](release-process.md): bump
-  root `package.json`, both theme `Version` headers, `whisk/package.json`, and
-  `whisk/project.emulsify.json` lineage together, including applicable lockfile
-  metadata.
+- [x] Prepare committed `2.1.0` metadata following the
+  [release procedure](release-process.md): root `package.json`, both theme
+  `Version` headers, `whisk/package.json`, `whisk/project.emulsify.json` lineage,
+  and applicable lockfile metadata agree.
 - [ ] Re-sync
   [`emulsify-wordpress-starter`](https://github.com/emulsify-ds/emulsify-wordpress-starter)
   from `whisk/`, including hidden `.agents/` guidance and the standalone
