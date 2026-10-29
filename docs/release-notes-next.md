@@ -1,8 +1,10 @@
 # 2.1.0 Release Notes Draft
 
-Status date: 2026-10-23. Unreleased; the parity work and release preparation
-must merge before publication. These notes describe changes since `2.0.0`,
-including the [Drupal 7.3.0 sync](sister-project-parity.md#sync-log).
+Status date: 2026-10-28. WordPress 2.1.0 remains unreleased; the parity work and
+release preparation must merge before publication. These notes describe changes
+since `2.0.0`, including the sync with [Drupal 7.3.0, published on October 28](https://github.com/emulsify-ds/emulsify-drupal/releases/tag/7.3.0).
+The [sync log](sister-project-parity.md#sync-log) records the published tag and
+the platform-specific classifications.
 
 ## Version strategy
 
@@ -47,6 +49,9 @@ lineage. See the [release process](release-process.md).
 
 ## Changed
 
+- Root development-only release tooling adopts Drupal 7.3.0's refreshed
+  semantic-release, GitHub plugin, commitlint, and lint-staged baselines.
+  WordPress retains its prepared, committed release-version model.
 - New generated themes use Emulsify Core `^4.5.0`, with an effective Node.js
   minimum of 24.13.0. Existing child manifests and lockfiles remain
   project-owned.
