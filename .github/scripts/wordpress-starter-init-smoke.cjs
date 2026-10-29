@@ -226,6 +226,21 @@ const target = path.join(workRoot, 'acme-theme');
 const hostileName = 'Acme */ echo 1; /* Theme';
 
 try {
+  for (const invalid of ['Acme_Site', '../Acme', '---', 'café', 'İSite']) {
+    const rejectedTarget = path.join(workRoot, `invalid-${Buffer.from(invalid).toString('hex')}`);
+    copyStarterFixture(starterRoot, rejectedTarget);
+    const config = readJson(path.join(rejectedTarget, 'project.emulsify.json'));
+    config.project.name = 'Machine-name fixture';
+    config.project.machineName = invalid;
+    writeJson(path.join(rejectedTarget, 'project.emulsify.json'), config);
+    const before = fs.readFileSync(path.join(rejectedTarget, 'style.css'), 'utf8');
+    const rejected = childProcess.spawnSync(process.execPath, [path.join(rejectedTarget, '.cli/init.js')], {
+      cwd: rejectedTarget, encoding: 'utf8',
+    });
+    assert(rejected.status !== 0 && /machineName.*lowercase|machineName.*canonical/i.test(rejected.stderr), `Invalid machineName ${invalid} must fail with naming guidance.`);
+    assert(fs.readFileSync(path.join(rejectedTarget, 'style.css'), 'utf8') === before, 'Invalid machineName must fail before rewriting metadata.');
+  }
+
   copyStarterFixture(starterRoot, target);
 
   writeJson(path.join(target, 'project.emulsify.json'), {

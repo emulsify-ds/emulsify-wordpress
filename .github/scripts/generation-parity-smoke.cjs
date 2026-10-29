@@ -47,6 +47,14 @@ const scenarios = [
     displayName: 'Civic Portal',
     description: 'Resident services portal: forms, alerts & payments.',
   },
+  {
+    machineName: 'unicode-portal',
+    inputMachineName: 'Unicode_Portal',
+    displayName: 'Café \"Portal\" / 100% site',
+    inputDisplayName: '<script>ignored()</script><b title=">">Café \"Portal\"</b> / 100%20% site',
+    description: 'Quotes \" and \' / café & 100% coverage.',
+    inputDescription: '<style>ignored{}</style>Quotes \" and \' / café & 100%25% coverage.',
+  },
 ];
 
 function assert(condition, message) {
@@ -96,6 +104,22 @@ function writeJson(filePath, data) {
   fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`);
 }
 
+// Preserve JSON object/list identity and rewrite nested pattern namespaces.
+function addMetadataFixtures(root) {
+  for (const relative of ['package.json', 'project.emulsify.json']) {
+    const file = path.join(root, relative);
+    const data = readJson(file);
+    data.generationFixture = { emptyObject: {}, emptyList: [] };
+    writeJson(file, data);
+  }
+  writeJson(path.join(root, 'patterns/nested/fixture.json'), {
+    name: 'whisk/nested-fixture',
+    title: 'Nested fixture',
+    content: '<!-- wp:paragraph --><p>Fixture</p><!-- /wp:paragraph -->',
+    metadata: {},
+  });
+}
+
 /**
  * Generates through the in-site WP-CLI command.
  */
@@ -104,6 +128,10 @@ function generateWithWpCli(themeRoot, scenario) {
   // the child theme as a sibling of the parent theme.
   const parentDir = path.join(themeRoot, 'emulsify');
   copyStarter(starterRoot, path.join(parentDir, 'whisk'));
+  addMetadataFixtures(path.join(parentDir, 'whisk'));
+  if (scenario.invalidPattern) {
+    fs.writeFileSync(path.join(parentDir, 'whisk/patterns/nested/fixture.json'), scenario.invalidPattern);
+  }
   fs.copyFileSync(
     path.join(repoRoot, 'style.css'),
     path.join(parentDir, 'style.css'),
@@ -114,12 +142,18 @@ function generateWithWpCli(themeRoot, scenario) {
     [
       path.join(__dirname, 'generation-parity-harness.php'),
       themeRoot,
-      scenario.displayName,
-      scenario.machineName,
-      scenario.description,
+      scenario.inputDisplayName || scenario.displayName,
+      scenario.inputMachineName || scenario.machineName,
+      scenario.inputDescription || scenario.description,
     ],
     { encoding: 'utf8' },
   );
+
+  if (scenario.invalidPattern) {
+    assert(result.status !== 0 && /valid JSON object: patterns[/\\]nested[/\\]fixture.json/.test(result.stderr), `WP-CLI must reject invalid nested pattern JSON with its path:\n${result.stderr}`);
+    assert(!fs.existsSync(path.join(themeRoot, scenario.machineName)), 'Invalid pattern JSON must not install a partially generated theme.');
+    return;
+  }
 
   assert(
     result.status === 0,
@@ -137,18 +171,29 @@ function generateWithWpCli(themeRoot, scenario) {
 function generateWithStarterInit(root, scenario) {
   const target = path.join(root, scenario.machineName);
   copyStarter(starterRoot, target);
+  addMetadataFixtures(target);
+  if (scenario.invalidPattern) {
+    fs.writeFileSync(path.join(target, 'patterns/nested/fixture.json'), scenario.invalidPattern);
+  }
 
   const project = readJson(path.join(target, 'project.emulsify.json'));
-  project.project.name = scenario.displayName;
+  project.project.name = scenario.inputDisplayName || scenario.displayName;
   project.project.machineName = scenario.machineName;
-  project.project.description = scenario.description;
+  project.project.description = scenario.inputDescription || scenario.description;
   writeJson(path.join(target, 'project.emulsify.json'), project);
 
+  const originalStyle = fs.readFileSync(path.join(target, 'style.css'), 'utf8');
   const result = childProcess.spawnSync(
     process.execPath,
     [path.join(target, '.cli/init.js')],
     { cwd: target, encoding: 'utf8' },
   );
+
+  if (scenario.invalidPattern) {
+    assert(result.status !== 0 && /valid JSON object: patterns[/\\]nested[/\\]fixture.json/.test(result.stderr), `Starter init must reject invalid nested pattern JSON with its path:\n${result.stderr}`);
+    assert(fs.readFileSync(path.join(target, 'style.css'), 'utf8') === originalStyle, 'Invalid pattern JSON must fail before rewriting starter metadata.');
+    return;
+  }
 
   assert(
     result.status === 0,
@@ -232,6 +277,14 @@ function compareTrees(scenario, wpCliDir, starterDir) {
 }
 
 function validate(scenario, themeDir, pathLabel) {
+  for (const relative of ['package.json', 'project.emulsify.json']) {
+    const fixture = readJson(path.join(themeDir, relative)).generationFixture;
+    assert(!Array.isArray(fixture.emptyObject), `${pathLabel} must preserve {} in ${relative}.`);
+    assert(Array.isArray(fixture.emptyList), `${pathLabel} must preserve [] in ${relative}.`);
+  }
+  const nested = readJson(path.join(themeDir, 'patterns/nested/fixture.json'));
+  assert(nested.name === `${scenario.machineName}/nested-fixture`, `${pathLabel} must rewrite nested pattern namespaces.`);
+  assert(!Array.isArray(nested.metadata), `${pathLabel} must preserve nested pattern JSON objects.`);
   const result = validateGeneratedTheme({
     themeDir,
     machineName: scenario.machineName,
@@ -279,6 +332,12 @@ try {
     console.log(
       `Generation parity confirmed for ${scenario.machineName} across ${compared} files.`,
     );
+  }
+
+  for (const invalidPattern of ['{"name":', '[]', 'null']) {
+    const scenario = { machineName: 'invalid-json', displayName: 'Invalid JSON', description: 'Fixture.', invalidPattern };
+    generateWithWpCli(fs.mkdtempSync(path.join(workRoot, 'invalid-wp-cli-')), scenario);
+    generateWithStarterInit(fs.mkdtempSync(path.join(workRoot, 'invalid-starter-')), scenario);
   }
 
   console.log('Generation parity smoke checks passed.');

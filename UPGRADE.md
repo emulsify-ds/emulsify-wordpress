@@ -137,6 +137,14 @@ remain project-owned. New generated themes receive the updated defaults.
    than arbitrary objects such as `WP_Post`. `CLASS` now merges into `class`.
    See [attribute rules](docs/timber-and-twig-authoring.md#attribute-helpers).
 
+9. **Use canonical names with Emulsify CLI.** Supply a machine name such as
+   `acme-site`, using lowercase ASCII letters, digits and single hyphens. The
+   starter rejects `Acme_Site` before rewriting files because the CLI has already
+   chosen that directory. Rerun with `--machineName acme-site`; WP-CLI continues
+   normalizing its `--machine-name` option. Nested pattern JSON is now validated
+   and rewritten by both generators; fix malformed or non-object JSON before
+   generation. See the [generation contract](docs/generated-child-theme-contract.md).
+
 Render representative pages as both an administrator and an anonymous visitor,
 check the editor where blocks are used, and inspect `debug.log`. Storybook
 alone does not exercise Timber context or WordPress hooks.

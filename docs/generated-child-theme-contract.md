@@ -11,6 +11,13 @@ Emulsify WordPress supports two ways to create a child theme:
 - **In-site WP-CLI.** `wp emulsify "Acme Site" --machine-name=acme-site` copies the bundled Whisk starter from the installed parent theme and applies targeted metadata updates.
 - **Standalone starter.** Emulsify CLI clones [`emulsify-wordpress-starter`](https://github.com/emulsify-ds/emulsify-wordpress-starter), installs dependencies, and runs the starter's `.cli/init.js` hook.
 
+Machine names use lowercase ASCII letters, digits and single hyphens, with no
+leading or trailing hyphen. WP-CLI normalizes `--machine-name=Acme_Site` to
+`acme-site`. Emulsify CLI currently chooses its destination before the starter
+hook runs, so pass `--machineName acme-site`; the hook rejects noncanonical
+names with a suggested correction instead of renaming a directory behind the
+CLI. Upstream CLI normalization must happen before directory creation.
+
 These are separate implementations in different languages, so the release checks generate the same identities through both paths and require their file trees to match. The only expected difference is the lockfile the standalone path creates during `npm install`.
 
 ## What the contract guarantees
@@ -34,7 +41,11 @@ These are separate implementations in different languages, so the release checks
 - Generation-only tooling and build output are absent, including `.cli`, `node_modules`, `dist`, `.out`, and `.coverage`.
 - Generated files are self-contained: no symbolic links, no documentation links that resolve outside the theme, and no script paths that point outside the theme except published packages under `node_modules/`.
 - Generated Markdown uses current terminology; retired Webpack and "subtheme" language fails the check.
-- Both generation paths write JSON with two-space indentation, so generated metadata is byte-identical regardless of path.
+- Both generation paths preserve JSON objects and lists, write two-space
+  indentation, and rewrite nested `patterns/` namespaces. Malformed or
+  non-object pattern JSON fails with its relative path before installation or
+  metadata rewrites. Display labels and descriptions receive WordPress-style
+  plain-text sanitization, including removal of percent-encoded octets.
 
 ## Outside the contract
 
