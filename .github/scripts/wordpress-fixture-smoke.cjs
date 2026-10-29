@@ -1459,6 +1459,9 @@ async function main() {
   wp(wpPath, ['eval-file', path.join(repoRoot, '.github/scripts/core-block-context-smoke.php')]);
   wp(wpPath, ['eval-file', path.join(repoRoot, '.github/scripts/attribute-hardening-wordpress-smoke.php')]);
   wp(wpPath, ['eval-file', path.join(repoRoot, '.github/scripts/context-wordpress-smoke.php')]);
+  run('Compare generators with real WordPress sanitization', 'npm', ['run', 'smoke:generation-parity'], {
+    env: { ...process.env, EMULSIFY_PARITY_REQUIRED: '1', EMULSIFY_WP_FORMATTING_FILE: path.join(wpPath, 'wp-includes/formatting.php') },
+  });
   wp(wpPath, [
     'eval',
     'if ( ! class_exists( "\\\\Timber\\\\Timber" ) ) { fwrite( STDERR, "Timber is not loaded.\\n" ); exit( 1 ); }',

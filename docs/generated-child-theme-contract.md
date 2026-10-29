@@ -18,7 +18,7 @@ hook runs, so pass `--machineName acme-site`; the hook rejects noncanonical
 names with a suggested correction instead of renaming a directory behind the
 CLI. Upstream CLI normalization must happen before directory creation.
 
-These are separate implementations in different languages, so the release checks generate the same identities through both paths and require their file trees to match. The only expected difference is the lockfile the standalone path creates during `npm install`.
+These are separate implementations in different languages, so the release checks generate the same identities through both paths and require their file trees to match. For accepted plain-text input, the only expected difference is the lockfile the standalone path creates during `npm install`.
 
 ## What the contract guarantees
 
@@ -44,8 +44,10 @@ These are separate implementations in different languages, so the release checks
 - Both generation paths preserve JSON objects and lists, write two-space
   indentation, and rewrite nested `patterns/` namespaces. Malformed or
   non-object pattern JSON fails with its relative path before installation or
-  metadata rewrites. Display labels and descriptions receive WordPress-style
-  plain-text sanitization, including removal of percent-encoded octets.
+  metadata rewrites. Accepted plain-text labels and descriptions remove
+  percent-encoded octets consistently. Standalone init rejects `<` in either
+  field before writing; WordPress retains its native HTML stripping. Supply
+  plain text to Emulsify CLI rather than depending on PHP's tag parser.
 
 ## Outside the contract
 

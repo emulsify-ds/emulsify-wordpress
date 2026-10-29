@@ -64,9 +64,19 @@ if ( ! function_exists( 'is_utf8_charset' ) ) {
 		return true;
 	}
 }
+if ( ! function_exists( 'get_option' ) ) {
+	function get_option( string $name ) {
+		return 'blog_charset' === $name ? 'UTF-8' : false;
+	}
+}
+if ( ! function_exists( '_canonical_charset' ) ) {
+	function _canonical_charset( string $charset ): string {
+		return is_utf8_charset() ? 'UTF-8' : $charset;
+	}
+}
 $wordpress_formatting = getenv( 'EMULSIFY_WP_FORMATTING_FILE' );
 if ( is_string( $wordpress_formatting ) && '' !== $wordpress_formatting ) {
-	foreach ( array( 'compat-utf8.php', 'utf8.php' ) as $dependency ) {
+	foreach ( array( 'compat-utf8.php', 'utf8.php', 'kses.php' ) as $dependency ) {
 		$dependency_path = dirname( $wordpress_formatting ) . '/' . $dependency;
 		if ( is_file( $dependency_path ) ) {
 			require_once $dependency_path;
@@ -82,7 +92,8 @@ if ( ! function_exists( 'sanitize_text_field' ) ) {
 			static fn( array $matches ): string => str_contains( $matches[0], '>' ) ? $matches[0] : htmlspecialchars( $matches[0], ENT_QUOTES, 'UTF-8', false ),
 			$value
 		);
-		$value = trim( preg_replace( '/[\r\n\t ]+/', ' ', strip_tags( $value ) ) );
+		$value = str_replace( "<\n", "&lt;\n", strip_tags( $value ) );
+		$value = trim( preg_replace( '/[\r\n\t ]+/', ' ', $value ) );
 		while ( preg_match( '/%[a-f0-9]{2}/i', $value, $match ) ) {
 			$value = trim( preg_replace( '/ +/', ' ', str_replace( $match[0], '', $value ) ) );
 		}

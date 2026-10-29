@@ -56,17 +56,13 @@ const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // would break the surrounding structure.
 const oneLine = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
 
-// Match sanitize_text_field() for generated plain-text metadata, including its
-// removal of percent-encoded octets. Encoding source files is handled separately.
+// WordPress removes percent-encoded octets from plain-text metadata. Match that
+// rule here; HTML is rejected rather than approximating PHP's strip_tags().
 const sanitizeTextField = (value) => {
-  let text = String(value)
-    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
-    .replace(/<[^>]*?((?=<)|>|$)/g, (part) => part.endsWith('>') ? part : part.replace(/&/g, '&amp;').replace(/</g, '&lt;'))
-    .replace(/<!--[^]*?-->|<(?:[^>\"']|\"[^\"]*\"|'[^']*')*>/g, '')
-    .replace(/[\r\n\t ]+/g, ' ')
-    .trim();
+  const trim = (text) => text.replace(/^[\0\t\n\v\r ]+|[\0\t\n\v\r ]+$/g, '');
+  let text = trim(String(value).replace(/[\r\n\t ]+/g, ' '));
   while (/%[a-f0-9]{2}/i.test(text)) {
-    text = text.replace(/%[a-f0-9]{2}/gi, '').replace(/ +/g, ' ').trim();
+    text = trim(text.replace(/%[a-f0-9]{2}/gi, '').replace(/ +/g, ' '));
   }
   return text;
 };
@@ -118,6 +114,12 @@ const getProjectConfig = () => {
 
   if (typeof machineName !== 'string' || machineName.trim() === '') {
     throw new Error('project.emulsify.json project.machineName must be a non-empty string.');
+  }
+
+  for (const [field, value] of Object.entries({ name, description: config.project.description })) {
+    if (typeof value === 'string' && value.includes('<')) {
+      throw new Error(`project.${field} must be plain text without '<'. Remove HTML and re-run Emulsify CLI; this hook does not emulate WordPress's HTML stripping.`);
+    }
   }
 
   const canonical = machineName.replace(/[A-Z]/g, (letter) => letter.toLowerCase()).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');

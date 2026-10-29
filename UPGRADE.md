@@ -144,7 +144,8 @@ remain project-owned. New generated themes receive the updated defaults.
    chosen that directory. Rerun with `--machineName acme-site`; WP-CLI continues
    normalizing its `--machine-name` option. Nested pattern JSON is now validated
    and rewritten by both generators; fix malformed or non-object JSON before
-   generation. See the [generation contract](docs/generated-child-theme-contract.md).
+   generation. Standalone display names and descriptions must also be plain
+   text without `<`; WordPress retains its own HTML sanitizer. See the [generation contract](docs/generated-child-theme-contract.md).
 
 10. **Cast lazy context URLs in PHP consumers.** `wp.logout_url` remains
     available to Twig but is now a serializable stringable value to avoid

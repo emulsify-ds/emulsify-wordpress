@@ -241,6 +241,27 @@ try {
     assert(fs.readFileSync(path.join(rejectedTarget, 'style.css'), 'utf8') === before, 'Invalid machineName must fail before rewriting metadata.');
   }
 
+  for (const value of [
+    '<script>ignored()</script>Theme',
+    'A <b title="unterminated>text',
+    'A <\nscript>alert(1)</script>',
+    'A <!-- c -- > text',
+    'A <scriptx>hidden</script> B',
+  ]) {
+    for (const field of ['name', 'description']) {
+      const rejectedTarget = fs.mkdtempSync(path.join(workRoot, 'html-'));
+      copyStarterFixture(starterRoot, rejectedTarget);
+      const config = readJson(path.join(rejectedTarget, 'project.emulsify.json'));
+      config.project.machineName = 'plain-text';
+      config.project[field] = value;
+      writeJson(path.join(rejectedTarget, 'project.emulsify.json'), config);
+      const originalStyle = fs.readFileSync(path.join(rejectedTarget, 'style.css'), 'utf8');
+      const rejected = childProcess.spawnSync(process.execPath, [path.join(rejectedTarget, '.cli/init.js')], { cwd: rejectedTarget, encoding: 'utf8' });
+      assert(rejected.status !== 0 && /must be plain text/.test(rejected.stderr), `HTML project.${field} must fail with plain-text guidance.`);
+      assert(fs.readFileSync(path.join(rejectedTarget, 'style.css'), 'utf8') === originalStyle, 'HTML metadata must fail before rewriting starter files.');
+    }
+  }
+
   copyStarterFixture(starterRoot, target);
 
   writeJson(path.join(target, 'project.emulsify.json'), {

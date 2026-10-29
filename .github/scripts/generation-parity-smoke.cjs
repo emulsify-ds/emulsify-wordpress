@@ -51,9 +51,18 @@ const scenarios = [
     machineName: 'unicode-portal',
     inputMachineName: 'Unicode_Portal',
     displayName: 'Café \"Portal\" / 100% site',
-    inputDisplayName: '<script>ignored()</script><b title=">">Café \"Portal\"</b> / 100%20% site',
+    inputDisplayName: 'Café \"Portal\" / 100%20% site',
     description: 'Quotes \" and \' / café & 100% coverage.',
-    inputDescription: '<style>ignored{}</style>Quotes \" and \' / café & 100%25% coverage.',
+    inputDescription: 'Quotes \" and \' / café & 100%25% coverage.',
+  },
+  // WP-CLI delegates HTML stripping to WordPress; standalone init requires the
+  // resulting plain text instead of trying to emulate PHP strip_tags().
+  {
+    machineName: 'wordpress-text',
+    displayName: 'A',
+    inputWpDisplayName: 'A <b title="unterminated>text',
+    description: 'A &lt; script>alert(1)',
+    inputWpDescription: 'A <\nscript>alert(1)</script>',
   },
 ];
 
@@ -142,9 +151,9 @@ function generateWithWpCli(themeRoot, scenario) {
     [
       path.join(__dirname, 'generation-parity-harness.php'),
       themeRoot,
-      scenario.inputDisplayName || scenario.displayName,
+      scenario.inputWpDisplayName || scenario.inputDisplayName || scenario.displayName,
       scenario.inputMachineName || scenario.machineName,
-      scenario.inputDescription || scenario.description,
+      scenario.inputWpDescription || scenario.inputDescription || scenario.description,
     ],
     { encoding: 'utf8' },
   );

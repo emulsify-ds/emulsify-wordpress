@@ -99,7 +99,7 @@ lineage. See the [release process](release-process.md).
 - Both child-theme generators preserve JSON object/list types, rewrite nested
   patterns, sanitize metadata consistently, and stop on invalid JSON without
   installing a partially processed starter. Standalone generation rejects
-  noncanonical machine names before changing files.
+  noncanonical machine names and HTML-bearing labels before changing files.
 
 - Native robots, favicon, feed, trackback and sitemap responses remain
   available when Timber is missing, while theme pages retain a clear error.
