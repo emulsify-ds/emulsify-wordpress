@@ -1,9 +1,5 @@
 name: WordPress Release
 
-# Release publishing is gated by the same local readiness script used by
-# maintainers, with the WordPress fixture required instead of optional. The
-# release-readiness job installs WP-CLI, starts MySQL, and runs release:check
-# with WP_SMOKE_REQUIRED=1 before semantic-release can publish.
 on:
   push:
     branches:
@@ -18,22 +14,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release-readiness:
-    name: Release readiness
+  release-state:
+    name: Check release publication state
     runs-on: ubuntu-latest
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: wordpress_smoke
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -49,54 +33,29 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
-        with:
-          php-version: '8.3'
-          extensions: mysqli
-          tools: composer:v2, wp-cli
-          coverage: none
-
       - name: Clean npm install
         run: npm ci --ignore-scripts
 
-      - name: Validate Composer metadata
-        run: composer validate --no-check-publish --strict
-
-      - name: Install Composer dependencies for PHP lint
-        run: composer install --no-interaction --no-progress --prefer-dist
-
-      - name: Run PHP lint
-        run: npm run lint:php
-
-      - name: Run runtime npm audit
-        run: npm audit --omit=dev
-
-      - name: Check release config syntax
-        run: node --check release.config.js
-
-      - name: Build tested installable theme archive
-        run: npm run build:dist
-
-      - name: Run release readiness checks
+      # Diagnose a partial tag before a stale release draft fails readiness.
+      - name: Check published release and ZIP
         env:
-          WP_SMOKE_REQUIRED: '1'
-          WP_SMOKE_THEME_ARCHIVE: dist-artifact/emulsify.zip
-          WP_SMOKE_DB_HOST: 127.0.0.1
-          WP_SMOKE_DB_PORT: '3306'
-          WP_SMOKE_DB_NAME: wordpress_smoke
-          WP_SMOKE_DB_USER: root
-          WP_SMOKE_DB_PASSWORD: root
-        run: npm run release:check
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/scripts/semantic-release.cjs --check-publication
 
-      - name: Run full npm audit
-        continue-on-error: true
-        run: npm audit
+  release-readiness:
+    name: Full release readiness
+    needs: release-state
+    uses: ./.github/workflows/theme-readiness.yml
+    with:
+      release: true
+    permissions:
+      contents: read
 
   semantic-release:
     name: Semantic release
     needs: release-readiness
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
       issues: write

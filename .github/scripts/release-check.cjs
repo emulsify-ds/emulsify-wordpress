@@ -9,7 +9,7 @@ const path = require('path');
 const childProcess = require('child_process');
 const yaml = require('js-yaml');
 const { validateReleaseVersionContract } = require('./release-version-contract.cjs');
-const { validateReadinessMatrix } = require('./readiness-matrix-contract.cjs');
+const { validateReadinessMatrix, validateReleaseWorkflow } = require('./readiness-matrix-contract.cjs');
 const { validateThemeJsonStyles } = require('./theme-json-style-contract.cjs');
 
 const repoRoot = path.resolve(__dirname, '../..');
@@ -1313,13 +1313,6 @@ function runStaticChecks() {
     const notesOptions = getReleasePluginOptions(releaseConfig, '@semantic-release/release-notes-generator');
     const githubOptions = getReleasePluginOptions(releaseConfig, '@semantic-release/github');
     const releaseGuard = releaseConfig.plugins.find((plugin) => plugin && typeof plugin.verifyRelease === 'function');
-    const readinessJobStart = semanticReleaseWorkflow.indexOf('  release-readiness:');
-    const releaseJobStart = semanticReleaseWorkflow.indexOf('  semantic-release:');
-    const readinessJob = semanticReleaseWorkflow.slice(readinessJobStart, releaseJobStart);
-    const releaseJob = semanticReleaseWorkflow.slice(releaseJobStart);
-    const buildStep = releaseJob.indexOf('npm run build:dist');
-    const publishStep = releaseJob.indexOf('run: npm run publish\n');
-    const dryRunStep = releaseJob.indexOf('run: npm run publish-test -- --no-ci');
     const releaseAsset = Array.isArray(githubOptions.assets)
       ? githubOptions.assets.find((asset) => asset.path === 'dist-artifact/emulsify.zip')
       : null;
@@ -1335,24 +1328,7 @@ function runStaticChecks() {
     ensure(releaseAsset.label === 'Emulsify WordPress theme (with dependencies)', 'release.config.js should give the installable ZIP a clear release label.');
     ensureBreakingParser('@semantic-release/commit-analyzer', analyzerOptions.parserOpts);
     ensureBreakingParser('@semantic-release/release-notes-generator', notesOptions.parserOpts);
-    ensure(readinessJobStart >= 0, 'semantic-release.yml should run release-readiness before publishing.');
-    ensure(semanticReleaseWorkflow.includes('needs: release-readiness'), 'semantic-release.yml release job should wait for release readiness.');
-    ensure(semanticReleaseWorkflow.includes('contents: write'), 'semantic-release.yml should grant GitHub release permissions explicitly.');
-    ensure(semanticReleaseWorkflow.includes('id: semantic'), 'semantic-release.yml should expose the semantic-release step as steps.semantic.');
-    ensure(semanticReleaseWorkflow.includes('npm run release:check'), 'semantic-release.yml should run local release readiness checks.');
-    ensure(readinessJob.includes('fetch-depth: 0') && releaseJob.includes('fetch-depth: 0'), 'Release readiness and publishing should fetch full history and tags for the release version contract.');
-    ensure(semanticReleaseWorkflow.includes('wp-cli'), 'semantic-release.yml should install WP-CLI for the WordPress smoke fixture.');
-    ensure(semanticReleaseWorkflow.includes('mysql:'), 'semantic-release.yml should provide a MySQL service for the WordPress smoke fixture.');
-    ensure(semanticReleaseWorkflow.includes('WP_SMOKE_DB_HOST'), 'semantic-release.yml should pass WordPress smoke database settings.');
-    ensure(readinessJob.includes('- name: Build tested installable theme archive') && readinessJob.includes('run: npm run build:dist'), 'Release readiness should build the archive before the WordPress fixture.');
-    ensure(readinessJob.includes('WP_SMOKE_THEME_ARCHIVE: dist-artifact/emulsify.zip'), 'Release readiness should test the built archive in WordPress.');
-    ensure(releaseJobStart >= 0, 'semantic-release.yml should define the semantic-release job.');
-    ensure(releaseJob.includes("php-version: '8.3'"), 'semantic-release.yml release job should set up PHP 8.3.');
-    ensure(releaseJob.includes('tools: composer:v2'), 'semantic-release.yml release job should install Composer.');
-    ensure(buildStep >= 0, 'semantic-release.yml release job should build the installable theme archive.');
-    ensure(publishStep >= 0 && buildStep < publishStep, 'semantic-release.yml should build the installable theme archive before publishing.');
-    ensure(dryRunStep >= 0 && dryRunStep < publishStep, 'semantic-release.yml should run the dry run in the publishing job before publishing.');
-    ensure(!readinessJob.includes('npm run publish-test') && !readinessJob.includes('GITHUB_TOKEN:'), 'Read-only release readiness must not run the authenticated semantic-release dry run.');
+    validateReleaseWorkflow(semanticReleaseWorkflow, themeReadinessWorkflow);
     ensure(semanticReleaseRunner.includes('Refusing to publish local-only stable tag(s)'), 'The guarded runner should refuse to push unpublished local stable tags.');
     return 'Semantic release requires a prepared package version, non-prefixed tags, main-only publishing, and the tested installable ZIP asset.';
   });
@@ -1487,6 +1463,8 @@ function runStaticChecks() {
       const source = readFile(file);
       for (const line of source.split(/\r?\n/)) {
         if (!/^\s*(?:-\s*)?uses:\s*/.test(line)) continue;
+        // A local reusable workflow runs from the caller's commit, not a tag.
+        if (/^\s*uses:\s*\.\/\.github\/workflows\/theme-readiness\.yml\s*$/.test(line)) continue;
         ensure(/^\s*(?:-\s*)?uses:\s*[\w.-]+\/[\w./-]+@[a-f0-9]{40}\s+#\s*v\d+\.\d+\.\d+(?:[\w.+-]*)?\s*$/.test(line),
           `${file} must pin every action to a full commit SHA with its release version comment: ${line.trim()}`);
         if (line.includes('actions/upload-artifact@')) ensure(/#\s*v7\./.test(line), `${file} must use the Node 24 upload-artifact v7 release.`);

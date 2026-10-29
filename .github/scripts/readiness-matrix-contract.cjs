@@ -57,4 +57,64 @@ function validateReadinessMatrix(source, { minimumWordPress = '6.8', requiredPhp
   return { practical: practical.entries, wordpress: fixture.entries };
 }
 
-module.exports = { validateReadinessMatrix };
+const extendedConditions = {
+  'wordpress-fixture': "inputs.release || (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'release-2.x')) || github.event_name == 'push' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.wordpress_fixture)",
+  'extended-whisk': "inputs.release || (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'release-2.x')) || github.event_name == 'push' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.extended_checks)",
+};
+
+function requireBlockingRun(job, command, label) {
+  const step = job.steps?.find((entry) => entry.run?.trim() === command);
+  assert.ok(step, `${label} must run ${command}.`);
+  assert.equal(step.if, undefined, `${label}: ${command} must not be conditional.`);
+  assert.ok(step['continue-on-error'] === undefined || step['continue-on-error'] === false,
+    `${label}: ${command} must not allow failures.`);
+  return step;
+}
+
+function validateReleaseWorkflow(releaseSource, readinessSource) {
+  const release = yaml.load(releaseSource);
+  const readiness = yaml.load(readinessSource);
+  validateReadinessMatrix(readinessSource);
+
+  assert.equal(readiness.on?.workflow_call?.inputs?.release?.type, 'boolean', 'Full readiness must be callable with a release input.');
+  assert.equal(readiness.permissions?.contents, 'read', 'Readiness credentials must remain read-only.');
+  assert.equal(readiness.concurrency?.group, 'theme-readiness-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}', 'Reusable release readiness must not share a concurrency group with standalone runs.');
+  const gate = release.jobs?.['release-readiness'];
+  const publisher = release.jobs?.['semantic-release'];
+  const state = release.jobs?.['release-state'];
+  assert.ok(gate && publisher && state, 'Release must keep publication state, full readiness and publishing jobs.');
+  assert.equal(gate.uses, './.github/workflows/theme-readiness.yml', 'Release must reuse the full readiness workflow.');
+  assert.equal(gate.with?.release, true, 'Release must force all reusable readiness jobs.');
+  assert.equal(gate.needs, 'release-state', 'Full readiness must follow the publication recovery check.');
+  assert.equal(publisher.needs, 'release-readiness', 'Publishing must wait for full readiness success.');
+  for (const [name, job] of Object.entries(release.jobs)) {
+    assert.equal(job.if, undefined, `${name} must use the default success dependency condition.`);
+    assert.ok(job['continue-on-error'] === undefined || job['continue-on-error'] === false, `${name} must not allow failures.`);
+    if (!job.uses) assert.ok(Number.isInteger(job['timeout-minutes']) && job['timeout-minutes'] > 0 && job['timeout-minutes'] <= 30, `${name} must have a bounded timeout.`);
+  }
+  assert.equal(release.permissions?.contents, 'read', 'Release workflow credentials must default to read-only.');
+  assert.equal(state.permissions?.contents, 'read', 'Publication recovery must use read-only credentials.');
+  requireBlockingRun(state, 'node .github/scripts/semantic-release.cjs --check-publication', 'Publication recovery');
+  for (const [name, job] of Object.entries(readiness.jobs)) {
+    assert.ok(Number.isInteger(job['timeout-minutes']) && job['timeout-minutes'] > 0 && job['timeout-minutes'] <= 30, `${name} must have a bounded timeout.`);
+    if (extendedConditions[name]) {
+      assert.equal(job.if?.replace(/\s+/g, ' ').trim(), extendedConditions[name], `${name} must run for every reusable release invocation.`);
+    } else {
+      assert.equal(job.if, undefined, `${name} must not skip required readiness.`);
+    }
+  }
+  const lint = readiness.jobs['php-lint'];
+  const whisk = readiness.jobs['extended-whisk'];
+  assert.ok(lint && whisk, 'Release readiness must include PHP analysis and Whisk checks.');
+  for (const [name, job] of [['php-lint', lint], ['extended-whisk', whisk]]) {
+    assert.ok(job['continue-on-error'] === undefined || job['continue-on-error'] === false, `${name} must not allow failures.`);
+  }
+  requireBlockingRun(lint, 'npm run lint:php', 'PHP analysis');
+  requireBlockingRun(readiness.jobs.practical, 'npm run test:generated-theme', 'Practical readiness');
+  assert.equal(requireBlockingRun(readiness.jobs.practical, 'npm run smoke:generation-parity', 'Practical readiness').env?.EMULSIFY_PARITY_REQUIRED, '1', 'Generation parity must not skip missing prerequisites.');
+  requireBlockingRun(whisk, 'npm --prefix whisk run test -- --runInBand', 'Whisk readiness');
+  requireBlockingRun(whisk, 'npm --prefix whisk run a11y', 'Whisk readiness');
+  return { release, readiness };
+}
+
+module.exports = { validateReadinessMatrix, validateReleaseWorkflow };

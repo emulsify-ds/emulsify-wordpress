@@ -6,6 +6,12 @@ name: WordPress Theme Readiness
 # exercise the same extended coverage, while manual inputs select either
 # expensive fixture independently.
 on:
+  workflow_call:
+    inputs:
+      release:
+        description: Require the full release readiness gates.
+        type: boolean
+        default: false
   pull_request:
     branches:
       - main
@@ -35,13 +41,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: theme-readiness-${{ github.event.pull_request.number || github.ref }}
+  group: theme-readiness-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   practical:
     name: Practical theme readiness (PHP ${{ matrix.php-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -162,6 +169,7 @@ jobs:
   wordpress-fixture:
     name: WordPress fixture smoke (WordPress ${{ matrix.wordpress-version }})
     if: >-
+      inputs.release ||
       (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'release-2.x')) ||
       github.event_name == 'push' ||
       github.event_name == 'schedule' ||
@@ -272,6 +280,7 @@ jobs:
   extended-whisk:
     name: Extended Whisk Storybook and a11y
     if: >-
+      inputs.release ||
       (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'release-2.x')) ||
       github.event_name == 'push' ||
       github.event_name == 'schedule' ||

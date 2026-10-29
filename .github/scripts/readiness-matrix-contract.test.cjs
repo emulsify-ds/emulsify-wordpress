@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const yaml = require('js-yaml');
-const { validateReadinessMatrix } = require('./readiness-matrix-contract.cjs');
+const { validateReadinessMatrix, validateReleaseWorkflow } = require('./readiness-matrix-contract.cjs');
 
 function fixture() {
   return {
@@ -125,4 +125,69 @@ test('keeps the validated PHP 8.5 lane blocking', () => {
   const workflow = fixture();
   workflow.jobs.practical.strategy.matrix.include[2].experimental = true;
   assert.throws(() => validate(workflow), /must keep 8.5 blocking/);
+});
+
+function releaseFixture() {
+  const repoRoot = path.resolve(__dirname, '../..');
+  return {
+    release: yaml.load(fs.readFileSync(path.join(repoRoot, '.github/workflows/semantic-release.yml'), 'utf8')),
+    readiness: yaml.load(fs.readFileSync(path.join(repoRoot, '.github/workflows/theme-readiness.yml'), 'utf8')),
+  };
+}
+
+function validateRelease({ release, readiness } = releaseFixture()) {
+  return validateReleaseWorkflow(yaml.dump(release), yaml.dump(readiness));
+}
+
+test('release publishing waits for the complete callable readiness workflow', () => {
+  validateRelease();
+});
+
+test('rejects bypassed reusable readiness or publish dependencies', () => {
+  for (const mutation of [
+    ({ release }) => { delete release.jobs['release-readiness']; },
+    ({ release }) => { release.jobs['release-readiness'].uses = './.github/workflows/other.yml'; },
+    ({ release }) => { release.jobs['release-readiness'].with.release = false; },
+    ({ release }) => { release.jobs['semantic-release'].needs = []; },
+    ({ release }) => { release.jobs['release-readiness'].if = 'always()'; },
+    ({ release }) => { release.jobs['semantic-release'].if = 'always()'; },
+    ({ release }) => { release.jobs['release-readiness']['continue-on-error'] = true; },
+    ({ readiness }) => { delete readiness.on.workflow_call; },
+    ({ readiness }) => { readiness.concurrency.group = 'theme-readiness-${{ github.ref }}'; },
+    ({ readiness }) => { readiness.jobs['wordpress-fixture'].if = 'always()'; },
+    ({ readiness }) => { readiness.jobs['extended-whisk'].if = 'false'; },
+    ({ readiness }) => { readiness.jobs['php-lint']['continue-on-error'] = true; },
+    ({ readiness }) => { readiness.jobs.practical.if = 'false'; },
+  ]) {
+    const workflow = releaseFixture();
+    mutation(workflow);
+    assert.throws(() => validateRelease(workflow));
+  }
+});
+
+test('rejects skipped required fixture, PHP, parity and Whisk release gates', () => {
+  for (const [jobName, command] of [
+    ['wordpress-fixture', 'npm run release:check'],
+    ['php-lint', 'npm run lint:php'],
+    ['practical', 'npm run smoke:generation-parity'],
+    ['practical', 'npm run pr:check'],
+    ['extended-whisk', 'npm --prefix whisk run test -- --runInBand'],
+    ['extended-whisk', 'npm --prefix whisk run a11y'],
+  ]) {
+    for (const bypass of ['remove', 'if', 'continue-on-error', 'skip-smoke']) {
+      const workflow = releaseFixture();
+      const job = workflow.readiness.jobs[jobName];
+      const step = job.steps.find((entry) => entry.run === command);
+      if (bypass === 'remove') job.steps.splice(job.steps.indexOf(step), 1);
+      else if (bypass === 'skip-smoke') step.run += ' -- --skip-smoke';
+      else step[bypass] = true;
+      assert.throws(() => validateRelease(workflow));
+    }
+  }
+  for (const envKey of ['WP_SMOKE_REQUIRED', 'WP_SMOKE_A11Y']) {
+    const workflow = releaseFixture();
+    const step = workflow.readiness.jobs['wordpress-fixture'].steps.find((entry) => entry.run === 'npm run release:check');
+    delete step.env[envKey];
+    assert.throws(() => validateRelease(workflow));
+  }
 });
