@@ -43,6 +43,13 @@ namespace Timber {
 		public static function compile( string $template, array $context ): string {
 			self::$compiled[] = compact( 'template', 'context' );
 
+			if ( false !== strpos( $template, 'inner.twig' ) ) {
+				return $context['inner_content'];
+			}
+			if ( false !== strpos( $template, 'content.twig' ) ) {
+				return $context['content'];
+			}
+
 			if ( false !== strpos( $template, 'throws.twig' ) ) {
 				throw new \RuntimeException( 'Template failed.' );
 			}
@@ -242,6 +249,11 @@ namespace {
 		if ( ! $condition ) {
 			throw new \RuntimeException( $message );
 		}
+	}
+
+	function render_block( array $block ): string {
+		++$GLOBALS['emulsify_core_block_rerenders'];
+		return 'Unexpected second render';
 	}
 
 	/**
@@ -461,6 +473,43 @@ namespace {
 			false === strpos( $cleaned, 'wp-block' ) && false !== strpos( $cleaned, 'mapped' ),
 			'Class cleanup should remove base wp-block classes only when enabled.'
 		);
+
+		unset( $GLOBALS['emulsify_core_block_twig_smoke_filters']['emulsify_theme_core_block_twig_cleanup_classes_enabled'] );
+		$GLOBALS['emulsify_core_block_rerenders'] = 0;
+		emulsify_core_block_twig_smoke_write( $child . '/dist/components/inner.twig', '{{ inner_content|raw }}' );
+		emulsify_core_block_twig_smoke_write( $child . '/dist/components/content.twig', '{{ content|raw }}' );
+		add_filter(
+			'emulsify_theme_core_block_twig_template_map',
+			static function ( array $map ): array {
+				$map['core/group']   = 'dist/components/inner.twig';
+				$map['core/quote']   = 'dist/components/inner.twig';
+				$map['core/details'] = 'dist/components/content.twig';
+				return $map;
+			}
+		);
+		$composite_errors = array();
+		foreach ( array( 'core/group', 'core/quote' ) as $name ) {
+			$wrapper = 'core/group' === $name ? 'div' : 'blockquote';
+			$before  = '<' . $wrapper . ' class="saved-wrapper">';
+			$after   = '</' . $wrapper . '>';
+			$first   = '<p>First rendered child</p><!-- named child filter -->';
+			$second  = '<aside>Short-circuited child</aside>';
+			$html    = $before . $first . '\n' . $second . $after;
+			$parsed  = array(
+				'blockName'    => $name,
+				'attrs'        => array(),
+				'innerContent' => array( $before, null, '\n', null, $after ),
+				'innerBlocks'  => array( array( 'blockName' => 'core/paragraph' ), array( 'blockName' => 'core/html' ) ),
+			);
+			$actual  = $enabled->render_block( $html, $parsed );
+			if ( $actual !== $html || 1 !== substr_count( $actual, $first ) || 1 !== substr_count( $actual, $second ) ) {
+				$composite_errors[] = $name . ' must preserve already rendered children, their filters and the original wrapper exactly once.';
+			}
+			$parsed['blockName'] = 'core/details';
+			emulsify_core_block_twig_smoke_assert( $html === $enabled->render_block( $html, $parsed ), 'Mapped templates using content must keep every original byte.' );
+		}
+		emulsify_core_block_twig_smoke_assert( 0 === $GLOBALS['emulsify_core_block_rerenders'], 'Inner content must never render a child for a second time.' );
+		emulsify_core_block_twig_smoke_assert( array() === $composite_errors, implode( "\n", $composite_errors ) );
 
 		echo "Core block Twig renderer smoke checks passed.\n";
 	} finally {

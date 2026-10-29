@@ -77,6 +77,8 @@ lineage. See the [release process](release-process.md).
 
 ## Fixed
 
+- Mapped group and quote blocks retain children in `inner_content` without
+  rendering them again.
 - Release reruns report an incomplete tagged GitHub release or missing ZIP with
   recovery commands, before stale release-draft documentation can mask it.
 - Release test fixtures ignore maintainer commit/tag signing settings, and the

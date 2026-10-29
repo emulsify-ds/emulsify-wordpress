@@ -152,6 +152,12 @@ final class CoreBlockTwigRenderer {
 		$content = '';
 
 		foreach ( $block['innerContent'] as $piece ) {
+			if ( null === $piece ) {
+				// Children have already rendered. Their final filtered output cannot
+				// be recovered from parsed fragments without rendering them again.
+				return $block_content;
+			}
+
 			if ( is_scalar( $piece ) ) {
 				$content .= (string) $piece;
 			}

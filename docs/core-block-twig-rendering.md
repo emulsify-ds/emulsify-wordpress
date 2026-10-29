@@ -39,10 +39,20 @@ Mapped templates receive the normal Timber context plus these values:
 - `block_attributes`: the parsed block attributes, also available as
   `block.attrs` and `block_metadata.attrs`.
 - `content`: WordPress' original rendered block content.
-- `inner_content`: rendered inner content fallback for templates.
+- `inner_content`: saved string fragments for a leaf block; the full rendered
+  `content` when fragments contain child placeholders or no usable text.
 - `inner_blocks`: parsed inner block records when available.
 - `wp_block`: the `WP_Block` instance when WordPress passes one.
 - `twig_template`: the mapped Twig template.
+
+`inner_content` includes the saved block's wrapper. For a group, quote or other
+block containing children, it deliberately equals `content`, including every
+child's final rendered output. Children are never rendered again. Capturing
+generic `render_block` output would miss later block-name filters and children
+replaced through `pre_render_block`, so the renderer uses WordPress's assembled
+HTML. Print either `content` or `inner_content` once; printing both duplicates
+the block. Neither value promises wrapper-free children for a replacement
+component wrapper.
 
 Keep block data separate from HTML attributes: `bem()` and `add_attributes()`
 merge the context's `attributes` into their output. Never put block data or
