@@ -51,7 +51,7 @@
             <div {{ add_attributes(site_header_inner_attributes) }}>
                 {% block header %}
                     <a {{ add_attributes(site_header_brand_attributes) }}>
-                        {{ site.name|default('') }}
+                        {{ site.name|default('')|esc_html }}
                     </a>
 
                     {% if menu_items is not empty %}
@@ -72,7 +72,7 @@
 {% block page_title %}
             {% if title|default(null) %}
                 <header {{ add_attributes(page_header_attributes) }}>
-                    <h1 {{ add_attributes(page_header_title_attributes) }}>{{ title }}</h1>
+                    <h1 {{ add_attributes(page_header_title_attributes) }}>{{ title|esc_html }}</h1>
                 </header>
             {% endif %}
 {% endblock %}

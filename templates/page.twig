@@ -20,7 +20,7 @@
     {% if post|default(null) %}
         <article {{ add_attributes(entry_attributes) }}>
             <header {{ add_attributes(entry_header_attributes) }}>
-                <h1 {{ add_attributes(entry_title_attributes) }}>{{ post.title }}</h1>
+                <h1 {{ add_attributes(entry_title_attributes) }}>{{ post.title|wp_kses_post }}</h1>
             </header>
 
             <div {{ add_attributes(entry_content_attributes) }}>

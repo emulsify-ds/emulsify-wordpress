@@ -21,6 +21,7 @@ if ( ! is_readable( $autoload ) ) {
 }
 
 require_once $autoload;
+require_once __DIR__ . '/wordpress-text-test-adapter.php';
 
 $GLOBALS['emulsify_extension_repo_root'] = $repo_root;
 $GLOBALS['emulsify_extension_child']     = sys_get_temp_dir() . '/emulsify-template-extension-' . uniqid( '', true );
@@ -177,6 +178,7 @@ try {
 	}
 	$environment->addFunction( new \Twig\TwigFunction( 'function', array( new \Timber\Twig(), 'exec_function' ) ) );
 	$environment->addFunction( new \Twig\TwigFunction( 'action', 'do_action' ) );
+	emulsify_register_wordpress_text_test_filters( $environment );
 	$integration->extensions( $environment );
 	$core = $environment->getExtension( \Twig\Extension\CoreExtension::class );
 	$core->setTimezone( 'UTC' );

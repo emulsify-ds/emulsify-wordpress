@@ -20,6 +20,7 @@ if ( ! is_readable( $autoload ) || ! class_exists( DOMDocument::class ) ) {
 }
 
 require_once $autoload;
+require_once __DIR__ . '/wordpress-text-test-adapter.php';
 
 // Only WordPress translation needs a stand-in outside the WordPress fixture.
 if ( ! function_exists( '__' ) ) {
@@ -81,6 +82,7 @@ foreach ( $integration->functions( array() ) as $name => $definition ) {
 }
 
 $environment->addFunction( new \Twig\TwigFunction( 'function', array( new \Timber\Twig(), 'exec_function' ) ) );
+emulsify_register_wordpress_text_test_filters( $environment );
 $integration->extensions( $environment );
 
 $hostile     = '"><script>alert(1)</script>';

@@ -51,6 +51,8 @@ function emulsify_register_smoke_twig_functions( \Twig\Environment $environment,
  * @return void
  */
 function emulsify_register_smoke_wordpress_twig_shims( \Twig\Environment $environment ): void {
+	require_once __DIR__ . '/wordpress-text-test-adapter.php';
+	emulsify_register_wordpress_text_test_filters( $environment );
 	$environment->addFunction(
 		new \Twig\TwigFunction(
 			'function',

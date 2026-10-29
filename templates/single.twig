@@ -41,18 +41,18 @@
         <article {{ add_attributes(entry_attributes) }}>
             {% if post.thumbnail|default(null) and post.thumbnail.src|default(null) %}
                 <figure {{ add_attributes(entry_media_attributes) }}>
-                    <img src="{{ post.thumbnail.src|resize(1200, 675) }}" alt="{{ post.thumbnail.alt|default(post.title) }}" />
+                    <img src="{{ post.thumbnail.src|resize(1200, 675) }}" alt="{{ function('wp_strip_all_tags', post.thumbnail.alt|default(post.title))|esc_attr }}" />
                 </figure>
             {% endif %}
 
             <header {{ add_attributes(entry_header_attributes) }}>
-                <h1 {{ add_attributes(entry_title_attributes) }}>{{ post.title }}</h1>
+                <h1 {{ add_attributes(entry_title_attributes) }}>{{ post.title|wp_kses_post }}</h1>
 
                 {% if post.author|default(null) or post.date|default(null) %}
                     <div {{ add_attributes(entry_meta_attributes) }}>
                         {% if post.author|default(null) %}
                             <span {{ add_attributes(entry_author_attributes) }}>
-                                <a href="{{ post.author.path|default('#') }}">{{ post.author.name }}</a>
+                                <a href="{{ post.author.path|default('#') }}">{{ post.author.name|esc_html }}</a>
                             </span>
                         {% endif %}
 

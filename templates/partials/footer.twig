@@ -10,6 +10,6 @@
 
 <footer {{ add_attributes(site_footer_attributes) }}>
     <p {{ add_attributes(site_footer_copyright_attributes) }}>
-        &copy; {{ 'now'|date('Y') }} {{ site.name|default('') }}
+        &copy; {{ 'now'|date('Y') }} {{ site.name|default('')|esc_html }}
     </p>
 </footer>
