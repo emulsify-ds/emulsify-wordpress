@@ -99,8 +99,13 @@ final class Emulsify_Autoescape_Timber {
 	public static $environment;
 
 	/** @return array Inherited Timber context. */
-	public static function context(): array {
+	public static function context_global(): array {
 		return array( 'attributes' => array( 'data-global' => 'must not leak' ) );
+	}
+
+	/** @return null No post is needed by this attribute-safety fixture. */
+	public static function get_post( $post = false ) {
+		return null;
 	}
 
 	/**

@@ -78,7 +78,10 @@ lineage. See the [release process](release-process.md).
 ## Fixed
 
 - Mapped group and quote blocks retain children in `inner_content` without
-  rendering them again.
+  rendering them again. Mapped blocks reuse global context, select their own
+  post without resetting Query Loop globals, reject directory templates, and
+  fall back to WordPress markup on recursive rendering. Dynamic and late-added
+  template-map filters remain active.
 - Release reruns report an incomplete tagged GitHub release or missing ZIP with
   recovery commands, before stale release-draft documentation can mask it.
 - Release test fixtures ignore maintainer commit/tag signing settings, and the

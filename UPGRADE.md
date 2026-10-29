@@ -45,6 +45,13 @@ remain project-owned. New generated themes receive the updated defaults.
    [component resolution order](docs/timber-and-twig-authoring.md#component-includes).
 3. **Apply the relevant fixes to child overrides.** Unmodified parent fallbacks
    receive the fixes automatically; project copies need review:
+   - Mapped core-block templates receive a cached global Timber context and a
+     fresh block-specific `post`, without setting up WordPress's global post.
+     Add any required route-specific `posts`, `term`, `author` or `search_query`
+     values through the block context filter. Use `content` for current-block
+     HTML, rather than `post.content`. For blocks with children, `inner_content`
+     now equals the full rendered `content`, including its saved wrapper; print
+     one of them once. See [mapped block context](docs/core-block-twig-rendering.md#twig-context).
    - `templates/partials/pagination.twig`: mark only `page.current` with
      `aria-current="page"`; display a translated literal `…` in the existing
      non-interactive span; decode Timber's display-escaped URL entities before
