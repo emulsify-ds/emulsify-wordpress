@@ -50,12 +50,31 @@ Install or author project components in the structure defined by the selected Em
 } only %}
 ```
 
-The general form is `project_machine_name:component_name`. Both `project_machine_name:example-card` and `@project_machine_name/example-card` follow Emulsify Core's resolution rules. WordPress searches these compatibility roots in order:
+The general form is `project_machine_name:component_name`.
+Project references such as `project_machine_name:button` and
+`@project_machine_name/button` use Core's direct-then-grouped resolution. So do
+`@components/button` and `@components/button/button.twig`; the component
+namespace also accepts `components:button`, `components::button`, and
+`components/button`.
+
+Without `variant.structureImplementations`, WordPress retains these
+compatibility roots in order:
 
 1. Child theme `src/components`.
 2. Child theme `components`.
 3. Parent theme `src/components`.
 4. Parent theme `components`.
+
+With accepted structure implementations, the entry named `components` supplies
+the child component root. If none has that name, the first accepted
+implementation supplies it, matching Core's `components` namespace. That root
+replaces both default child paths; it does not combine every implementation's
+directory. Other implementation names register separate Twig namespaces.
+Parent fallback roots remain available for theme inheritance.
+
+Core resolves one standalone project's component root. WordPress's ordered
+legacy and parent fallbacks are intentional compatibility extensions; within
+each root, candidate and group ordering match Core.
 
 Each root is searched completely before moving to the next. For a requested path `x`, direct candidates are tried in this order:
 
@@ -71,13 +90,51 @@ If no direct candidate exists, the same candidates are tried below group directo
 
 Duplicate names resolve deterministically: the first root wins, direct candidates precede grouped candidates, and shallower groups precede deeper groups. Use an explicit group or template path, such as `project_machine_name:atoms/button/button.twig`, to select an otherwise ambiguous component.
 
-Group discovery skips `node_modules`, `.git`, `.cache`, `.vite`, `.out`, `.coverage`, and `dist`. It does not follow directory symlinks discovered during the walk. Explicit file or directory symlinks can resolve when both their lexical and real paths remain inside the component root. Internal `.` and `..` segments are normalized like Core; leading traversal outside the root is rejected.
+Group discovery skips `node_modules`, `.git`, `.cache`, `.vite`, `.out`, `.coverage`, and `dist`. It does not follow directory symlinks discovered during the walk. Explicit file or directory symlinks can resolve when both their lexical and real paths remain inside the component root. Internal `.` and `..` segments are normalized like Core. WordPress rejects a leading `..` segment before trying groups, even if Core could find a contained candidate from a deeper group.
 
-The project resolver leaves bare paths and unrelated namespaces to the normal Twig loader, preserving every path segment. A missing `atoms/button` never falls back to `molecules/button`.
+Explicit unregistered prefixes also follow Core's fallback: `project:button`,
+`anything:button`, and `@organisms/button` can resolve a component when no
+registered Twig namespace owns the prefix. The resolver tries the literal
+reference as a direct component path first, then removes the unregistered
+prefix and tries direct and grouped candidates.
 
-Discovery and successful or missing resolutions are memoized for the current request. Direct hits do not scan groups. Group directories are not added to the persistent discovery cache: new groups inside existing groups can leave the root directory's modification time, theme version, and build manifest unchanged, so a persisted index could miss their components. The existing persistent cache continues to serve built `dist/components` discovery.
+Registered namespaces always keep their scope, including plugin namespaces
+and a namespace that happens to match the project machine name. A missing
+`@templates/button.twig`, for example, never falls back to a component named
+`button`. Registered single- and double-colon aliases delegate to the same
+namespace as `@namespace/path`. Only the `components` namespace uses grouped
+component lookup. Custom loaders must expose their namespace inventory through
+`getNamespaces()` and namespace paths through `getPaths()` for this fallback
+integration; loaders without those APIs keep their own resolution unchanged.
 
-In a local PHP 8.3 benchmark with a warm filesystem cache (seven-run medians), the first grouped lookup took about 32 ms for 500 directories and 127 ms for 2,000; 1,000 memoized hits took about 0.15 ms. These synthetic results depend on the component tree and filesystem. A simulated persistent index reduced the first lookup to about 0.3 ms before cache I/O, but safely persisting source directories needs separate invalidation.
+Other bare paths and bare `@name` references without a slash stay with the normal
+WordPress/Twig loader. This differs from Core's bare component-file fallback
+and preserves existing controller template lookup. Every path segment remains
+intact: a missing `atoms/button` never falls back to `molecules/button`.
+
+Group directories, successful and missing component resolutions, and decoded
+project configuration are shared across loader instances for an HTTP request.
+Timber can create several loaders during one compile; each canonical root is
+scanned once, and direct hits do not scan groups. Cache keys distinguish the
+project machine name and ordered canonical roots. Namespace ownership is
+checked before using component results, so a registered namespace cannot be
+shadowed by a cached fallback.
+
+CLI processes, including WP-CLI and typical queue workers, bypass these caches
+by default so file and configuration changes remain visible. The
+`emulsify_theme_twig_request_cache_enabled` filter can change that policy. A
+long-running process that enables caching must call
+`\Emulsify\Theme\Runtime\Twig::clear_request_cache()` between jobs or after
+changing component files or project configuration, then create fresh loaders
+and Twig environments. Custom persistent HTTP workers must do the same at
+request boundaries. This clears component/configuration memoization and PHP's
+filesystem caches; Twig's own compiled-template cache is separate.
+
+Group directories are not added to the persistent discovery cache: new groups
+inside existing groups can leave the root directory's modification time, theme
+version, and build manifest unchanged, so a persisted index could miss their
+components. The existing persistent cache continues to serve built
+`dist/components` discovery.
 
 The legacy `@components/example-card/example-card.twig` namespace remains supported for compatible component libraries, existing projects, shared templates, and migration work:
 
@@ -87,9 +144,39 @@ The legacy `@components/example-card/example-card.twig` namespace remains suppor
 } only %}
 ```
 
-Use `emulsify_theme_project_component_roots` to adjust roots for both project reference forms. Use `emulsify_theme_twig_namespaces` for advanced runtime-only `@namespace/path.twig` paths.
+The filtered `@components` namespace paths supply the default component roots.
+`emulsify_theme_project_component_roots` runs afterward and can replace their
+order for every component reference form. Later loader `addPath()` or
+`prependPath()` calls for `components` update that order for all aliases too. Its machine-name argument is `''`
+when project metadata is missing or invalid; `@components` and unregistered
+prefix fallback still work in that case. Use `emulsify_theme_twig_namespaces`
+for advanced runtime-only `@namespace/path.twig` paths.
 
 Root-level `components` and `src/components` directories are compatibility paths, not starter requirements. Do not remove existing `@components` includes during migration; both forms are supported.
+
+Maintainers can compare fixture paths with the installed Core 4.5.0 resolver
+and count filesystem work across actual Timber compiles from this repository
+checkout:
+
+```sh
+npm run test:component-resolution
+npm run smoke:component-request-cache
+```
+
+The differential check records intentional WordPress compatibility differences
+with reasons. Run `npm run smoke:component-request-cache -- --benchmark` for
+the repeatable large-tree benchmark; it enables request caching explicitly to
+model HTTP rendering from a CLI process.
+
+A local PHP 8.3.36 run used 500 synthetic groups (about 1,500 added directory
+and file entries), ten real Timber compiles per batch, and seven batches with a
+warm filesystem cache. Median per-compile times fell from 93.9 ms to 3.84 ms
+for a grouped target and from 0.470 ms to 0.291 ms for a direct target. Each
+batch began with cleared request caches: the first grouped lookup still scans
+the tree, and later compiles reuse it. A separate three-compile counting test
+reduced child-root scans from nine to one, parent-root scans from three to one,
+and project JSON reads from eighteen to one. Timings depend on the component
+tree and filesystem; these are synthetic workload measurements.
 
 See [Component recipes](component-recipes.md) for a small Twig component and Storybook story example that can be added to a generated child theme.
 
@@ -107,6 +194,10 @@ For legacy `@namespace/path/to/template.twig` references that should work in bot
 	"variant": {
 		"structureImplementations": [
 			{
+				"name": "components",
+				"directory": "src/components"
+			},
+			{
 				"name": "atoms",
 				"directory": "src/components/atoms"
 			},
@@ -119,6 +210,12 @@ For legacy `@namespace/path/to/template.twig` references that should work in bot
 }
 ```
 
+The explicit `components` entry keeps project aliases scoped to the full
+component tree; group namespaces remain independent. WordPress trims and
+lowercases implementation names, accepts plain ASCII letter/digit/underscore/
+hyphen identifiers, and supplies `structure-N` for unnamed entries. Unsafe or
+duplicate namespace names are skipped.
+
 Then includes such as this resolve through the configured child-theme-relative root:
 
 ```twig
@@ -126,6 +223,12 @@ Then includes such as this resolve through the configured child-theme-relative r
   text: 'Read more'
 } only %}
 ```
+
+WordPress keeps its existing configuration containment rules: implementation
+paths must be relative to the child theme and cannot contain `..` segments.
+Absolute paths, including absolute paths inside the project, remain rejected;
+Core accepts some of these contained paths. This restriction applies to
+configuration paths, not safe internal dot segments in component references.
 
 Do not use `theme.json` for Twig namespaces. `theme.json` is WordPress configuration for editor settings, global styles, presets, templates, and style variations; it is not a Twig loader configuration file.
 

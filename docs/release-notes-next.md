@@ -100,10 +100,13 @@ lineage. See the [release process](release-process.md).
   non-breaking thousands separators render correctly instead of literal `&nbsp;`.
 - Fallback menus mark the current item with `aria-current="page"`, leaving
   ancestors unmarked.
-- Project component references follow Core's direct candidates and breadth-first
-  grouped discovery, including `.html.twig` and the
-  `@project_machine_name/component` alias. Each child root is searched completely
-  before parent roots, with deterministic duplicates and root containment.
+- Project and `@components` references follow Core's direct candidates and
+  breadth-first grouped discovery, including `.html.twig` and unregistered
+  explicit prefixes, while registered namespaces retain their scope.
+  `structureImplementations` selects the child component root as Core does.
+  Component discovery, hit/miss results, and project configuration are shared
+  across the request's Timber loaders; CLI processes bypass those caches by
+  default. Ordered WordPress legacy/parent fallbacks and containment remain.
 - In `2.0.0`, Timber 2.5 passed Twig only a function's `callable` and `options`
   keys, so the helpers' top-level `needs_context` and `is_safe` settings were
   ignored. Every `bem()` and `add_attributes()` call printed escaped attribute

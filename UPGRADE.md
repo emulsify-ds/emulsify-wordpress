@@ -20,10 +20,28 @@ remain project-owned. New generated themes receive the updated defaults.
    references now follow Core's candidate order: a flat `component.twig`
    precedes `component/component.twig`, and a child's grouped component wins
    over a parent's direct component. Duplicate names resolve by root, direct
-   candidate, then breadth-first group order. Use an explicit group or template
-   path where a project needs one particular component. A bare path keeps every
-   segment; correct references that relied on a missing first segment falling
-   back to another group. See the
+   candidate, then breadth-first group order. `@components` now uses that same
+   grouped lookup: a grouped child source component can win over a direct file
+   in a later legacy or parent root. Use an explicit group or template path
+   where a project needs one particular component.
+   If `variant.structureImplementations` is configured, its `components` entry,
+   or its first accepted entry when none is named `components`, replaces the
+   default child component roots. Move components or use an explicit registered
+   namespace if includes relied on `src/components` or `components` staying
+   available alongside the override. Parent fallbacks remain available.
+   Implementation names are trimmed and lowercased; use plain identifiers
+   without an `@` prefix. Unnamed entries receive `structure-N` names.
+   Unregistered explicit prefixes now fall back to component lookup as in Core;
+   registered namespaces retain their scope. Literal prefixed component files
+   are tried before removing an unregistered prefix, matching Core. Registered
+   namespace colon aliases now use their named namespace. The `components:...`,
+   `components::...`, and `components/...` aliases now target component lookup;
+   use `@templates/components/...` for a controller template under that path.
+   Custom loaders need `getNamespaces()` and `getPaths()` to support this
+   integration; opaque loaders keep their native behavior.
+   Other bare paths keep every segment and stay with WordPress's normal Twig
+   loader. Correct references that relied on a
+   missing first segment falling back to another group. See the
    [component resolution order](docs/timber-and-twig-authoring.md#component-includes).
 3. **Apply the relevant fixes to child overrides.** Unmodified parent fallbacks
    receive the fixes automatically; project copies need review:
