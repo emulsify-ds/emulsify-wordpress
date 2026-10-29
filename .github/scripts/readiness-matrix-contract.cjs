@@ -173,6 +173,13 @@ function validateReleaseWorkflow(releaseSource, readinessSource) {
   }
   assert.equal(dryRun.env?.GITHUB_TOKEN, '${{ secrets.GITHUB_TOKEN }}', 'The dry run needs its scoped push-permission check.');
   assert.equal(publish.env?.GITHUB_TOKEN, '${{ secrets.GITHUB_TOKEN }}', 'Publishing needs its scoped GitHub token.');
+
+  for (const name of ['practical', 'wordpress-fixture']) requireBlockingRun(readiness.jobs[name], 'composer audit --locked --no-dev', name);
+  const whiskInstall = requireBlockingRun(whisk, 'npm run whisk:install', 'Whisk readiness');
+  const whiskSnapshot = requireBlockingRun(whisk, 'npm --prefix whisk install --package-lock-only --ignore-scripts', 'Whisk audit');
+  const whiskAudit = whisk.steps.find((step) => step.run === 'npm --prefix whisk audit');
+  assert.ok(whiskAudit && whiskAudit['continue-on-error'] === true && whiskAudit.if === undefined, 'Whisk audit must log findings without blocking frontend checks.');
+  assert.ok(whisk.steps.indexOf(whiskInstall) < whisk.steps.indexOf(whiskSnapshot) && whisk.steps.indexOf(whiskSnapshot) < whisk.steps.indexOf(whiskAudit), 'Whisk audit requires a lock snapshot after installation.');
   return { release, readiness };
 }
 

@@ -219,3 +219,21 @@ test('project integration skips fork and Dependabot pull requests without skippi
     assert.throws(() => validateProjectsWorkflow(yaml.dump(workflow)));
   }
 });
+
+test('rejects missing or failure-tolerant shipped Composer audit and unlogged Whisk audit', () => {
+  for (const jobName of ['practical', 'wordpress-fixture']) {
+    for (const bypass of ['remove', 'continue-on-error']) {
+      const workflow = releaseFixture();
+      const job = workflow.readiness.jobs[jobName];
+      const step = job.steps.find((entry) => entry.run === 'composer audit --locked --no-dev');
+      if (bypass === 'remove') job.steps.splice(job.steps.indexOf(step), 1);
+      else step[bypass] = true;
+      assert.throws(() => validateRelease(workflow));
+    }
+  }
+  for (const name of ['Audit Whisk dependencies', 'Snapshot Whisk dependencies for audit']) {
+    const workflow = releaseFixture();
+    workflow.readiness.jobs['extended-whisk'].steps = workflow.readiness.jobs['extended-whisk'].steps.filter((step) => step.name !== name);
+    assert.throws(() => validateRelease(workflow));
+  }
+});

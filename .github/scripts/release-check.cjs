@@ -1418,7 +1418,6 @@ function runStaticChecks() {
     ensure(extendedWhiskJob.includes("PUPPETEER_SKIP_DOWNLOAD: 'true'"), 'Whisk CI should skip redundant Puppeteer browser downloads.');
     ensure(extendedWhiskJob.includes('npm --prefix whisk run test -- --runInBand'), 'Whisk CI should execute real seeded project tests before the accessibility audit.');
     ensure(extendedWhiskJob.includes('npm --prefix whisk run a11y'), 'Whisk accessibility job should build Storybook and run the real audit.');
-    ensure(!extendedWhiskJob.includes('continue-on-error: true'), 'Whisk accessibility violations should fail the job.');
     ensure(whiskA11yEntry.includes('ciReadinessFixture'), 'CI-only Whisk fixture should provide a Vite entry.');
     ensure(whiskA11yStory.includes("title: 'CI/Readiness fixture'") && whiskA11yStory.includes("import template from './ci-readiness.twig'"), 'CI-only Whisk fixture should provide a discoverable Twig story.');
     ensure(whiskA11yTemplate.includes('<main>') && whiskA11yTemplate.includes('<article') && whiskA11yTemplate.includes('<h2') && whiskA11yTemplate.includes('<a href='), 'CI-only Whisk story should use native semantic landmarks, headings, and links.');
