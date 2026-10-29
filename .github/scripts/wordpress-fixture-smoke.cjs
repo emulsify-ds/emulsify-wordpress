@@ -866,9 +866,10 @@ async function checkChildBlockExtension(baseUrl, pagePath, themePath, baseline) 
 }
 
 async function checkTemplateRouting(wpPath, baseUrl, themePath) {
-  const options = ['show_on_front', 'page_on_front', 'page_for_posts'];
+  const options = ['show_on_front', 'page_on_front', 'page_for_posts', 'date_format'];
   const original = Object.fromEntries(options.map((name) => [name, wp(wpPath, ['option', 'get', name])]));
   const templates = new Map();
+  const plugin = path.join(wpPath, 'wp-content', 'mu-plugins', 'emulsify-routing-fixture.php');
   const created = [];
   const writeTemplate = (name, text) => {
     const file = path.join(themePath, 'templates', name);
@@ -888,6 +889,7 @@ async function checkTemplateRouting(wpPath, baseUrl, themePath) {
     for (const [type, title, content, date] of [
       ['page', 'Route front page', 'RouteProtectedFrontSecret', null],
       ['page', 'Route posts page', '', null],
+      ['post', 'Route dated post', 'RouteDatedPostContent', '2002-03-14 12:00:00'],
     ]) {
       created.push(wp(wpPath, [
         'post', 'create', `--post_type=${type}`, '--post_status=publish',
@@ -919,13 +921,23 @@ async function checkTemplateRouting(wpPath, baseUrl, themePath) {
     const protectedFront = await expectRoute('protected static front page keeps password priority', '/', 'name="post_password"', [frontMarker, 'RouteProtectedFrontSecret']);
     if (!protectedFront.includes('wp-login.php?action=postpass')) throw new Error('Protected static front page lost the native password form action.');
 
-    log('Template routing: front-page/home/page hierarchy and protected static front pages passed.');
+    fs.writeFileSync(plugin, `<?php
+add_action( 'init', function () {
+  register_post_type( 'route_probe', array( 'public' => true, 'has_archive' => true, 'label' => 'Route archive probe' ) );
+} );
+`);
+    writeTemplate('archive-route_probe.twig', `{% extends '@emulsify-tpl/archive.twig' %}{% block content %}<p>RouteEmptyArchiveTemplateProbe</p>{{ parent() }}{% endblock %}`);
+    await expectRoute('empty custom post type archive uses its specific Twig', '/?post_type=route_probe', 'RouteEmptyArchiveTemplateProbe');
+    wp(wpPath, ['option', 'update', 'date_format', 'Y/m/d']);
+    await expectRoute('day archive uses site date format and day number', '/?year=2002&monthnum=3&day=14', 'Archive: 2002/03/14');
+    log('Template routing: front-page/home/page hierarchy, protected static front pages, empty custom post type archives and configured day archive dates passed.');
   } finally {
     for (const [name, value] of Object.entries(original)) wp(wpPath, ['option', 'update', name, value]);
     for (const [file, value] of templates) {
       if (value === null) fs.rmSync(file, { force: true });
       else fs.writeFileSync(file, value);
     }
+    fs.rmSync(plugin, { force: true });
     for (const id of created) wp(wpPath, ['post', 'delete', id, '--force']);
   }
 }

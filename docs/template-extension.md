@@ -45,6 +45,11 @@ front page uses `single-password.twig` until its password is accepted, before
 trying a custom front-page template. Existing Timber render filters continue
 to receive the selected file.
 
+Custom post type archives use `archive-{post_type}.twig` when the query names
+one type, including one-element arrays and empty archives. Multiple queried
+types use `archive.twig`, then `index.twig`. Day archive headings use the site's
+`date_format`; month and year formatting is unchanged.
+
 ## Public extension points
 
 The layout and route blocks below are a public contract. Their names and

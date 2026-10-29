@@ -86,6 +86,25 @@ namespace {
 	}
 	routing_expect( 'preserved' === $front_page['context']['fixture'] && $post === $front_page['context']['post'], 'Route selection must preserve Timber context.' );
 
+	// Archive routing must use the query, including when no current post exists.
+	foreach ( array( 'book', array( 'book' ), array( '', 'book' ) ) as $post_type ) {
+		$archive = routing_render( 'archive.php', array( 'post_type_archive' => true, 'query' => array( 'post_type' => $post_type ) ) );
+		routing_expect( array( '@templates/archive-book.twig', '@templates/archive.twig', '@templates/index.twig' ) === $archive['templates'], 'An empty single-type archive must choose archive-book.twig from its query.' );
+		routing_expect( 'Books' === $archive['context']['title'], 'Custom post type archive titles must stay intact.' );
+	}
+	foreach ( array( '', array(), array( 'book', 'film' ) ) as $post_type ) {
+		$archive = routing_render( 'archive.php', array( 'post_type_archive' => true, 'query' => array( 'post_type' => $post_type ) ) );
+		routing_expect( array( '@templates/archive.twig', '@templates/index.twig' ) === $archive['templates'], 'Absent or multiple post types must use generic archive fallbacks, matching WordPress.' );
+	}
+	$archive = routing_render( 'archive.php', array( 'post_type_archive' => true, 'current_post_type' => 'film', 'query' => array( 'post_type' => 'book' ) ) );
+	routing_expect( '@templates/archive-book.twig' === $archive['templates'][0], 'The queried post type must win over a stray global post.' );
+	$day = routing_render( 'archive.php', array( 'day' => true, 'options' => array( 'date_format' => 'd/m/Y' ) ) );
+	routing_expect( 'Archive: 29/10/2026' === $day['context']['title'], 'Day archive titles must use the configured date format, including the day of the month.' );
+	routing_expect( array( 'd/m/Y' ) === $GLOBALS['emulsify_route_state']['date_calls'], 'Day archives must pass the site date format to WordPress.' );
+	$month = routing_render( 'archive.php', array( 'month' => true ) );
+	routing_expect( 'Archive: Oct 2026' === $month['context']['title'], 'Month archive formatting must remain unchanged.' );
+	$year = routing_render( 'archive.php', array( 'year' => true ) );
+	routing_expect( 'Archive: 2026' === $year['context']['title'], 'Year archive formatting must remain unchanged.' );
 
 	if ( $failures ) {
 		fwrite( STDERR, implode( "\n", $failures ) . "\n" );
