@@ -1344,7 +1344,7 @@ function runStaticChecks() {
     ensure(distBuilder.includes('"docs"') && distBuilder.includes('"includes"') && distBuilder.includes('"templates"') && distBuilder.includes('"src"'), 'Distribution build should include user documentation and parent runtime directories.');
     ensure(distBuilder.includes('"UPGRADE.md"') && distBuilder.includes('"docs/wp-cli-child-theme-generation.md"'), 'Distribution build should retain the documentation linked from its README.');
     ensure(distBuilder.includes('"functions.php"') && distBuilder.includes('"style.css"') && distBuilder.includes('"theme.json"'), 'Distribution build should include required WordPress theme files.');
-    ensure(distBuilder.includes('copy_tracked_directory "whisk"'), 'Distribution build should include the tracked Whisk generator payload.');
+    ensure(distBuilder.includes('copy_committed_directory "whisk"'), 'Distribution build should include the committed Whisk generator payload.');
     ensure(distBuilder.includes('"whisk/project.emulsify.json"') && distBuilder.includes('"whisk/style.css"'), 'Distribution build should verify required Whisk generator files.');
     ensure(distBuilder.includes('"whisk/.cache"') && distBuilder.includes('"whisk/.cli"') && distBuilder.includes('"whisk/node_modules"'), 'Distribution build should reject Whisk caches, generation tooling, and dependencies.');
     ensure(distBuilder.includes('find emulsify -type f -print') && distBuilder.includes('zip -X'), 'Distribution build should archive the staged emulsify/ tree reproducibly.');

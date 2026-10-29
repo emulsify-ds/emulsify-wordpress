@@ -25,6 +25,7 @@ function run(label, command, args) {
 run('Validate Composer metadata', 'composer', ['validate', '--no-check-publish', '--strict']);
 run('Validate documented npm commands', 'npm', ['run', 'docs:check-commands']);
 run('Protect blocking readiness coverage', 'node', ['--test', '.github/scripts/readiness-matrix-contract.test.cjs']);
+run('Protect committed release inputs and reject symlinks', 'node', ['--test', '.github/scripts/build-dist.test.cjs']);
 run('Install Composer dependencies for Twig smoke coverage', 'composer', [
   'install',
   '--no-interaction',

@@ -217,7 +217,17 @@ before any tag is created, including during dry runs.
 
 ## Installable release artifact
 
-Run `npm run build:dist` to create `dist-artifact/emulsify.zip`. The build stages an explicit parent-theme runtime file list under a top-level `emulsify/` directory, copies only tracked Whisk generator files, and installs the versions pinned in `composer.lock` with `--no-dev --optimize-autoloader` directly into that staged tree. The ZIP therefore bundles `vendor/` and can be installed without running Composer after download.
+Run `npm run build:dist` to create `dist-artifact/emulsify.zip`. Commit source
+changes before building: the build reads one immutable `HEAD` commit, including
+Composer metadata and Whisk payload, and excludes staged or working-tree edits.
+It refuses committed symlinks before installing dependencies. Git objects are
+read explicitly so `export-ignore` cannot omit the lockfile needed for the build.
+
+The build stages an explicit parent-theme runtime file list under a top-level
+`emulsify/` directory and installs the committed versions pinned in
+`composer.lock` with `--no-dev --optimize-autoloader` directly into that tree.
+The ZIP bundles `vendor/` and can be installed without running Composer after
+download.
 
 The archive includes the runtime PHP entry points, `includes/`, `templates/`, `src/`, `style.css`, `theme.json`, the screenshot, license, README, linked user documentation, production Composer dependencies, and the tracked `whisk/` child starter required by `wp emulsify`. It excludes repository metadata, `.github/`, root npm and Composer metadata, `node_modules/`, development configuration, smoke tests, and Whisk's standalone `.cli` hook, caches, dependencies, and build output.
 

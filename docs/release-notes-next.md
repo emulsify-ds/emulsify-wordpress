@@ -77,6 +77,9 @@ lineage. See the [release process](release-process.md).
 
 ## Fixed
 
+- Installable ZIPs contain only committed inputs from one Git revision and
+  refuse symlinks instead of packaging their targets.
+
 - Both child-theme generators preserve JSON object/list types, rewrite nested
   patterns, sanitize metadata consistently, and stop on invalid JSON without
   installing a partially processed starter. Standalone generation rejects
