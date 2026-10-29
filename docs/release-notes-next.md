@@ -77,6 +77,9 @@ lineage. See the [release process](release-process.md).
 
 ## Fixed
 
+- WP-CLI skips symlinked starter directories with a warning, instead of
+  silently creating empty destination directories.
+
 - Component-scoped CSS and JavaScript in subfolders, including editor-only
   files, no longer load globally when no asset manifest is present.
 

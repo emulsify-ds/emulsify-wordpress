@@ -253,17 +253,17 @@ final class GenerateChildThemeCommand {
 
 			$target = $this->join_path( $destination, $relative );
 
+			if ( $item->isLink() ) {
+				\WP_CLI::warning( sprintf( 'Skipping symlink in starter theme: %s', $path ) );
+				continue;
+			}
+
 			if ( $item->isDir() ) {
 				if ( ! $this->make_directory( $target ) ) {
 					\WP_CLI::warning( sprintf( 'Could not create directory: %s', $target ) );
 					return false;
 				}
 
-				continue;
-			}
-
-			if ( $item->isLink() ) {
-				\WP_CLI::warning( sprintf( 'Skipping symlink in starter theme: %s', $path ) );
 				continue;
 			}
 

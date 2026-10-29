@@ -574,6 +574,18 @@ try {
 
 	emulsify_cli_smoke_assert( 'active-child' === $GLOBALS['emulsify_activated_theme'], '--activate should call switch_theme() with the child slug.' );
 
+	$external_directory = $work_root . '/external-starter-directory';
+	mkdir( $external_directory );
+	file_put_contents( $external_directory . '/secret.txt', 'outside starter' );
+	symlink( $external_directory, $parent_root . '/whisk/linked-directory' );
+	symlink( $external_directory . '/secret.txt', $parent_root . '/whisk/linked-file.txt' );
+	WP_CLI::$messages = array();
+	$cli( array( 'Symlink Theme' ), array( 'machine-name' => 'symlink-child' ) );
+	emulsify_cli_smoke_assert( ! file_exists( $theme_root . '/symlink-child/linked-directory' ), 'A symlinked starter directory must be skipped rather than copied as an empty directory.' );
+	emulsify_cli_smoke_assert( ! file_exists( $theme_root . '/symlink-child/linked-file.txt' ), 'A symlinked starter file must not copy an external file.' );
+	$symlink_warnings = array_filter( WP_CLI::$messages, static fn( array $message ): bool => 'warning' === $message['type'] && str_contains( $message['message'], 'Skipping symlink' ) );
+	emulsify_cli_smoke_assert( 2 === count( $symlink_warnings ), 'Each skipped starter symlink must report a warning.' );
+
 	echo "Child theme generator smoke checks passed.\n";
 } catch ( Throwable $throwable ) {
 	fwrite( STDERR, $throwable->getMessage() . "\n" );
