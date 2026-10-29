@@ -47,8 +47,7 @@ final class Embeds {
 		}
 		$url     = is_string( $url ) ? $url : '';
 		$attr    = is_array( $attr ) ? $attr : array();
-		$post_id = is_string( $post_id ) ? filter_var( ctype_digit( $post_id ) ? ltrim( $post_id, '0' ) : $post_id, FILTER_VALIDATE_INT ) : $post_id;
-		$post_id = is_int( $post_id ) && $post_id > 0 ? $post_id : null;
+		$post_id = $this->normalize_post_id( $post_id );
 		$options = $this->options( $url, $attr, $post_id );
 		if ( ! $options['privacy_mode'] && ! $options['click_to_load'] ) {
 			return $html;
@@ -83,7 +82,7 @@ final class Embeds {
 				$thumbnail = '';
 				if ( 'neutral' !== $options['poster'] ) {
 					if ( 'youtube' === $player['provider'] ) {
-						$thumbnail = 'https://i.ytimg.com/vi/' . $player['id'] . '/hqdefault.jpg';
+						$thumbnail = 'videoseries' === $player['id'] ? '' : 'https://i.ytimg.com/vi/' . $player['id'] . '/hqdefault.jpg';
 					} else {
 						$metadata  = $this->vimeo_metadata( $source, $player['id'] );
 						$thumbnail = $metadata['thumbnail_url'] ?? '';
@@ -124,6 +123,19 @@ final class Embeds {
 		}
 		$this->player_permissions( $processor );
 		return $processor->get_updated_html();
+	}
+
+	/**
+	 * Accepts positive integers and digit-only strings within PHP's integer range.
+	 *
+	 * @param mixed $post_id Public filter input.
+	 * @return int|null Positive post ID, otherwise null.
+	 */
+	private function normalize_post_id( $post_id ): ?int {
+		if ( is_string( $post_id ) ) {
+			$post_id = ctype_digit( $post_id ) ? filter_var( ltrim( $post_id, '0' ), FILTER_VALIDATE_INT ) : null;
+		}
+		return is_int( $post_id ) && $post_id > 0 ? $post_id : null;
 	}
 
 	/**
@@ -235,7 +247,7 @@ final class Embeds {
 	 * @return \WP_HTML_Tag_Processor|null Positioned processor or null.
 	 */
 	private function player_iframe( string $html ): ?\WP_HTML_Tag_Processor {
-		if ( ! class_exists( '\WP_HTML_Tag_Processor' ) || str_contains( $html, "\0" ) ) {
+		if ( str_contains( $html, "\0" ) ) {
 			return null;
 		}
 		$attribute = '[\t\n\f\r ]+([A-Za-z_:][A-Za-z0-9_.:-]*)(?:[\t\n\f\r ]*=[\t\n\f\r ]*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?';
@@ -248,7 +260,7 @@ final class Embeds {
 			return null;
 		}
 		$processor = new \WP_HTML_Tag_Processor( $html );
-		if ( ! $processor->next_tag( array( 'tag_name' => 'IFRAME' ) ) || $processor->has_self_closing_flag()
+		if ( ! $processor->next_tag( array( 'tag_name' => 'IFRAME' ) )
 			|| null !== $processor->get_attribute( 'srcdoc' ) || null !== $processor->get_attribute( 'sandbox' ) ) {
 			return null;
 		}
@@ -262,10 +274,8 @@ final class Embeds {
 	 * @return array|null Provider and ID, or null.
 	 */
 	private function player( string $source ): ?array {
-		$parts = wp_parse_url( $source );
-		if ( ! is_array( $parts ) || 'https' !== strtolower( $parts['scheme'] ?? '' )
-			|| isset( $parts['user'] ) || isset( $parts['pass'] ) || ( isset( $parts['port'] ) && 443 !== $parts['port'] )
-			|| preg_match( '/[\x00-\x20\x7f\\\\]/', $source ) ) {
+		$parts = $this->https_url( $source );
+		if ( null === $parts || ( isset( $parts['port'] ) && 443 !== $parts['port'] ) ) {
 			return null;
 		}
 		$host = strtolower( $parts['host'] ?? '' );
@@ -284,6 +294,21 @@ final class Embeds {
 			);
 		}
 		return null;
+	}
+
+	/**
+	 * Validates HTTPS URLs before parsing provider paths or trusting thumbnails.
+	 *
+	 * @param string $url Candidate URL.
+	 * @return array|null Parsed URL, or null for unsafe input.
+	 */
+	private function https_url( string $url ): ?array {
+		$parts = wp_parse_url( $url );
+		if ( ! is_array( $parts ) || 'https' !== strtolower( $parts['scheme'] ?? '' ) || empty( $parts['host'] )
+			|| isset( $parts['user'] ) || isset( $parts['pass'] ) || preg_match( '/[\x00-\x20\x7f\\\\]/', $url ) ) {
+			return null;
+		}
+		return $parts;
 	}
 
 	/**
@@ -389,9 +414,7 @@ final class Embeds {
 	 */
 	private function save_metadata( string $url, object $data ): void {
 		$candidate = isset( $data->thumbnail_url ) && is_string( $data->thumbnail_url ) ? $data->thumbnail_url : '';
-		$parts     = wp_parse_url( $candidate );
-		if ( ! is_array( $parts ) || 'https' !== strtolower( $parts['scheme'] ?? '' ) || empty( $parts['host'] )
-			|| isset( $parts['user'] ) || isset( $parts['pass'] ) || preg_match( '/[\x00-\x20\x7f\\\\]/', $candidate ) ) {
+		if ( null === $this->https_url( $candidate ) ) {
 			return;
 		}
 		$metadata = array(

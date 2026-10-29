@@ -164,6 +164,10 @@ try {
 		emulsify_media_smoke_assert( $html === apply_filters( 'embed_oembed_html', $html, null, false, $post_id ), 'Invalid optional context must not change disabled embeds.' );
 		emulsify_media_smoke_assert( array( '', array(), $expected_id ) === $embed_context, 'The options filter must receive normalized URLs, attributes, and positive post IDs.' );
 	}
+	foreach ( array( ' 42', "42\n", '+42', '0', '000', '42.0', '4e1' ) as $post_id ) {
+		apply_filters( 'embed_oembed_html', $html, '', array(), $post_id );
+		emulsify_media_smoke_check( null === $embed_context[2], 'Only digit-only positive post-ID strings may normalize: ' . json_encode( $post_id ) );
+	}
 	foreach ( array( true, 1.0, 1.5, array(), (object) array() ) as $post_id ) {
 		apply_filters( 'embed_oembed_html', $html, '', array(), $post_id );
 		emulsify_media_smoke_assert( null === $embed_context[2], 'Non-integer post IDs must normalize to null.' );
@@ -419,6 +423,12 @@ try {
 		$GLOBALS['wp_embed']->post_ID = $embed_post_before_no_post;
 	}
 	remove_filter( 'pre_oembed_result', $provider_result, 999 );
+
+	$options = array( 'click_to_load' => true, 'poster' => 'provider' );
+	$playlist_html = emulsify_media_smoke_markup( 'https://www.youtube.com/embed/videoseries?list=PLfixture' );
+	$output = apply_filters( 'embed_oembed_html', $playlist_html, 'https://www.youtube.com/playlist?list=PLfixture', array(), 0 );
+	$playlist_doc = emulsify_media_smoke_document( (string) emulsify_media_smoke_attribute( $output, 'srcdoc' ) );
+	emulsify_media_smoke_check( 0 === $playlist_doc->getElementsByTagName( 'img' )->length, 'YouTube playlists must not use videoseries as a thumbnail video ID.' );
 
 	// A project can override this document through the same child-first Twig
 	// namespace as other parent fallbacks. Preserve any existing project file.
