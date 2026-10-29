@@ -77,6 +77,9 @@ lineage. See the [release process](release-process.md).
 
 ## Fixed
 
+- Component templates follow Twig's strict modification-time freshness check,
+  including files changed within the compiled template's timestamp.
+
 - `get_footer` runs before footer markup and `wp_footer`, matching WordPress
   while preserving both hooks when a child replaces the footer block.
 

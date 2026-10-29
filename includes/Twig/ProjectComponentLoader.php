@@ -230,7 +230,7 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 		if ( null !== $path ) {
 			$modified = filemtime( $path );
 
-			return false !== $modified && $modified <= $time;
+			return false !== $modified && $modified < $time;
 		}
 
 		if ( $this->is_project_reference( $name ) ) {

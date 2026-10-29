@@ -291,6 +291,21 @@ try {
 	);
 
 	$environment = emulsify_twig_project_smoke_environment( $child, $parent );
+	$freshness_path = $child . '/src/components/example-card/example-card.twig';
+	$freshness_time = filemtime( $freshness_path );
+	$native_loader  = new \Twig\Loader\FilesystemLoader( $child . '/src/components' );
+
+	foreach ( array( -1, 0, 1 ) as $offset ) {
+		$cached_time = $freshness_time + $offset;
+		$expected    = $native_loader->isFresh( 'example-card/example-card.twig', $cached_time );
+		foreach ( array( 'whisk:example-card', '@whisk/example-card', '@components/example-card' ) as $reference ) {
+			emulsify_twig_project_smoke_assert_same(
+				$expected,
+				$environment->getLoader()->isFresh( $reference, $cached_time ),
+				$reference . ' freshness must match Twig at source mtime ' . ( $offset < 0 ? '-1' : '+' . $offset ) . '.'
+			);
+		}
+	}
 
 	emulsify_twig_project_smoke_assert_same(
 		'Child example card',
