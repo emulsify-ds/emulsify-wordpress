@@ -12,6 +12,12 @@ const parserOpts = {
 };
 
 const preparedReleaseGuard = {
+  verifyConditions(pluginConfig, { cwd = __dirname }) {
+    const archive = fs.statSync(path.join(cwd, 'dist-artifact/emulsify.zip'), { throwIfNoEntry: false });
+    if (!archive?.isFile() || archive.size === 0) {
+      throw new Error('Required release asset dist-artifact/emulsify.zip is missing or empty. Run npm run build:dist and test that exact ZIP before publishing.');
+    }
+  },
   verifyRelease(pluginConfig, { cwd = __dirname, nextRelease }) {
     const preparedVersion = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8')).version;
 

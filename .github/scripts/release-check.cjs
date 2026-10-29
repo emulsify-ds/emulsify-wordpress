@@ -1782,7 +1782,7 @@ function runStaticChecks() {
   runCommandCheck('Theme JSON style contract tests', process.execPath, ['--test', '.github/scripts/theme-json-style-contract.test.cjs']);
   runCommandCheck('Release version contract tests', process.execPath, ['--test', '.github/scripts/release-version-contract.test.cjs']);
   runCommandCheck('Readiness matrix contract tests', process.execPath, ['--test', '.github/scripts/readiness-matrix-contract.test.cjs']);
-  runCommandCheck('Semantic release guard tests', process.execPath, ['--test', '.github/scripts/semantic-release.test.cjs']);
+  runCommandCheck('Semantic release guard tests', process.execPath, ['--test', '.github/scripts/semantic-release.test.cjs', '.github/scripts/release-config.test.cjs']);
 
   if (skipSmoke) {
     addResult('SKIP', 'WordPress fixture smoke', 'Skipped by --skip-smoke.');

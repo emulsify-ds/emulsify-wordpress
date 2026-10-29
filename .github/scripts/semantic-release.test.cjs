@@ -47,6 +47,8 @@ function fixture(t, version = '2.1.0') {
     fs.writeFileSync(path.join(repoRoot, file), '');
   }
   fs.writeFileSync(path.join(repoRoot, 'package.json'), JSON.stringify({ name: 'release-contract', version }));
+  fs.mkdirSync(path.join(repoRoot, 'dist-artifact'));
+  fs.writeFileSync(path.join(repoRoot, 'dist-artifact/emulsify.zip'), 'fixture release archive');
   return { repoRoot, remote, git };
 }
 

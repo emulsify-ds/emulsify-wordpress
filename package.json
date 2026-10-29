@@ -1,6 +1,7 @@
 {
   "name": "emulsify-wordpress",
   "version": "2.1.0",
+  "private": true,
   "description": "Timber-first WordPress parent theme that generates child themes with Emulsify Core 4, Vite, Storybook, and Twig",
   "engines": {
     "node": ">=24.10"
@@ -66,8 +67,7 @@
     "whisk:install": "npm --prefix whisk install --package-lock=false --ignore-scripts",
     "build:dist": "bash scripts/build-dist.sh",
     "publish": "node .github/scripts/semantic-release.cjs --tag-format '${version}'",
-    "publish-test": "node .github/scripts/semantic-release.cjs --tag-format '${version}' --dry-run --debug",
-    "semantic-release": "semantic-release"
+    "publish-test": "node .github/scripts/semantic-release.cjs --tag-format '${version}' --dry-run --debug"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.4",
