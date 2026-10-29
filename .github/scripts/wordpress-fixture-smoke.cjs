@@ -1017,6 +1017,155 @@ add_filter( 'timber/post/content/password_form', function ( $form ) {
   }
 }
 
+async function checkFormattedText(wpPath, baseUrl) {
+  const values = {
+    title: 'Don\'t "panic" & relax',
+    category: "Rock 'n' Roll & Blues",
+    site: "Ben & Jerry's",
+    author: "Writer & Reader's",
+    search: 'Tom & Jerry "live"',
+  };
+  const fixture = JSON.parse(wp(wpPath, ['eval', String.raw`
+$values = json_decode( file_get_contents( 'php://stdin' ), true );
+$fixture = array(
+  'blogname' => get_option( 'blogname' ),
+  'locations' => get_theme_mod( 'nav_menu_locations', array() ),
+);
+$fixture['author'] = wp_insert_user( array( 'user_login' => 'formatted-text-fixture', 'user_pass' => wp_generate_password(), 'display_name' => $values['author'], 'role' => 'author' ) );
+$category = wp_insert_term( $values['category'], 'category' );
+$fixture['category'] = $category['term_id'];
+foreach ( array( 'post', 'page' ) as $type ) {
+  $fixture[$type] = wp_insert_post( wp_slash( array( 'post_type' => $type, 'post_status' => 'publish', 'post_title' => $values['title'], 'post_content' => 'FormattedTextFixture content', 'post_author' => $fixture['author'], 'post_category' => array( $fixture['category'] ) ) ) );
+}
+$fixture['comment'] = wp_insert_comment( array( 'comment_post_ID' => $fixture['post'], 'comment_author' => 'Reader &#038; Friend&#8217;s', 'comment_content' => 'Formatted text comment', 'comment_approved' => 1 ) );
+$fixture['menu'] = wp_create_nav_menu( 'Formatted text fixture' );
+$fixture['menuItem'] = wp_update_nav_menu_item( $fixture['menu'], 0, array( 'menu-item-object-id' => $fixture['post'], 'menu-item-object' => 'post', 'menu-item-type' => 'post_type', 'menu-item-status' => 'publish' ) );
+set_theme_mod( 'nav_menu_locations', array( 'primary' => $fixture['menu'] ) );
+update_option( 'blogname', $values['site'] );
+// A tiny local image exercises the actual Timber thumbnail and its title fallback.
+$upload = wp_upload_bits( 'formatted-text.png', null, base64_decode( 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAC0lEQVQImWNgQAYAAA4AAbGa6gYAAAAASUVORK5CYII=' ) );
+$fixture['attachment'] = wp_insert_attachment( array( 'post_mime_type' => 'image/png', 'post_title' => 'Formatted text image', 'post_status' => 'inherit' ), $upload['file'] );
+require_once ABSPATH . 'wp-admin/includes/image.php';
+wp_update_attachment_metadata( $fixture['attachment'], wp_generate_attachment_metadata( $fixture['attachment'], $upload['file'] ) );
+set_post_thumbnail( $fixture['post'], $fixture['attachment'] );
+update_option( 'emulsify_fixture_text_ids', array( $fixture['post'], $fixture['page'] ) );
+$decode = static function ( $value ) { return html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' ); };
+$fixture['expected'] = array(
+  'title' => $decode( get_the_title( $fixture['post'] ) ),
+  'site' => $decode( ( new \Timber\Site() )->name ),
+  'category' => $decode( apply_filters( 'single_cat_title', get_term( $fixture['category'], 'category' )->name ) ),
+  'author' => $decode( \Timber\Timber::get_user( $fixture['author'] )->name() ),
+  'comment' => $decode( get_comment( $fixture['comment'] )->comment_author ),
+);
+echo wp_json_encode( $fixture );
+`], { input: JSON.stringify(values) }));
+  const plugin = path.join(wpPath, 'wp-content', 'mu-plugins', 'emulsify-formatted-text-fixture.php');
+  const inspect = (name, html, assertions) => run(`Inspect ${name} DOM`, 'php', [path.join(repoRoot, '.github/scripts/formatted-text-dom-smoke.php')], {
+    input: JSON.stringify({ name, html, assertions }),
+  });
+  const request = (name, route) => checkRoute(baseUrl, { name, path: route, includes: [] });
+  const common = (site, menu) => [
+    { xpath: '//a[@rel="home"]', text: site },
+    { xpath: '//footer/p', contains: site },
+    { xpath: `//nav//a[contains(@href, '?p=${fixture.post}')]`, text: menu },
+  ];
+  const postTitle = (id, text, extra = {}) => ({ xpath: `//*[@id="post-${id}"]//h1`, text, ...extra });
+  const teaserTitle = (text, extra = {}) => ({ xpath: `//*[@id="teaser-${fixture.post}"]//h2/a`, text, ...extra });
+  const imageAlt = (singular, text) => ({ xpath: `//*[@id="${singular ? 'post' : 'teaser'}-${fixture.post}"]//*[contains(concat(' ', normalize-space(@class), ' '), ' ${singular ? 'entry' : 'teaser'}__media ')]/img`, attribute: 'alt', text });
+  try {
+    const expected = fixture.expected;
+    for (const [type, query] of [['post', 'p'], ['page', 'page_id']]) {
+      const body = await request(`formatted ${type}`, `/?${query}=${fixture[type]}`);
+      const assertions = [...common(expected.site, expected.title), postTitle(fixture[type], expected.title)];
+      if (type === 'post') assertions.push(
+        { xpath: `//*[@id="post-${fixture.post}"]//*[contains(@class, 'entry__author')]/a`, text: expected.author },
+        { xpath: `//*[@id="comment-${fixture.comment}"]//h3`, text: expected.comment },
+        imageAlt(true, expected.title),
+      );
+      inspect(`formatted ${type}`, body, assertions);
+    }
+    for (const [name, route, heading] of [
+      ['blog', '/', null],
+      ['category', `/?cat=${fixture.category}`, expected.category],
+      ['author', `/?author=${fixture.author}`, `Archive of ${expected.author}`],
+    ]) {
+      const body = await request(`formatted ${name}`, route);
+      const assertions = [...common(expected.site, expected.title), teaserTitle(expected.title), imageAlt(false, expected.title)];
+      if (heading) assertions.push({ xpath: '//main/header/h1', text: heading });
+      inspect(`formatted ${name}`, body, assertions);
+    }
+    const search = await request('formatted search', `/?s=${encodeURIComponent(values.search)}`);
+    inspect('formatted search', search, [...common(expected.site, expected.title), { xpath: '//main/header/h1', text: `Search results for ${values.search}` }]);
+
+    // Inject values after WordPress's save-time sanitization to model plugin
+    // title/name filters, including both raw and already encoded input.
+    fs.writeFileSync(plugin, `<?php
+function emulsify_fixture_text_value( $key, $fallback ) {
+  $values = get_option( 'emulsify_fixture_text_values', array() );
+  return isset( $values[$key] ) ? $values[$key] : $fallback;
+}
+add_filter( 'the_title', function ( $title, $id ) {
+  return in_array( (int) $id, get_option( 'emulsify_fixture_text_ids', array() ), true ) ? emulsify_fixture_text_value( 'title', $title ) : $title;
+}, 999, 2 );
+add_filter( 'nav_menu_item_title', function ( $title ) { return emulsify_fixture_text_value( 'name', $title ); }, 999 );
+add_filter( 'option_blogname', function ( $name ) { return emulsify_fixture_text_value( 'name', $name ); }, 999 );
+add_filter( 'timber/user/name', function ( $name ) { return emulsify_fixture_text_value( 'name', $name ); }, 999 );
+add_filter( 'single_cat_title', function ( $name ) { return emulsify_fixture_text_value( 'name', $name ); }, 999 );
+`);
+    const safeTitle = '<strong>Bold</strong> & <em>calm</em> "quotes"';
+    const hostile = '<script>alert("fixture")</script><img src="javascript:alert(1)" onerror=alert(1)> "quoted" & relaxed';
+    for (const [name, title, plainName, inlineCount] of [
+      ['safe inline title', safeTitle, hostile, 2],
+      ['hostile raw title', hostile, hostile, null],
+      ['hostile encoded title', '&lt;script&gt;alert(&quot;fixture&quot;)&lt;/script&gt; &amp; calm', '&lt;img src=x onerror=alert(1)&gt; &quot;quoted&quot; &amp; relaxed', null],
+    ]) {
+      wp(wpPath, ['option', 'update', 'emulsify_fixture_text_values', JSON.stringify({ title, name: plainName }), '--format=json']);
+      const expected = JSON.parse(wp(wpPath, ['eval', String.raw`
+$values = get_option( 'emulsify_fixture_text_values' );
+$decode = static function ( $value ) { return html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' ); };
+echo wp_json_encode( array( 'title' => $decode( wp_strip_all_tags( wp_kses_post( $values['title'] ) ) ), 'name' => $decode( $values['name'] ), 'alt' => $decode( wp_strip_all_tags( $values['title'] ) ) ) );
+`]));
+      const titleOptions = { elements: ['strong', 'em', 'img'], ...(inlineCount === null ? {} : { elementCount: inlineCount }) };
+      const post = await request(name, `/?p=${fixture.post}`);
+      inspect(name, post, [...common(expected.name, expected.name), postTitle(fixture.post, expected.title, titleOptions), imageAlt(true, expected.alt),
+        { xpath: `//*[@id="post-${fixture.post}"]//*[contains(@class, 'entry__author')]/a`, text: expected.name },
+      ]);
+      const page = await request(`${name} page`, `/?page_id=${fixture.page}`);
+      inspect(`${name} page`, page, [postTitle(fixture.page, expected.title, titleOptions)]);
+      const archive = await request(`${name} category`, `/?cat=${fixture.category}`);
+      inspect(`${name} category`, archive, [teaserTitle(expected.title, titleOptions), imageAlt(false, expected.alt), { xpath: '//main/header/h1', text: expected.name }]);
+    }
+    wp(wpPath, ['option', 'delete', 'emulsify_fixture_text_values']);
+    for (const [altName, alt, expectedAlt] of [
+      ['raw', '<script>alert("fixture")</script><style>body{display:none}</style><img src=x onerror=alert(1)> Portrait "quoted" & relaxed', 'Portrait "quoted" & relaxed'],
+      ['encoded', '&lt;script&gt;alert(1)&lt;/script&gt; Portrait &amp; "quoted"', '<script>alert(1)</script> Portrait & "quoted"'],
+    ]) {
+      wp(wpPath, ['post', 'meta', 'update', String(fixture.attachment), '_wp_attachment_image_alt', alt]);
+      for (const [name, route, singular] of [['single', `/?p=${fixture.post}`, true], ['blog', '/', false]]) {
+        const body = await request(`explicit ${altName} thumbnail alt ${name}`, route);
+        inspect(`explicit ${altName} thumbnail alt ${name}`, body, [imageAlt(singular, expectedAlt)]);
+      }
+    }
+    log('WordPress formatted text: native title/name/search characters render once; safe title markup survives; hostile markup and thumbnail attributes remain safe.');
+  } finally {
+    fs.rmSync(plugin, { force: true });
+    wp(wpPath, ['eval', String.raw`
+$fixture = json_decode( file_get_contents( 'php://stdin' ), true );
+delete_option( 'emulsify_fixture_text_ids' );
+delete_option( 'emulsify_fixture_text_values' );
+update_option( 'blogname', $fixture['blogname'] );
+set_theme_mod( 'nav_menu_locations', $fixture['locations'] );
+wp_delete_nav_menu( $fixture['menu'] );
+wp_delete_post( $fixture['post'], true );
+wp_delete_post( $fixture['page'], true );
+wp_delete_attachment( $fixture['attachment'], true );
+wp_delete_term( $fixture['category'], 'category' );
+require_once ABSPATH . 'wp-admin/includes/user.php';
+wp_delete_user( $fixture['author'] );
+`], { input: JSON.stringify(fixture) });
+  }
+}
+
 async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
   startServer(wpPath, port);
   await waitForServer(baseUrl);
@@ -1068,6 +1217,7 @@ async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
   await checkSearchPagination(baseUrl);
   await checkGeneratedAssets(baseUrl, themeSlug);
   await checkPasswordProtection(wpPath, content, baseUrl, path.join(wpPath, 'wp-content', 'themes', themeSlug));
+  await checkFormattedText(wpPath, baseUrl);
 
   if (auditAccessibility) {
     const archiveCount = Number(wp(wpPath, ['post', 'list', '--post_type=post', '--post_status=publish', `--cat=${content.categoryId}`, '--format=count']));

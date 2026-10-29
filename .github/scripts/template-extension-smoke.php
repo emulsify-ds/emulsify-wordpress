@@ -15,8 +15,8 @@ if ( PHP_SAPI !== 'cli' ) {
 $repo_root = dirname( __DIR__, 2 );
 $autoload  = $repo_root . '/vendor/autoload.php';
 
-if ( ! is_readable( $autoload ) ) {
-	fwrite( STDERR, "Composer dependencies are required for the template extension smoke test.\n" );
+if ( ! is_readable( $autoload ) || ! class_exists( DOMDocument::class ) ) {
+	fwrite( STDERR, "Composer dependencies and PHP DOM are required for the template extension smoke test.\n" );
 	exit( 1 );
 }
 
@@ -179,6 +179,8 @@ try {
 	$environment->addFunction( new \Twig\TwigFunction( 'function', array( new \Timber\Twig(), 'exec_function' ) ) );
 	$environment->addFunction( new \Twig\TwigFunction( 'action', 'do_action' ) );
 	emulsify_register_wordpress_text_test_filters( $environment );
+	$environment->addFilter( new \Twig\TwigFilter( 'resize', static function ( $value ) { return $value; } ) );
+	$environment->addFilter( new \Twig\TwigFilter( 'wpautop', static function ( $value ) { return $value; }, array( 'is_safe' => array( 'html' ) ) ) );
 	$integration->extensions( $environment );
 	$core = $environment->getExtension( \Twig\Extension\CoreExtension::class );
 	$core->setTimezone( 'UTC' );
@@ -212,7 +214,61 @@ try {
 		emulsify_extension_golden( $has_post ? 'page-post' : 'page-no-post', $environment->render( '@emulsify-tpl/page.twig', $context ), $capture );
 	}
 
-	$errors        = array();
+	$errors = array();
+	// These supplied entities model WordPress output; real texturize/KSES lives in the WordPress fixture.
+	$formatted_title = 'Don&#8217;t &#8220;panic&#8221; &#038; relax';
+	$visible_title   = 'Don’t “panic” & relax';
+	$text_context    = emulsify_extension_context( true, true, false );
+	$text_context['site']['name']               = 'Ben &amp; Jerry&#039;s';
+	$text_context['title']                      = 'Search results for Tom &amp; Jerry &quot;live&quot;';
+	$text_context['menu']['get_items'][0]['title'] = $formatted_title;
+	$text_context['post'] = array(
+		'id'        => 42,
+		'title'     => $formatted_title,
+		'content'   => '',
+		'link'      => '/formatted/',
+		'author'    => array( 'name' => 'Rock &#039;n&#039; Roll &amp; Blues', 'path' => '/author/' ),
+		'thumbnail' => array( 'src' => '/thumbnail.jpg', 'alt' => '' ),
+		'comments'  => array( array( 'id' => 1, 'author' => array( 'name' => 'Ben &amp; Jerry&#039;s' ) ) ),
+	);
+	$dom = static function ( string $html ): DOMXPath {
+		$document = new DOMDocument();
+		$previous = libxml_use_internal_errors( true );
+		$document->loadHTML( '<!doctype html><html><head><meta charset="UTF-8"></head><body>' . $html . '</body></html>' );
+		libxml_clear_errors();
+		libxml_use_internal_errors( $previous );
+		return new DOMXPath( $document );
+	};
+	foreach ( array( 'page.twig', 'single.twig', 'partials/tease.twig' ) as $text_template ) {
+		$text_output = $environment->render( '@emulsify-tpl/' . $text_template, $text_context );
+		$text_dom    = $dom( $text_output );
+		$post_titles = $text_dom->query( '//h1[contains(@class, "entry__title")]|//h2[contains(@class, "teaser__title")]/a' );
+		emulsify_extension_expect( 1 === $post_titles->length && $visible_title === trim( $post_titles->item( 0 )->textContent ), $text_template . ' must show WordPress-formatted post titles as visible characters once.', $errors );
+		if ( 'page.twig' !== $text_template ) {
+			$image = $text_dom->query( '//img' )->item( 0 );
+			emulsify_extension_expect( null !== $image && $visible_title === $image->getAttribute( 'alt' ), $text_template . ' must use the post title as an alt fallback without literal entities.', $errors );
+		}
+		if ( 'single.twig' === $text_template ) {
+			$author = $text_dom->query( '//span[contains(@class, "entry__author")]/a' )->item( 0 );
+			emulsify_extension_expect( null !== $author && "Rock 'n' Roll & Blues" === trim( $author->textContent ), 'Post author names must show visible punctuation and ampersands once.', $errors );
+			$comment_author = $text_dom->query( '//h3[contains(@class, "comment__author")]' )->item( 0 );
+			emulsify_extension_expect( null !== $comment_author && "Ben & Jerry's" === trim( $comment_author->textContent ), 'Comment author names must show visible punctuation and ampersands once.', $errors );
+		}
+	}
+	$text_dom = $dom( $environment->render( 'content-fixture.twig', $text_context ) );
+	foreach ( array( '//a[contains(@class, "site-header__brand")]' => "Ben & Jerry's", '//footer//p' => "© 2026 Ben & Jerry's", '//h1[contains(@class, "page-header__title")]' => 'Search results for Tom & Jerry "live"', '//nav//a[@aria-current="page"]' => $visible_title ) as $query => $visible ) {
+		$node = $text_dom->query( $query )->item( 0 );
+		emulsify_extension_expect( null !== $node && $visible === trim( $node->textContent ), 'WordPress-formatted text must remain readable in ' . $query . '.', $errors );
+	}
+	foreach ( array( '<em>Raw</em> &amp; &quot;alt&quot;' => 'Raw & "alt"', '&lt;em&gt;Encoded&lt;/em&gt; &amp; &quot;alt&quot;' => '<em>Encoded</em> & "alt"', '<strong>Helpful</strong><script>alert(1)</script><img src=x onerror=alert(1)> &amp; &quot;quoted&quot;' => 'Helpful & "quoted"' ) as $alt => $plain_alt ) {
+		$text_context['post']['thumbnail']['alt'] = $alt;
+		foreach ( array( 'single.twig', 'partials/tease.twig' ) as $text_template ) {
+			$image_dom = $dom( $environment->render( '@emulsify-tpl/' . $text_template, $text_context ) );
+			$image = $image_dom->query( '//img' )->item( 0 );
+			emulsify_extension_expect( null !== $image && $plain_alt === $image->getAttribute( 'alt' ), $text_template . ' must strip literal alt markup, keep encoded markup inert, and show entities once.', $errors );
+			emulsify_extension_expect( 1 === $image_dom->query( '//img' )->length && 0 === $image_dom->query( '//script|//*[@onerror]' )->length, $text_template . ' alt text must never introduce elements or event-handler attributes.', $errors );
+		}
+	}
 	foreach ( array( 'tease.twig', 'tease-post.twig' ) as $teaser_template ) {
 		foreach ( array( 'manual', 'automatic' ) as $excerpt_source ) {
 			foreach ( array( false, true ) as $protected ) {
