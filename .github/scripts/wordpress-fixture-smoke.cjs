@@ -733,7 +733,7 @@ async function waitForServer(baseUrl) {
 }
 
 async function checkRoute(baseUrl, route) {
-  const response = await fetch(`${baseUrl}${route.path}`);
+  const response = await fetch(`${baseUrl}${route.path}`, { headers: route.headers });
   const body = await response.text();
   const expectedStatus = route.status || 200;
 
@@ -862,6 +862,161 @@ async function checkChildBlockExtension(baseUrl, pagePath, themePath, baseline) 
   }
 }
 
+async function checkPasswordProtection(wpPath, content, baseUrl, themePath) {
+  const password = 'fixture-content-password';
+  const secrets = ['PasswordFixtureProbePageContent', 'PasswordFixtureProbePageExcerpt', 'PasswordFixtureProbePostContent', 'PasswordFixtureProbePostExcerpt'];
+  const created = [];
+  const originalSiteUrl = wp(wpPath, ['option', 'get', 'siteurl']);
+  const originalFront = wp(wpPath, ['option', 'get', 'show_on_front']);
+  const originalFrontPage = wp(wpPath, ['option', 'get', 'page_on_front']);
+  const childPasswordTemplate = path.join(themePath, 'templates', 'single-password.twig');
+  const originalPasswordTemplate = fs.existsSync(childPasswordTemplate) ? fs.readFileSync(childPasswordTemplate, 'utf8') : null;
+  const formPlugin = path.join(wpPath, 'wp-content', 'mu-plugins', 'emulsify-password-fixture.php');
+  const assertPrivate = (body, name) => {
+    for (const secret of secrets) {
+      if (body.includes(secret)) throw new Error(`${name} leaked protected content or an excerpt: ${secret}.`);
+    }
+  };
+  const assertForm = (body, expectedAction, id, name) => {
+    const forms = [...body.matchAll(/<form\b[^>]*\baction=(["'])(.*?)\1[^>]*>/gi)];
+    if (!forms.some((form) => form[2].replace(/&(?:amp|#0*38|#x0*26);/gi, '&') === expectedAction)) {
+      throw new Error(`${name} must post its password form to ${expectedAction}.`);
+    }
+    if (!body.includes('data-password-fixture="core"') || !body.includes(`for="pwbox-${id}"`) || !body.includes('name="post_password"')) {
+      throw new Error(`${name} must use the filterable WordPress form and its labeled password field.`);
+    }
+  };
+  const request = (name, route, headers) => checkRoute(baseUrl, { name, path: route, includes: [], headers });
+  const submitPassword = async (id, value) => {
+    const response = await fetch(`${baseUrl}/wp-login.php?action=postpass`, {
+      method: 'POST', redirect: 'manual',
+      body: new URLSearchParams({ post_password: value, redirect_to: `${baseUrl}/?p=${id}` }),
+    });
+    const cookie = response.headers.getSetCookie().map((value) => value.split(';')[0]).find((value) => value.startsWith('wp-postpass_'));
+    if (response.status !== 302 || !cookie) throw new Error('WordPress postpass must redirect and issue its real password cookie.');
+    return { Cookie: cookie };
+  };
+
+  try {
+    for (const [index, type] of ['page', 'post'].entries()) {
+      created.push(wp(wpPath, [
+        'post', 'create', `--post_type=${type}`, '--post_status=publish',
+        `--post_title=Password fixture ${type}`, `--post_content=${secrets[index * 2]}`,
+        `--post_excerpt=${secrets[index * 2 + 1]}`, `--post_password=${password}`,
+        `--post_author=${content.authorId}`, '--porcelain',
+      ]));
+    }
+    const [pageId, postId] = created;
+    wp(wpPath, ['post', 'term', 'add', postId, 'category', content.categoryId, '--by=id']);
+    fs.writeFileSync(formPlugin, `<?php
+add_filter( 'the_password_form', function ( $form ) {
+  if ( 'the_password_form' === get_option( 'emulsify_fixture_empty_password_form' ) ) {
+    return '';
+  }
+  return str_replace( '<form ', '<form data-password-fixture="core" ', $form );
+}, 999 );
+add_filter( 'timber/post/content/password_form', function ( $form ) {
+  return 'timber/post/content/password_form' === get_option( 'emulsify_fixture_empty_password_form' ) ? '' : $form;
+}, 999 );
+`);
+    const routes = [
+      ['protected page', `/?page_id=${pageId}`, pageId],
+      ['protected post', `/?p=${postId}`, postId],
+      ['protected blog listing', '/'],
+      ['protected category listing', `/?cat=${content.categoryId}`],
+      ['protected author listing', `/?author=${content.authorId}`],
+      // Core excludes protected posts from anonymous search. Search for the
+      // shared prefix so the public heading cannot echo a complete secret.
+      ['protected search listing', '/?s=PasswordFixtureProbe'],
+    ];
+    for (const [name, route, id] of routes) {
+      const body = await request(name, route);
+      assertPrivate(body, name);
+      if (!id && !route.startsWith('/?s=') && !body.includes(`id="teaser-${postId}"`)) {
+        throw new Error(`${name} must include the protected post's teaser to exercise excerpt suppression.`);
+      }
+      if (id) {
+        assertForm(body, `${originalSiteUrl}/wp-login.php?action=postpass`, id, name);
+        const title = wp(wpPath, ['eval', `echo get_the_title( ${Number(id)} );`]);
+        if (!body.includes(title)) throw new Error(`${name} must retain WordPress's protected title: ${title}.`);
+      }
+    }
+
+    // A site installed below its public home URL must use site_url(), and
+    // customizations of the core form must reach both singular routes.
+    wp(wpPath, ['option', 'update', 'siteurl', `${baseUrl}/wordpress-core`]);
+    try {
+      for (const [name, route, id] of routes.slice(0, 2)) {
+        const body = await request(`${name} with separate site URL`, route);
+        assertPrivate(body, name);
+        assertForm(body, `${baseUrl}/wordpress-core/wp-login.php?action=postpass`, id, name);
+      }
+    } finally {
+      wp(wpPath, ['option', 'update', 'siteurl', originalSiteUrl]);
+    }
+
+    wp(wpPath, ['option', 'update', 'show_on_front', 'page']);
+    wp(wpPath, ['option', 'update', 'page_on_front', pageId]);
+    try {
+      const front = await request('protected static front page', '/');
+      assertPrivate(front, 'protected static front page');
+      assertForm(front, `${originalSiteUrl}/wp-login.php?action=postpass`, pageId, 'protected static front page');
+    } finally {
+      wp(wpPath, ['option', 'update', 'show_on_front', originalFront]);
+      wp(wpPath, ['option', 'update', 'page_on_front', originalFrontPage]);
+    }
+
+    // The shared Timber filter must also protect a child that directly prints
+    // post.content rather than inheriting the parent's password form markup.
+    fs.mkdirSync(path.dirname(childPasswordTemplate), { recursive: true });
+    fs.writeFileSync(childPasswordTemplate, `{% extends '@emulsify-tpl/layouts/base.twig' %}{% block content %}<div data-password-child-content>{{ post.content|raw }}</div>{% endblock %}`);
+    for (const [name, route, id] of routes.slice(0, 2)) {
+      const body = await request(`${name} through child post.content`, route);
+      assertPrivate(body, name);
+      assertForm(body, `${originalSiteUrl}/wp-login.php?action=postpass`, id, name);
+    }
+    for (const hook of ['the_password_form', 'timber/post/content/password_form']) {
+      wp(wpPath, ['option', 'update', 'emulsify_fixture_empty_password_form', hook]);
+      for (const [name, route] of routes.slice(0, 2)) {
+        const body = await request(`${name} with empty ${hook}`, route);
+        assertPrivate(body, `${name} with empty ${hook}`);
+        if (!body.includes('data-password-child-content') || body.includes('name="post_password"')) {
+          throw new Error('A hidden password form must remain hidden without exposing child post.content.');
+        }
+      }
+    }
+    wp(wpPath, ['option', 'delete', 'emulsify_fixture_empty_password_form']);
+    if (originalPasswordTemplate === null) fs.rmSync(childPasswordTemplate);
+    else fs.writeFileSync(childPasswordTemplate, originalPasswordTemplate);
+
+    const wrongCookie = await submitPassword(postId, 'incorrect-fixture-password');
+    for (const [name, route, id] of routes.slice(0, 2)) {
+      const body = await request(`${name} with incorrect password`, route, wrongCookie);
+      assertPrivate(body, name);
+      assertForm(body, `${originalSiteUrl}/wp-login.php?action=postpass`, id, name);
+    }
+    for (const [index, [name, route, id]] of routes.slice(0, 2).entries()) {
+      const correctCookie = await submitPassword(id, password);
+      const body = await request(`${name} after postpass`, route, correctCookie);
+      if (!body.includes(secrets[index * 2]) || body.includes('name="post_password"')) {
+        throw new Error(`${name} must reveal its content after the correct WordPress password cookie.`);
+      }
+    }
+    await checkRoute(baseUrl, { name: 'unprotected page after password checks', path: `/?page_id=${content.pageId}`, includes: ['Smoke page content'] });
+    await checkRoute(baseUrl, { name: 'unprotected post after password checks', path: `/?p=${content.postId}`, includes: ['Smoke post content'] });
+    log('Password protection: page/post/listing secrets stayed private, native forms used site URL and filters, static front pages and direct child content stayed protected, and wrong/correct postpass cookies behaved correctly.');
+  } finally {
+    wp(wpPath, ['eval', "delete_option( 'emulsify_fixture_empty_password_form' );"]);
+    wp(wpPath, ['option', 'update', 'siteurl', originalSiteUrl]);
+    wp(wpPath, ['option', 'update', 'show_on_front', originalFront]);
+    wp(wpPath, ['option', 'update', 'page_on_front', originalFrontPage]);
+    if (originalPasswordTemplate === null) fs.rmSync(childPasswordTemplate, { force: true });
+    else fs.writeFileSync(childPasswordTemplate, originalPasswordTemplate);
+    fs.rmSync(formPlugin, { force: true });
+    for (const id of created) wp(wpPath, ['post', 'delete', id, '--force']);
+  }
+}
+
 async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
   startServer(wpPath, port);
   await waitForServer(baseUrl);
@@ -912,6 +1067,7 @@ async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
   );
   await checkSearchPagination(baseUrl);
   await checkGeneratedAssets(baseUrl, themeSlug);
+  await checkPasswordProtection(wpPath, content, baseUrl, path.join(wpPath, 'wp-content', 'themes', themeSlug));
 
   if (auditAccessibility) {
     const archiveCount = Number(wp(wpPath, ['post', 'list', '--post_type=post', '--post_status=publish', `--cat=${content.categoryId}`, '--format=count']));

@@ -42,6 +42,16 @@ function __( string $text, string $domain = 'default' ): string {
 	return $text;
 }
 
+function get_the_password_form( $post = 0 ): string {
+	$GLOBALS['emulsify_extension_password_form_posts'][] = $post;
+	return '<form class="post-password-form" data-filtered-password-form="true" action="https://example.test/wordpress/wp-login.php?action=postpass" method="post"><label for="pwbox-' . $post . '">Password</label><input id="pwbox-' . $post . '" name="post_password" type="password"><button type="submit">Enter</button></form>';
+}
+
+function get_the_title( $post = 0 ): string {
+	$GLOBALS['emulsify_extension_title_posts'][] = $post;
+	return 'Protected: Secret <title> & fixture';
+}
+
 function do_action( string $hook, ...$arguments ): void {
 	$GLOBALS['emulsify_extension_hooks'][] = $hook;
 	echo '<!-- action:' . $hook . ' -->';
@@ -201,6 +211,48 @@ try {
 	}
 
 	$errors        = array();
+	foreach ( array( 'tease.twig', 'tease-post.twig' ) as $teaser_template ) {
+		foreach ( array( 'manual', 'automatic' ) as $excerpt_source ) {
+			foreach ( array( false, true ) as $protected ) {
+				$secret = 'protected-' . $excerpt_source . '-excerpt-secret';
+				$post   = new class( $protected, $secret ) {
+					public $password_required;
+					public $excerpt_reads = 0;
+					private $summary;
+
+					public function __construct( bool $protected, string $summary ) {
+						$this->password_required = $protected;
+						$this->summary = $summary;
+					}
+
+					public function excerpt( array $options = array() ): string {
+						++$this->excerpt_reads;
+						return $this->summary;
+					}
+				};
+				$teaser = $environment->render( '@emulsify-tpl/partials/' . $teaser_template, array( 'post' => $post ) );
+				emulsify_extension_expect( $protected ? false === strpos( $teaser, $secret ) && 0 === $post->excerpt_reads : false !== strpos( $teaser, $secret ) && $post->excerpt_reads > 0, $teaser_template . ' must skip ' . $excerpt_source . ' excerpts entirely while a password is required and retain them after unlock.', $errors );
+			}
+		}
+	}
+
+	$password_context = emulsify_extension_context( false, true, false );
+	$password_context['site']['link'] = 'https://example.test';
+	$password_context['post'] = array( 'id' => 73, 'password_required' => true, 'content' => 'protected-content-secret', 'excerpt' => 'protected-excerpt-secret' );
+	$GLOBALS['emulsify_extension_password_form_posts'] = array();
+	$GLOBALS['emulsify_extension_title_posts'] = array();
+	$GLOBALS['emulsify_extension_hooks'] = array();
+	$password_output = $environment->render( '@emulsify-tpl/single-password.twig', $password_context );
+	emulsify_extension_expect( array( 73 ) === $GLOBALS['emulsify_extension_password_form_posts'], 'The password template must request WordPress\'s form for the current post ID.', $errors );
+	emulsify_extension_expect( array( 73 ) === $GLOBALS['emulsify_extension_title_posts'] && false !== strpos( $password_output, '>Protected: Secret &lt;title&gt; &amp; fixture</h1>' ), 'The password template must display WordPress\'s protected title while preserving title autoescaping.', $errors );
+	emulsify_extension_expect( false !== strpos( $password_output, '<form class="post-password-form" data-filtered-password-form="true" action="https://example.test/wordpress/wp-login.php?action=postpass"' ) && false === strpos( $password_output, '&lt;form'), 'The password template must preserve trusted core/plugin form markup and the site URL instead of building a home-URL action.', $errors );
+	emulsify_extension_expect( false === strpos( $password_output, 'protected-content-secret' ) && false === strpos( $password_output, 'protected-excerpt-secret' ), 'The password template must never print protected content or excerpts.', $errors );
+	emulsify_extension_expect( array( 'get_header', 'wp_head', 'wp_body_open', 'wp_footer', 'get_footer' ) === $GLOBALS['emulsify_extension_hooks'], 'The password template must preserve structural WordPress hooks and their order.', $errors );
+	$password_marker = '<!-- child password content -->';
+	$fixtures->setTemplate( 'child-password-content.twig', '{% extends "@emulsify-tpl/single-password.twig" %}{% block content %}' . $password_marker . '{{ parent() }}{% endblock %}' );
+	$password_child = $environment->render( 'child-password-content.twig', $password_context );
+	emulsify_extension_expect( 1 === substr_count( $password_child, $password_marker ) && str_replace( $password_marker, '', $password_child ) === $password_output, 'Child password templates must retain the public content block and surrounding parent markup.', $errors );
+
 	$rtl_context   = emulsify_extension_context( true, true, true );
 	$rtl_context['site']['language_attributes'] = 'lang="ar" dir="rtl"';
 	$rtl_output = $environment->render( 'content-fixture.twig', $rtl_context );
@@ -277,7 +329,7 @@ try {
 	if ( $errors ) {
 		throw new RuntimeException( implode( "\n", $errors ) );
 	}
-	echo "PASS plain language attributes, RTL, other field autoescaping, physical child page lookup and restoration, child page inheritance, seven block names, replacement boundaries, nested blocks, and structural WordPress hooks.\n";
+	echo "PASS protected teaser excerpts, native password forms and child inheritance, plain language attributes, RTL, other field autoescaping, physical child page lookup and restoration, child page inheritance, seven block names, replacement boundaries, nested blocks, and structural WordPress hooks.\n";
 } catch ( Throwable $throwable ) {
 	fwrite( STDERR, $throwable->getMessage() . "\n" );
 	$exit_code = 1;
