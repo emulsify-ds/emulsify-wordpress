@@ -70,6 +70,12 @@ lineage. See the [release process](release-process.md).
 
 ## Fixed
 
+- Click-to-load media failures produce an escaped video link without contacting
+  the provider before activation. Poster `srcdoc` escaping is exact on the
+  minimum WordPress version, with a script-blocking meta CSP. Provider
+  permissions survive activation, thumbnails lazy-load, and Vimeo metadata
+  caching runs only when provider posters need it while preserving valid data
+  on failed refreshes.
 - Parent templates use WordPress escapers for formatted titles, site/menu and
   author names, archive/search headings, and thumbnail alt text, so encoded
   punctuation and ampersands display once without weakening Twig autoescaping.
