@@ -76,6 +76,21 @@ match the latest stable tag.
    heading and release title, and update or remove its latest-tag claim. The
    contract rejects the shipped draft on subsequent runs until it is rotated.
 
+Keep `main` at the merge commit until the release finishes. Do not merge or
+push other changes while release readiness and publishing are running.
+Contributor updates are maintained by hand in reviewed pull requests; the
+contributors bot workflow has been removed so it cannot advance `main`.
+
+For a prepared release in CI, the runner compares its checkout with the live
+`origin/main` before invoking semantic-release, including during its dry run.
+If `main` moved, start a new **WordPress Release** workflow
+(`semantic-release.yml`) run with `workflow_dispatch`, selecting **main**.
+This runs readiness and publishing against the new tip. Do not use **Re-run
+jobs** on the old run: it retains the old commit. The preflight detects drift
+but cannot prevent a later push, so keep `main` unchanged for the new run too.
+Local dry runs on release branches and valid unprepared-release skips are
+unaffected.
+
 When `package.json` still equals the latest stable tag, no release is prepared.
 The guarded runner skips publishing successfully, even if newer commits would
 otherwise trigger semantic-release. Ordinary change PRs do not need to bump
@@ -193,8 +208,8 @@ weekly GitHub Actions Dependabot updates maintain those pins. Validation jobs
 use read-only credentials and disable persisted checkout credentials. Only
 the publishing job receives release writes. Its dry run runs immediately
 before publishing because semantic-release verifies push permission even in
-dry-run mode. Contributor automation separately receives repository-content
-write permission and uses `GITHUB_TOKEN`; adding issues to the organization
+dry-run mode. Contributor updates use reviewed pull requests rather than a
+bot with repository-content write permission. Adding issues to the organization
 project still requires the configured Projects token. See the
 [dated dependency audit](dependency-audit-2026-10-23.md) for remaining
 development-tool findings and their owners.
