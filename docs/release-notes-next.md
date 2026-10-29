@@ -77,6 +77,9 @@ lineage. See the [release process](release-process.md).
 
 ## Fixed
 
+- `get_footer` runs before footer markup and `wp_footer`, matching WordPress
+  while preserving both hooks when a child replaces the footer block.
+
 - WP-CLI skips symlinked starter directories with a warning, instead of
   silently creating empty destination directories.
 

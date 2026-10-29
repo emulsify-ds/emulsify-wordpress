@@ -81,11 +81,12 @@
         </main>
 {% endblock %}
 
+        {% do action('get_footer') %}
+
         {% block footer %}
             {% include '@templates/partials/footer.twig' %}
         {% endblock %}
 
         {{ function('wp_footer') }}
-        {% do action('get_footer') %}
     </body>
 </html>

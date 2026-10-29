@@ -305,7 +305,8 @@ try {
 	emulsify_extension_expect( array( 73 ) === $GLOBALS['emulsify_extension_title_posts'] && false !== strpos( $password_output, '>Protected: Secret &lt;title&gt; &amp; fixture</h1>' ), 'The password template must display WordPress\'s protected title while preserving title autoescaping.', $errors );
 	emulsify_extension_expect( false !== strpos( $password_output, '<form class="post-password-form" data-filtered-password-form="true" action="https://example.test/wordpress/wp-login.php?action=postpass"' ) && false === strpos( $password_output, '&lt;form'), 'The password template must preserve trusted core/plugin form markup and the site URL instead of building a home-URL action.', $errors );
 	emulsify_extension_expect( false === strpos( $password_output, 'protected-content-secret' ) && false === strpos( $password_output, 'protected-excerpt-secret' ), 'The password template must never print protected content or excerpts.', $errors );
-	emulsify_extension_expect( array( 'get_header', 'wp_head', 'wp_body_open', 'wp_footer', 'get_footer' ) === $GLOBALS['emulsify_extension_hooks'], 'The password template must preserve structural WordPress hooks and their order.', $errors );
+	emulsify_extension_expect( array( 'get_header', 'wp_head', 'wp_body_open', 'get_footer', 'wp_footer' ) === $GLOBALS['emulsify_extension_hooks'], 'The password template must preserve structural WordPress hooks and their order.', $errors );
+	emulsify_extension_expect( strpos( $password_output, '<!-- action:get_footer -->' ) < strpos( $password_output, '<footer ' ) && strpos( $password_output, '<footer ' ) < strpos( $password_output, '<!-- wp_footer -->' ), 'get_footer must run before rendering footer markup, and wp_footer must run afterward.', $errors );
 	$password_marker = '<!-- child password content -->';
 	$fixtures->setTemplate( 'child-password-content.twig', '{% extends "@emulsify-tpl/single-password.twig" %}{% block content %}' . $password_marker . '{{ parent() }}{% endblock %}' );
 	$password_child = $environment->render( 'child-password-content.twig', $password_context );
@@ -356,7 +357,7 @@ try {
 		'page_title'  => array( 'absent' => array( '<header class="page-header"' ), 'present' => array( '<header class="site-header"', '<main class="site-main"', '<p>Content &amp; fixture</p>', '<footer ' ) ),
 		'footer'      => array( 'absent' => array( '<footer ' ), 'present' => array( '<header class="site-header"', '<main class="site-main"', '<p>Content &amp; fixture</p>' ) ),
 	);
-	$hooks_expected = array( 'get_header', 'wp_head', 'wp_body_open', 'wp_footer', 'get_footer' );
+	$hooks_expected = array( 'get_header', 'wp_head', 'wp_body_open', 'get_footer', 'wp_footer' );
 
 	foreach ( $replacement_cases as $block => $fragments ) {
 		$name   = 'replace-' . $block . '.twig';
@@ -372,6 +373,9 @@ try {
 			emulsify_extension_expect( false !== strpos( $output, $fragment ), 'Replacing ' . $block . ' must preserve its surrounding markup: ' . $fragment, $errors );
 		}
 		emulsify_extension_expect( $hooks_expected === $GLOBALS['emulsify_extension_hooks'], 'Replacing ' . $block . ' must preserve the structural WordPress hooks and their order.', $errors );
+		if ( 'footer' === $block ) {
+			emulsify_extension_expect( strpos( $output, '<!-- action:get_footer -->' ) < strpos( $output, $marker ) && strpos( $output, $marker ) < strpos( $output, '<!-- wp_footer -->' ), 'Replacing the footer block must retain get_footer before the child markup and wp_footer afterward.', $errors );
+		}
 		emulsify_extension_expect( 1 === substr_count( $output, 'href="#content"' ), 'Replacing ' . $block . ' must preserve the skip link outside the block.', $errors );
 	}
 

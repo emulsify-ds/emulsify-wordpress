@@ -115,3 +115,9 @@ The full WordPress fixture verifies a generated child renders pages without a
 local Twig template, then temporarily adds a one-block page override, compares
 HTTP response bytes, and restores the child afterward. Run it through
 `npm run release:check` with WP-CLI and MySQL available.
+
+### Footer hook order
+
+`get_footer` fires before the public `footer` block renders, matching WordPress's
+classic template loading order. `wp_footer` follows the block. Both hooks stay
+outside it, so replacing footer markup preserves plugin hooks.
