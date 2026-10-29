@@ -50,6 +50,8 @@ run('Run Twig switch smoke test', 'npm', ['run', 'smoke:twig-switch']);
 run('Run Twig project namespace smoke test', 'npm', ['run', 'smoke:twig-project-namespace']);
 run('Install Whisk dependencies', 'npm', ['run', 'whisk:install']);
 run('Compare PHP and JavaScript Twig helper contracts', 'npm', ['run', 'test:twig-helpers']);
+run('Compare component resolution with Emulsify Core', 'npm', ['run', 'test:component-resolution']);
+run('Count request-wide component discovery and verify cache lifecycle', 'npm', ['run', 'smoke:component-request-cache']);
 run('Verify lint and format failure propagation', 'npm', ['run', 'test:lint-wrappers']);
 run('Run generated project Jest smoke test', 'npm', ['run', 'smoke:jest-project']);
 run('Run accessibility runner tests', 'npm', ['run', 'test:a11y-runner']);
