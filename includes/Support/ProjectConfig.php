@@ -13,26 +13,61 @@ namespace Emulsify\Theme\Support;
 final class ProjectConfig {
 
 	/**
+	 * Decoded config keyed by canonical child theme path for this request.
+	 *
+	 * @var array
+	 */
+	private static $cache = array();
+
+	/**
+	 * Enables immutable-request memoization, bypassing mutable CLI workers.
+	 *
+	 * @return bool TRUE when request-local caches can be shared.
+	 */
+	public static function request_cache_enabled(): bool {
+		/**
+		 * Filters request-local component and project-config memoization.
+		 *
+		 * CLI batches opting in must clear caches after filesystem changes or
+		 * between jobs. Ordinary web requests share caches without persistent IO.
+		 *
+		 * @param bool $enabled Whether request memoization is enabled.
+		 */
+		return (bool) apply_filters( 'emulsify_theme_twig_request_cache_enabled', 'cli' !== PHP_SAPI );
+	}
+
+	/**
+	 * Clears decoded metadata at a logical request or worker-job boundary.
+	 *
+	 * @return void
+	 */
+	public static function clear_request_cache(): void {
+		self::$cache = array();
+	}
+
+	/**
 	 * Reads active child theme Emulsify project metadata.
 	 *
 	 * @return array Project config, or an empty array when unavailable.
 	 */
 	public static function read(): array {
-		$path = get_stylesheet_directory() . '/project.emulsify.json';
-
-		if ( ! is_readable( $path ) ) {
-			return array();
+		$real      = realpath( get_stylesheet_directory() );
+		$theme_dir = false !== $real ? $real : get_stylesheet_directory();
+		$path      = $theme_dir . '/project.emulsify.json';
+		$cacheable = self::request_cache_enabled();
+		if ( $cacheable && array_key_exists( $path, self::$cache ) ) {
+			return self::$cache[ $path ];
 		}
-
-		$contents = file_get_contents( $path );
-
-		if ( false === $contents ) {
-			return array();
+		$data = array();
+		if ( is_readable( $path ) ) {
+			$contents = file_get_contents( $path );
+			$decoded  = false !== $contents ? json_decode( $contents, true ) : null;
+			$data     = is_array( $decoded ) ? $decoded : array();
 		}
-
-		$data = json_decode( $contents, true );
-
-		return is_array( $data ) ? $data : array();
+		if ( $cacheable ) {
+			self::$cache[ $path ] = $data;
+		}
+		return $data;
 	}
 
 	/**

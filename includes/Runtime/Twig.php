@@ -31,6 +31,20 @@ final class Twig {
 	}
 
 	/**
+	 * Clears resolver snapshots before a persistent worker's next job.
+	 *
+	 * Rebuild the Twig loader/environment too when its own compiled-template or
+	 * namespace caches need refreshing. No persistent discovery cache is changed.
+	 *
+	 * @return void
+	 */
+	public static function clear_request_cache(): void {
+		ProjectComponentLoader::clear_request_cache();
+		ProjectConfig::clear_request_cache();
+		clearstatcache( true );
+	}
+
+	/**
 	 * Enables HTML autoescaping for every Timber render path.
 	 *
 	 * Twig context can contain editor-controlled ACF fields and block attributes.

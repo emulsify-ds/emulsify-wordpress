@@ -7,10 +7,19 @@
 
 namespace Emulsify\Theme\Twig;
 
+use Emulsify\Theme\Support\ProjectConfig;
+
 /**
  * Wraps a Twig loader with component aliases and grouped lookup.
  */
 final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
+
+	/**
+	 * Project identity for request-local resolution caches.
+	 *
+	 * @var string
+	 */
+	private $machine_name;
 
 	/**
 	 * Component root paths.
@@ -27,18 +36,25 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 	private $loader;
 
 	/**
+	 * Canonical ordered roots and machine-name cache identity.
+	 *
+	 * @var string
+	 */
+	private $cache_key;
+
+	/**
 	 * Resolved project template cache.
 	 *
 	 * @var array
 	 */
-	private $cache = array();
+	private static $cache = array();
 
 	/**
-	 * Breadth-first grouping directories, memoized for this loader's request.
+	 * Breadth-first grouping directories shared by loaders for this request.
 	 *
 	 * @var array
 	 */
-	private $group_directories = array();
+	private static $group_directories = array();
 
 	/**
 	 * Directory names excluded by Emulsify Core source discovery.
@@ -55,8 +71,19 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 	 * @param \Twig\Loader\LoaderInterface $loader       Wrapped Twig loader.
 	 */
 	public function __construct( string $machine_name, array $roots, \Twig\Loader\LoaderInterface $loader ) {
-		$this->loader = $loader;
+		$this->machine_name = $machine_name;
+		$this->loader       = $loader;
 		$this->set_roots( $roots );
+	}
+
+	/**
+	 * Clears component hits, misses and groups for a new logical request.
+	 *
+	 * @return void
+	 */
+	public static function clear_request_cache(): void {
+		self::$cache             = array();
+		self::$group_directories = array();
 	}
 
 	/**
@@ -76,7 +103,7 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 				}
 			}
 		}
-		$this->cache = array();
+		$this->cache_key = serialize( array( $this->machine_name, $this->roots ) );
 	}
 
 	/**
@@ -235,14 +262,15 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 	 * @return string|null Resolved template path.
 	 */
 	private function find_project_template( string $name ): ?string {
+		// Namespace ownership is checked before any shared hit or miss is reused.
 		$component = $this->project_component_name( $name );
-
 		if ( null === $component ) {
 			return null;
 		}
-
-		if ( array_key_exists( $name, $this->cache ) ) {
-			return $this->cache[ $name ];
+		$cacheable = ProjectConfig::request_cache_enabled();
+		$key       = $this->cache_key . "\0" . $name;
+		if ( $cacheable && array_key_exists( $key, self::$cache ) ) {
+			return self::$cache[ $key ];
 		}
 
 		foreach ( $this->roots as $root ) {
@@ -265,13 +293,17 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 			}
 
 			if ( null !== $path ) {
-				$this->cache[ $name ] = $path;
+				if ( $cacheable ) {
+					self::$cache[ $key ] = $path;
+				}
 
 				return $path;
 			}
 		}
 
-		$this->cache[ $name ] = null;
+		if ( $cacheable ) {
+			self::$cache[ $key ] = null;
+		}
 
 		return null;
 	}
@@ -323,8 +355,10 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 	 * @return array Group directory paths.
 	 */
 	private function group_directories( string $root ): array {
-		if ( array_key_exists( $root, $this->group_directories ) ) {
-			return $this->group_directories[ $root ];
+		$key       = serialize( array( $this->machine_name, $root ) );
+		$cacheable = ProjectConfig::request_cache_enabled();
+		if ( $cacheable && array_key_exists( $key, self::$group_directories ) ) {
+			return self::$group_directories[ $key ];
 		}
 
 		$groups  = array();
@@ -364,7 +398,9 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 			}
 		}
 
-		$this->group_directories[ $root ] = $groups;
+		if ( $cacheable ) {
+			self::$group_directories[ $key ] = $groups;
+		}
 
 		return $groups;
 	}
