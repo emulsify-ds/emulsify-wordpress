@@ -31,10 +31,6 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: .nvmrc
-          cache: npm
-
-      - name: Clean npm install
-        run: npm ci --ignore-scripts
 
       # Diagnose a partial tag before a stale release draft fails readiness.
       - name: Check published release and ZIP
@@ -65,6 +61,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
@@ -72,18 +69,19 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
-        with:
-          php-version: '8.3'
-          tools: composer:v2
-          coverage: none
-
       - name: Clean npm install
         run: npm ci --ignore-scripts
 
-      - name: Build installable theme archive
-        run: npm run build:dist
+      - name: Download tested release bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: emulsify-tested-${{ github.sha }}
+          path: dist-artifact
+          digest-mismatch: error
+
+      - name: Verify tested archive checksum
+        working-directory: dist-artifact
+        run: sha256sum --check emulsify.zip.sha256
 
       # semantic-release verifies push permission even in dry-run mode, so
       # keep this check in the publishing job with its scoped write token.

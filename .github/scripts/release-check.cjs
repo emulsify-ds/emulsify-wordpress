@@ -1402,7 +1402,7 @@ function runStaticChecks() {
     ensure(wordpressFixtureJob.includes('mysql:'), 'WordPress fixture job should provide MySQL.');
     ensure(wordpressFixtureJob.includes('wp-cli'), 'WordPress fixture job should install WP-CLI.');
     ensure(wordpressFixtureJob.includes("WP_SMOKE_REQUIRED: '1'"), 'WordPress fixture job should require the fixture instead of allowing a skip.');
-    ensure(wordpressFixtureJob.includes('- name: Build installable theme archive') && wordpressFixtureJob.includes('run: npm run build:dist'), 'WordPress fixture job should build the installable archive.');
+    ensure(wordpressFixtureJob.includes('- name: Download tested release bundle') && !wordpressFixtureJob.includes('run: npm run build:dist'), 'WordPress fixture job should use the archive built by practical readiness.');
     ensure(wordpressFixtureJob.includes('WP_SMOKE_THEME_ARCHIVE: dist-artifact/emulsify.zip'), 'WordPress fixture job should test the built archive instead of the source tree.');
     ensure(wordpressFixtureSmoke.includes("['core', 'version']") && wordpressFixtureSmoke.includes('WordPress version: requested') && wordpressFixtureSmoke.includes('resolved ${resolvedWordpressVersion}'), 'WordPress fixture smoke should log the actual downloaded core version, including latest and nightly resolution.');
     ensure(wordpressFixtureSmoke.includes('log(`WordPress ${resolvedWordpressVersion} (requested ${wordpressVersion}): Generated'), 'The fixture success summary must expose resolved WordPress versions in captured CI output.');
@@ -1486,8 +1486,8 @@ function runStaticChecks() {
           `${file} ${jobName} validation permissions must remain read-only.`);
         }
         for (const step of job.steps || []) {
-          if (!step.uses?.startsWith('actions/checkout@') || publishingJob) continue;
-          ensure(step.with?.['persist-credentials'] === false, `${file} ${jobName} validation checkout must disable persisted credentials.`);
+          if (!step.uses?.startsWith('actions/checkout@')) continue;
+          ensure(step.with?.['persist-credentials'] === false, `${file} ${jobName} checkout must disable persisted credentials.`);
         }
       }
     }

@@ -191,3 +191,21 @@ test('rejects skipped required fixture, PHP, parity and Whisk release gates', ()
     assert.throws(() => validateRelease(workflow));
   }
 });
+
+test('rejects release credential persistence and rebuilding instead of reusing the tested ZIP', () => {
+  for (const mutation of [
+    ({ release }) => { release.jobs['semantic-release'].steps.find((step) => step.name === 'Checkout').with['persist-credentials'] = true; },
+    ({ release }) => { release.jobs['semantic-release'].steps.push({ run: 'npm run build:dist' }); },
+    ({ release }) => { release.jobs['semantic-release'].env = { GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }; },
+    ({ release }) => { delete release.jobs['semantic-release']['timeout-minutes']; },
+    ({ release }) => { release.jobs['semantic-release'].steps.find((step) => step.name === 'Verify tested archive checksum').run = 'true'; },
+    ({ release }) => { release.jobs['semantic-release'].steps.find((step) => step.name === 'Download tested release bundle').with.name = 'untested'; },
+    ({ readiness }) => { readiness.jobs['wordpress-fixture'].needs = []; },
+    ({ readiness }) => { readiness.jobs['wordpress-fixture'].steps.find((step) => step.name === 'Download tested release bundle').with.name = 'untested'; },
+    ({ readiness }) => { delete readiness.jobs.practical['timeout-minutes']; },
+  ]) {
+    const workflow = releaseFixture();
+    mutation(workflow);
+    assert.throws(() => validateRelease(workflow));
+  }
+});
