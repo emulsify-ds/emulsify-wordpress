@@ -82,6 +82,9 @@ lineage. See the [release process](release-process.md).
   post without resetting Query Loop globals, reject directory templates, and
   fall back to WordPress markup on recursive rendering. Dynamic and late-added
   template-map filters remain active.
+- Optional `front-page.twig` now serves the actual front page for both static
+  pages and posts. A separate posts page uses `home.twig`, then `index.twig`;
+  protected static front pages retain password-form routing.
 - Release reruns report an incomplete tagged GitHub release or missing ZIP with
   recovery commands, before stale release-draft documentation can mask it.
 - Release test fixtures ignore maintainer commit/tag signing settings, and the

@@ -865,6 +865,71 @@ async function checkChildBlockExtension(baseUrl, pagePath, themePath, baseline) 
   }
 }
 
+async function checkTemplateRouting(wpPath, baseUrl, themePath) {
+  const options = ['show_on_front', 'page_on_front', 'page_for_posts'];
+  const original = Object.fromEntries(options.map((name) => [name, wp(wpPath, ['option', 'get', name])]));
+  const templates = new Map();
+  const created = [];
+  const writeTemplate = (name, text) => {
+    const file = path.join(themePath, 'templates', name);
+    if (!templates.has(file)) templates.set(file, fs.existsSync(file) ? fs.readFileSync(file) : null);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+  };
+  const expectRoute = async (name, route, marker, absent = []) => {
+    const body = await checkRoute(baseUrl, { name, path: route, includes: [marker] });
+    for (const value of absent) {
+      if (body.includes(value)) throw new Error(`${name} incorrectly rendered ${value}.`);
+    }
+    return body;
+  };
+
+  try {
+    for (const [type, title, content, date] of [
+      ['page', 'Route front page', 'RouteProtectedFrontSecret', null],
+      ['page', 'Route posts page', '', null],
+    ]) {
+      created.push(wp(wpPath, [
+        'post', 'create', `--post_type=${type}`, '--post_status=publish',
+        `--post_title=${title}`, `--post_content=${content}`, ...(date ? [`--post_date=${date}`] : []), '--porcelain',
+      ]));
+    }
+    const [frontId, postsId] = created;
+    const frontMarker = 'RouteFrontTemplateProbe';
+    const homeMarker = 'RouteHomeTemplateProbe';
+    writeTemplate('front-page.twig', `{% extends '@emulsify-tpl/layouts/base.twig' %}{% block content %}<p>${frontMarker}</p>{% endblock %}`);
+    writeTemplate('home.twig', `{% extends '@emulsify-tpl/layouts/base.twig' %}{% block content %}<p>${homeMarker}</p>{% endblock %}`);
+    wp(wpPath, ['option', 'update', 'show_on_front', 'posts']);
+    await expectRoute('posts front page prefers front-page Twig', '/', frontMarker, [homeMarker]);
+    fs.rmSync(path.join(themePath, 'templates', 'front-page.twig'));
+    await expectRoute('posts front page falls back to home Twig', '/', homeMarker, [frontMarker]);
+    writeTemplate('front-page.twig', `{% extends '@emulsify-tpl/layouts/base.twig' %}{% block content %}<p>${frontMarker}</p>{% endblock %}`);
+
+    wp(wpPath, ['option', 'update', 'show_on_front', 'page']);
+    wp(wpPath, ['option', 'update', 'page_on_front', frontId]);
+    wp(wpPath, ['option', 'update', 'page_for_posts', postsId]);
+    await expectRoute('static front page uses front-page Twig', '/', frontMarker, [homeMarker]);
+    await expectRoute('separate posts page uses home Twig', `/?page_id=${postsId}`, homeMarker, [frontMarker]);
+    fs.rmSync(path.join(themePath, 'templates', 'home.twig'));
+    await expectRoute('posts page falls back to index Twig', `/?page_id=${postsId}`, 'Smoke Post', [frontMarker, homeMarker]);
+    fs.rmSync(path.join(themePath, 'templates', 'front-page.twig'));
+    await expectRoute('static front page falls back to page Twig', '/', 'RouteProtectedFrontSecret', [frontMarker, homeMarker]);
+    writeTemplate('front-page.twig', `{% extends '@emulsify-tpl/layouts/base.twig' %}{% block content %}<p>${frontMarker}</p>{{ post.post_content|raw }}{% endblock %}`);
+    wp(wpPath, ['post', 'update', frontId, '--post_password=route-front-password']);
+    const protectedFront = await expectRoute('protected static front page keeps password priority', '/', 'name="post_password"', [frontMarker, 'RouteProtectedFrontSecret']);
+    if (!protectedFront.includes('wp-login.php?action=postpass')) throw new Error('Protected static front page lost the native password form action.');
+
+    log('Template routing: front-page/home/page hierarchy and protected static front pages passed.');
+  } finally {
+    for (const [name, value] of Object.entries(original)) wp(wpPath, ['option', 'update', name, value]);
+    for (const [file, value] of templates) {
+      if (value === null) fs.rmSync(file, { force: true });
+      else fs.writeFileSync(file, value);
+    }
+    for (const id of created) wp(wpPath, ['post', 'delete', id, '--force']);
+  }
+}
+
 async function checkPasswordProtection(wpPath, content, baseUrl, themePath) {
   const password = 'fixture-content-password';
   const secrets = ['PasswordFixtureProbePageContent', 'PasswordFixtureProbePageExcerpt', 'PasswordFixtureProbePostContent', 'PasswordFixtureProbePostExcerpt'];
@@ -1220,6 +1285,7 @@ async function renderRoutes(wpPath, content, baseUrl, port, themeSlug) {
   await checkSearchPagination(baseUrl);
   await checkGeneratedAssets(baseUrl, themeSlug);
   await checkPasswordProtection(wpPath, content, baseUrl, path.join(wpPath, 'wp-content', 'themes', themeSlug));
+  await checkTemplateRouting(wpPath, baseUrl, path.join(wpPath, 'wp-content', 'themes', themeSlug));
   await checkFormattedText(wpPath, baseUrl);
 
   if (auditAccessibility) {

@@ -19,7 +19,8 @@ In a child `templates/page.twig`, extend the parent-only namespace:
 ```
 
 For pages that do not require a password, WordPress selects the parent's
-`page.php`, which renders `@templates/page.twig`.
+`page.php`, which renders `@templates/page.twig` unless the page is the static
+front page and a `@templates/front-page.twig` exists.
 That child-first lookup selects the child's override. Its `@emulsify-tpl` extends
 then selects the parent explicitly, so surrounding layout and later parent fixes
 continue to reach the child. `parent()` preserves the selected block's default
@@ -29,6 +30,20 @@ Using `{% extends '@templates/page.twig' %}` inside the child file with that sam
 path resolves back to itself and can recurse. Use `@templates` for normal
 child-first includes, and `@emulsify-tpl` for same-path parent inheritance. The
 same rule applies to a child `templates/layouts/base.twig`.
+
+## Front page and posts page
+
+The parent controllers follow WordPress's front-page hierarchy:
+
+- Front page showing posts: `front-page.twig`, then `home.twig`, then `index.twig`.
+- Static front page: `front-page.twig`, then `page.twig`.
+- Separate posts page: `home.twig`, then `index.twig`.
+
+These optional names use the normal child-first `@templates` lookup. A missing
+front-page or home template falls through to the next name. A protected static
+front page uses `single-password.twig` until its password is accepted, before
+trying a custom front-page template. Existing Timber render filters continue
+to receive the selected file.
 
 ## Public extension points
 

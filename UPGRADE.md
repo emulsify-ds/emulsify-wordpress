@@ -45,6 +45,10 @@ remain project-owned. New generated themes receive the updated defaults.
    [component resolution order](docs/timber-and-twig-authoring.md#component-includes).
 3. **Apply the relevant fixes to child overrides.** Unmodified parent fallbacks
    receive the fixes automatically; project copies need review:
+   - Move separate posts-page markup from `front-page.twig` to `home.twig`.
+     `front-page.twig` now serves only the front page, whether it shows posts or
+     a static page, ahead of `home.twig` or `page.twig`. Protected static front
+     pages still use the password template until the password is accepted.
    - Mapped core-block templates receive a cached global Timber context and a
      fresh block-specific `post`, without setting up WordPress's global post.
      Add any required route-specific `posts`, `term`, `author` or `search_query`

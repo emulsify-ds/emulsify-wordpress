@@ -400,4 +400,9 @@ try {
 	}
 }
 
+if ( 0 === $exit_code ) {
+	// Controller stubs need their own process, separate from real Timber/Twig.
+	passthru( escapeshellarg( PHP_BINARY ) . ' ' . escapeshellarg( __DIR__ . '/template-routing-smoke.php' ), $exit_code );
+}
+
 exit( $exit_code );
