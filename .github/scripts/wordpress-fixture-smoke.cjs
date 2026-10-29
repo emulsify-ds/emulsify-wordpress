@@ -622,11 +622,14 @@ add_action( 'template_redirect', function () {
 } );
 `);
   wp(wpPath, ['eval', String.raw`
+$poster_options = static function ( $options ) { return array_merge( $options, array( 'click_to_load' => true, 'poster' => 'provider' ) ); };
+add_filter( 'emulsify_theme_media_embed_options', $poster_options, 999 );
 apply_filters( 'oembed_dataparse',
   '<iframe src="https://player.vimeo.com/video/76979871?h=fixturehash" title="Vimeo fixture"></iframe>',
   (object) array( 'type' => 'video', 'thumbnail_url' => 'https://i.vimeocdn.com/video/fixture_640.jpg', 'title' => 'Vimeo fixture' ),
   'https://vimeo.com/76979871/fixturehash'
 );
+remove_filter( 'emulsify_theme_media_embed_options', $poster_options, 999 );
 `]);
   const authorId = wp(wpPath, [
     'user',

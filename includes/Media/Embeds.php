@@ -15,6 +15,9 @@ final class Embeds {
 	/** Vimeo thumbnail transient prefix. */
 	public const METADATA_PREFIX = 'emulsify_vimeo_poster_';
 
+	/** Vimeo refresh retry marker prefix. */
+	public const BACKOFF_PREFIX = 'emulsify_vimeo_poster_backoff_';
+
 	/**
 	 * Registers rendering and deferred metadata hooks.
 	 *
@@ -46,23 +49,7 @@ final class Embeds {
 		$attr    = is_array( $attr ) ? $attr : array();
 		$post_id = is_string( $post_id ) ? filter_var( ctype_digit( $post_id ) ? ltrim( $post_id, '0' ) : $post_id, FILTER_VALIDATE_INT ) : $post_id;
 		$post_id = is_int( $post_id ) && $post_id > 0 ? $post_id : null;
-		$options = array(
-			'privacy_mode'  => false,
-			'click_to_load' => false,
-			'poster'        => 'provider',
-		);
-		/**
-		 * Filters opt-in media embed behavior without changing cached provider HTML.
-		 *
-		 * @param array    $options Media options: privacy_mode, click_to_load, poster.
-		 * @param string   $url     Original embed URL.
-		 * @param array    $attr    Embed attributes.
-		 * @param int|null $post_id Positive post ID, or null outside a post.
-		 */
-		$filtered = apply_filters( 'emulsify_theme_media_embed_options', $options, $url, $attr, $post_id );
-		if ( is_array( $filtered ) ) {
-			$options = array_merge( $options, $filtered );
-		}
+		$options = $this->options( $url, $attr, $post_id );
 		if ( ! $options['privacy_mode'] && ! $options['click_to_load'] ) {
 			return $html;
 		}
@@ -140,6 +127,35 @@ final class Embeds {
 	}
 
 	/**
+	 * Resolves options for rendering or a provider metadata response.
+	 *
+	 * @param string   $url     Original embed URL.
+	 * @param array    $attr    Embed attributes.
+	 * @param int|null $post_id Positive post ID, or null outside a post.
+	 * @return array Media options.
+	 */
+	private function options( string $url, array $attr = array(), ?int $post_id = null ): array {
+		$options = array(
+			'privacy_mode'  => false,
+			'click_to_load' => false,
+			'poster'        => 'provider',
+		);
+		/**
+		 * Filters opt-in media embed behavior without changing cached provider HTML.
+		 *
+		 * @param array    $options Media options: privacy_mode, click_to_load, poster.
+		 * @param string   $url     Original embed URL.
+		 * @param array    $attr    Embed attributes.
+		 * @param int|null $post_id Positive post ID, or null outside a post.
+		 */
+		$filtered = apply_filters( 'emulsify_theme_media_embed_options', $options, $url, $attr, $post_id );
+		if ( is_array( $filtered ) ) {
+			$options = array_merge( $options, $filtered );
+		}
+		return $options;
+	}
+
+	/**
 	 * Preserves nested document entities across old and new HTML API escaping.
 	 *
 	 * WordPress 6.8 uses esc_attr(), which avoids double-encoding. Newer releases
@@ -165,14 +181,18 @@ final class Embeds {
 	/**
 	 * Saves metadata from WordPress' own provider fetch; no extra request is made.
 	 *
-	 * @param string|false $html Provider HTML, or false for an unsupported response.
-	 * @param object       $data Provider oEmbed data.
-	 * @param string       $url  Original embed URL.
-	 * @return string|false Unchanged provider HTML for WordPress' cache.
+	 * @param mixed $html Provider HTML; non-strings pass through unchanged.
+	 * @param mixed $data Provider oEmbed data.
+	 * @param mixed $url  Original embed URL, normalized to a string.
+	 * @return mixed Unchanged provider HTML for WordPress' cache.
 	 */
-	public function cache_oembed_data( string|false $html, $data, string $url ): string|false {
-		if ( false === $html ) {
-			return false;
+	public function cache_oembed_data( $html, $data, $url ) {
+		if ( ! is_string( $html ) ) {
+			return $html;
+		}
+		$options = $this->options( is_string( $url ) ? $url : '' );
+		if ( ! $options['click_to_load'] || 'provider' !== $options['poster'] ) {
+			return $html;
 		}
 		$processor = $this->player_iframe( $html );
 		$source    = null !== $processor ? $processor->get_attribute( 'src' ) : null;
@@ -196,8 +216,12 @@ final class Embeds {
 		if ( 1 !== preg_match( '#^https://vimeo\.com/[0-9]+(?:/[A-Za-z0-9]+)?$#D', $url ) ) {
 			return;
 		}
-		// Cache a miss before fetching, so failures and overlapping requests back off.
-		set_transient( self::METADATA_PREFIX . md5( $url ), array(), HOUR_IN_SECONDS );
+		$key = self::BACKOFF_PREFIX . md5( $url );
+		if ( false !== get_transient( $key ) ) {
+			return;
+		}
+		// Back off failures and overlapping requests without discarding valid data.
+		set_transient( $key, true, HOUR_IN_SECONDS );
 		$data = _wp_oembed_get_object()->get_data( $url, array( 'discover' => false ) );
 		if ( is_object( $data ) ) {
 			$this->save_metadata( $url, $data );
@@ -347,6 +371,9 @@ final class Embeds {
 		if ( is_array( $metadata ) ) {
 			return $metadata;
 		}
+		if ( false !== get_transient( self::BACKOFF_PREFIX . md5( $url ) ) ) {
+			return array();
+		}
 		if ( ! wp_next_scheduled( 'emulsify_theme_refresh_vimeo_poster', array( $url ) ) ) {
 			wp_schedule_single_event( time(), 'emulsify_theme_refresh_vimeo_poster', array( $url ) );
 		}
@@ -354,21 +381,24 @@ final class Embeds {
 	}
 
 	/**
-	 * Caches safe provider metadata and backs off from absent thumbnails.
+	 * Replaces cached provider metadata only after receiving a safe thumbnail.
 	 *
 	 * @param string $url  Canonical Vimeo URL.
 	 * @param object $data Provider data.
 	 * @return void
 	 */
 	private function save_metadata( string $url, object $data ): void {
-		$metadata  = array();
 		$candidate = isset( $data->thumbnail_url ) && is_string( $data->thumbnail_url ) ? $data->thumbnail_url : '';
 		$parts     = wp_parse_url( $candidate );
-		if ( is_array( $parts ) && 'https' === strtolower( $parts['scheme'] ?? '' ) && ! empty( $parts['host'] )
-			&& ! isset( $parts['user'] ) && ! isset( $parts['pass'] ) && ! preg_match( '/[\x00-\x20\x7f\\\\]/', $candidate ) ) {
-			$metadata['thumbnail_url'] = $candidate;
-			$metadata['title']         = isset( $data->title ) && is_string( $data->title ) ? $data->title : '';
+		if ( ! is_array( $parts ) || 'https' !== strtolower( $parts['scheme'] ?? '' ) || empty( $parts['host'] )
+			|| isset( $parts['user'] ) || isset( $parts['pass'] ) || preg_match( '/[\x00-\x20\x7f\\\\]/', $candidate ) ) {
+			return;
 		}
-		set_transient( self::METADATA_PREFIX . md5( $url ), $metadata, empty( $metadata ) ? HOUR_IN_SECONDS : DAY_IN_SECONDS );
+		$metadata = array(
+			'thumbnail_url' => $candidate,
+			'title'         => isset( $data->title ) && is_string( $data->title ) ? $data->title : '',
+		);
+		set_transient( self::METADATA_PREFIX . md5( $url ), $metadata, DAY_IN_SECONDS );
+		delete_transient( self::BACKOFF_PREFIX . md5( $url ) );
 	}
 }

@@ -104,6 +104,8 @@ $service       = new Embeds();
 $canonical     = 'https://vimeo.com/123456789/abc123';
 $metadata_key  = Embeds::METADATA_PREFIX . md5( $canonical );
 $original_data = get_transient( $metadata_key );
+$backoff_key   = 'emulsify_vimeo_poster_backoff_' . md5( $canonical );
+$original_backoff = get_transient( $backoff_key );
 $created_posts = array();
 $original_post = $GLOBALS['post'] ?? null;
 $original_embed_post = $GLOBALS['wp_embed']->post_ID;
@@ -195,11 +197,30 @@ try {
 	// Cached data comes from WordPress's oEmbed parse pipeline, including the
 	// unlisted video's h value rather than merging distinct videos by ID.
 	$metadata = (object) array(
+		'type'          => 'video',
 		'thumbnail_url' => 'https://i.vimeocdn.com/video/emulsify-fixture.jpg',
 		'title'         => $hostile_title,
 	);
 	$vimeo_html = emulsify_media_smoke_markup( $fixtures['vimeo']['source'], $hostile_title );
+	delete_transient( $metadata_key );
+	foreach ( array( array(), array( 'privacy_mode' => true ), array( 'click_to_load' => true, 'poster' => 'neutral' ) ) as $disabled_cache_options ) {
+		$options = $disabled_cache_options;
+		$service->cache_oembed_data( $vimeo_html, $metadata, $canonical );
+		emulsify_media_smoke_check( false === get_transient( $metadata_key ), 'Disabled or neutral posters must not write provider metadata.' );
+		delete_transient( $metadata_key );
+	}
+	$null_data = static function () { return null; };
+	add_filter( 'oembed_dataparse', $null_data, 19 );
+	try {
+		emulsify_media_smoke_check( null === apply_filters( 'oembed_dataparse', $vimeo_html, $metadata, $canonical ), 'Earlier null oEmbed results must pass through unchanged.' );
+	} catch ( Throwable $error ) {
+		emulsify_media_smoke_check( false, 'Earlier null oEmbed result threw ' . get_class( $error ) );
+	} finally {
+		remove_filter( 'oembed_dataparse', $null_data, 19 );
+	}
+	$options = array( 'click_to_load' => true, 'poster' => 'provider' );
 	emulsify_media_smoke_assert( $service->cache_oembed_data( $vimeo_html, $metadata, $canonical ) === $vimeo_html, 'Metadata capture must not edit the cached oEmbed HTML.' );
+	emulsify_media_smoke_check( array( $canonical, array(), null ) === $embed_context, 'Metadata options must receive the original URL, empty attributes and no post ID.' );
 	$cached = get_transient( $metadata_key );
 	emulsify_media_smoke_assert( is_array( $cached ) && $metadata->thumbnail_url === ( $cached['thumbnail_url'] ?? null ), 'Vimeo metadata must be cached under its unlisted video URL.' );
 
@@ -316,8 +337,30 @@ try {
 	apply_filters( 'embed_oembed_html', $vimeo_html, $canonical, array(), 0 );
 	emulsify_media_smoke_assert( false === wp_next_scheduled( 'emulsify_theme_refresh_vimeo_poster', array( $canonical ) ), 'Negative metadata caches must prevent repeated lookup scheduling.' );
 	delete_transient( $metadata_key );
+	delete_transient( $backoff_key );
 	$service->refresh_vimeo_poster( $canonical );
-	emulsify_media_smoke_assert( array() === get_transient( $metadata_key ), 'Provider failures must produce a bounded negative cache.' );
+	emulsify_media_smoke_check( false === get_transient( $metadata_key ) && false !== get_transient( $backoff_key ), 'Failed metadata lookups must use a separate bounded backoff marker.' );
+	$failed_requests = $http_requests;
+	$service->refresh_vimeo_poster( $canonical );
+	emulsify_media_smoke_check( $failed_requests === $http_requests, 'A failed refresh must back off repeated provider requests.' );
+	set_transient( $metadata_key, array( 'thumbnail_url' => $metadata->thumbnail_url, 'title' => 'Keep cached title' ), DAY_IN_SECONDS );
+	$cached_before_refresh = get_transient( $metadata_key );
+	delete_transient( $backoff_key );
+	$service->refresh_vimeo_poster( $canonical );
+	emulsify_media_smoke_check( $cached_before_refresh === get_transient( $metadata_key ), 'Failed refreshes must keep valid existing Vimeo metadata.' );
+	delete_transient( $backoff_key );
+	$successful_refresh = static function () use ( $metadata_key, $cached_before_refresh ) {
+		emulsify_media_smoke_check( $cached_before_refresh === get_transient( $metadata_key ), 'Cached metadata must remain available while a refresh fetch runs.' );
+		return array( 'headers' => array(), 'body' => wp_json_encode( array( 'thumbnail_url' => 'https://i.vimeocdn.com/video/refreshed-fixture.jpg', 'title' => 'Refreshed fixture' ) ), 'response' => array( 'code' => 200, 'message' => 'OK' ) );
+	};
+	add_filter( 'pre_http_request', $successful_refresh, 1000 );
+	try {
+		$service->refresh_vimeo_poster( $canonical );
+		$refreshed = get_transient( $metadata_key );
+		emulsify_media_smoke_check( is_array( $refreshed ) && 'Refreshed fixture' === ( $refreshed['title'] ?? '' ), 'A successful background refresh must replace old metadata.' );
+	} finally {
+		remove_filter( 'pre_http_request', $successful_refresh, 1000 );
+	}
 
 	// Exercise WordPress's real content pipeline rather than only calling the
 	// filter: both a classic URL and a core/embed block must be transformed.
@@ -486,6 +529,11 @@ try {
 		delete_transient( $metadata_key );
 	} else {
 		set_transient( $metadata_key, $original_data, DAY_IN_SECONDS );
+	}
+	if ( false === $original_backoff ) {
+		delete_transient( $backoff_key );
+	} else {
+		set_transient( $backoff_key, $original_backoff, HOUR_IN_SECONDS );
 	}
 	if ( isset( $diagnostic ) ) {
 		remove_action( 'doing_it_wrong_run', $diagnostic );
