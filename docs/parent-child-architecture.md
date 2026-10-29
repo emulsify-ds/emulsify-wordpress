@@ -81,8 +81,10 @@ the index after a release-directory deploy or a standard Emulsify Core build,
 which empties the output tree before writing it. The runtime also calls
 `clear_discovery_cache` on WordPress' `switch_theme` hook.
 
-Cached file paths are relative to their component root and resolved against the
-current roots. Before reusing an index, the runtime checks that every cached file
+Only JSON metadata is indexed; ACF/Twig template candidates are checked directly
+when building component records. Cached file paths are relative to their
+component root and resolved against the current roots. Before reusing an index,
+the runtime checks that every cached file
 is still readable and inside its root. If any record is stale or invalid, it
 discards the index and scans again. A warm cache performs filesystem checks but
 does not recursively scan the component tree. A scan that skips an unreadable or

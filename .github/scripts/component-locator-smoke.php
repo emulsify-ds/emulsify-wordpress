@@ -562,6 +562,7 @@ try {
 	$GLOBALS['emulsify_locator_transients'] = array();
 	emulsify_locator_smoke_write( $cache_child . '/dist/components/cache-card/cache-card.component.json', '{"title":"Cache Card"}' );
 	emulsify_locator_smoke_write( $cache_child . '/dist/components/cache-card/cache-card.twig', '<article>Cache card</article>' );
+	emulsify_locator_smoke_write( $cache_child . '/dist/components/cache-card/cache-card.js', 'export default {};' );
 
 	$cache_locator = new Emulsify\Theme\Blocks\ComponentLocator();
 
@@ -596,6 +597,23 @@ try {
 			'Unchanged warm lookups must preserve the cache key and component records.'
 		);
 	}
+	$asset_key_before = emulsify_locator_smoke_cache_key();
+	unlink( $cache_child . '/dist/components/cache-card/cache-card.js' );
+	clearstatcache();
+	ComponentDiscoveryFileSpy::$directory_opens = array();
+	stream_wrapper_unregister( 'file' );
+	stream_wrapper_register( 'file', ComponentDiscoveryFileSpy::class );
+	try {
+		$without_asset = ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
+	} finally {
+		stream_wrapper_restore( 'file' );
+	}
+	emulsify_locator_smoke_check(
+		$asset_key_before === emulsify_locator_smoke_cache_key()
+		&& $warm_records === $without_asset && array() === ComponentDiscoveryFileSpy::$directory_opens,
+		'Removing an unrelated built asset must preserve the metadata cache without directory scans.'
+	);
+	echo 'Warm metadata cache after removing JS: ' . count( ComponentDiscoveryFileSpy::$directory_opens ) . " directory opens.\n";
 	$GLOBALS['emulsify_locator_child_uri'] = 'https://new.example.test/current-theme';
 	$current_uri_records = ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
 	emulsify_locator_smoke_check(

@@ -302,8 +302,9 @@ final class ComponentLocator {
 			return $this->component_files;
 		}
 
+		// Both consumers inspect JSON metadata; Twig candidates are checked directly.
 		$complete              = true;
-		$this->component_files = FileDiscovery::file_records( $this->component_roots(), array(), true, $complete );
+		$this->component_files = FileDiscovery::file_records( $this->component_roots(), array( 'json' ), true, $complete );
 
 		if ( $complete ) {
 			$this->cache_component_files( $this->component_files );
