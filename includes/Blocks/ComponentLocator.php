@@ -43,6 +43,13 @@ final class ComponentLocator {
 	private const CACHE_TRANSIENT_PREFIX = 'emulsify_component_discovery_';
 
 	/**
+	 * Root-relative cache payload format.
+	 *
+	 * @var int
+	 */
+	private const CACHE_SCHEMA = 2;
+
+	/**
 	 * Default persistent cache lifetime in seconds.
 	 *
 	 * @var int
@@ -55,6 +62,13 @@ final class ComponentLocator {
 	 * @var array|null
 	 */
 	private $component_roots;
+
+	/**
+	 * Memoized root identities and build signals for this locator.
+	 *
+	 * @var array|null
+	 */
+	private $component_root_state;
 
 	/**
 	 * Memoized component file records.
@@ -288,8 +302,12 @@ final class ComponentLocator {
 			return $this->component_files;
 		}
 
-		$this->component_files = FileDiscovery::file_records( $this->component_roots() );
-		$this->cache_component_files( $this->component_files );
+		$complete              = true;
+		$this->component_files = FileDiscovery::file_records( $this->component_roots(), array(), true, $complete );
+
+		if ( $complete ) {
+			$this->cache_component_files( $this->component_files );
+		}
 
 		return $this->component_files;
 	}
@@ -306,11 +324,25 @@ final class ComponentLocator {
 
 		$cached = get_transient( $this->component_files_cache_key() );
 
-		if ( ! is_array( $cached ) || ! isset( $cached['files'] ) || ! is_array( $cached['files'] ) ) {
+		if ( ! is_array( $cached ) ) {
 			return null;
 		}
 
-		return $this->normalize_cached_component_files( $cached['files'] );
+		$files = null;
+
+		if (
+			self::CACHE_SCHEMA === ( $cached['schema'] ?? null )
+			&& $this->component_roots_signature() === ( $cached['roots'] ?? null )
+			&& isset( $cached['files'] ) && is_array( $cached['files'] )
+		) {
+			$files = $this->normalize_cached_component_files( $cached['files'] );
+		}
+
+		if ( null === $files ) {
+			$this->delete_component_files_cache();
+		}
+
+		return $files;
 	}
 
 	/**
@@ -324,10 +356,27 @@ final class ComponentLocator {
 			return;
 		}
 
+		$roots    = $this->component_roots();
+		$relative = array();
+
+		foreach ( $files as $file ) {
+			foreach ( $roots as $index => $root ) {
+				if ( $file['root_path'] === $root['path'] ) {
+					$relative[] = array(
+						'root'     => $index,
+						'relative' => $file['relative'],
+					);
+					break;
+				}
+			}
+		}
+
 		set_transient(
 			$this->component_files_cache_key(),
 			array(
-				'files' => $files,
+				'schema' => self::CACHE_SCHEMA,
+				'roots'  => $this->component_roots_signature(),
+				'files'  => $relative,
 			),
 			$this->component_files_cache_ttl()
 		);
@@ -376,24 +425,29 @@ final class ComponentLocator {
 	 * @return string Transient key.
 	 */
 	private function component_files_cache_key(): string {
+		clearstatcache( true );
 		$stylesheet           = $this->stylesheet();
 		$template             = $this->template();
 		$stylesheet_directory = function_exists( 'get_stylesheet_directory' ) ? get_stylesheet_directory() : '';
 		$template_directory   = function_exists( 'get_template_directory' ) ? get_template_directory() : '';
 		$key_parts            = array(
-			'stylesheet'         => $stylesheet,
-			'template'           => $template,
-			'stylesheet_version' => $this->theme_version( $stylesheet, $stylesheet_directory ),
-			'template_version'   => $this->theme_version( $template, $template_directory ),
-			'environment'        => $this->environment_type(),
-			'manifest'           => $this->manifest_file_signature(),
+			'stylesheet'           => $stylesheet,
+			'template'             => $template,
+			'stylesheet_version'   => $this->theme_version( $stylesheet, $stylesheet_directory ),
+			'template_version'     => $this->theme_version( $template, $template_directory ),
+			'environment'          => $this->environment_type(),
+			'manifest'             => $this->manifest_file_signature(),
+			'stylesheet_directory' => array( $stylesheet_directory, realpath( $stylesheet_directory ) ),
+			'template_directory'   => array( $template_directory, realpath( $template_directory ) ),
+			'roots'                => $this->component_root_state(),
 		);
 
 		/**
 		 * Filters the component discovery persistent cache key parts.
 		 *
-		 * Projects that alter component roots dynamically can add their own
-		 * version token here, or change it to invalidate cached discovery.
+		 * Defaults include theme directories, canonical component roots and root
+		 * build timestamps/identity. Custom builds that modify nested directories
+		 * in place should add a build token here or clear the discovery cache.
 		 *
 		 * @param array            $key_parts Cache key parts.
 		 * @param ComponentLocator $locator   Component locator instance.
@@ -411,6 +465,45 @@ final class ComponentLocator {
 		}
 
 		return self::CACHE_TRANSIENT_PREFIX . md5( $encoded );
+	}
+
+	/**
+	 * Gets ordered root identities and stable filesystem build signals.
+	 *
+	 * Core production builds recreate dist/components. Statting each root avoids
+	 * walking the tree on warm requests; access times deliberately stay out.
+	 *
+	 * @return array Root state.
+	 */
+	private function component_root_state(): array {
+		if ( is_array( $this->component_root_state ) ) {
+			return $this->component_root_state;
+		}
+
+		$this->component_root_state = array();
+
+		foreach ( $this->component_roots() as $root ) {
+			clearstatcache( true, $root['path'] );
+			$stat                         = @stat( $root['path'] ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- A build can remove the root after normalization.
+			$this->component_root_state[] = array(
+				'path'      => $root['path'],
+				'canonical' => realpath( $root['path'] ),
+				'source'    => $root['source'],
+				'priority'  => $root['priority'],
+				'build'     => is_array( $stat ) ? array_intersect_key( $stat, array_flip( array( 'dev', 'ino', 'mtime', 'ctime', 'size' ) ) ) : null,
+			);
+		}
+
+		return $this->component_root_state;
+	}
+
+	/**
+	 * Binds relative cache records to the active roots even with a custom key.
+	 *
+	 * @return string Root state fingerprint.
+	 */
+	private function component_roots_signature(): string {
+		return md5( serialize( $this->component_root_state() ) );
 	}
 
 	/**
@@ -440,32 +533,43 @@ final class ComponentLocator {
 	 */
 	private function normalize_cached_component_files( array $files ): ?array {
 		$normalized = array();
+		$roots      = $this->component_roots();
 
 		foreach ( $files as $file ) {
 			if (
 				! is_array( $file )
-				|| empty( $file['path'] )
-				|| empty( $file['relative'] )
-				|| empty( $file['root_path'] )
-				|| empty( $file['root_source'] )
-				|| ! is_scalar( $file['path'] )
-				|| ! is_scalar( $file['relative'] )
-				|| ! is_scalar( $file['root_path'] )
-				|| ! is_scalar( $file['root_source'] )
+				|| ! isset( $file['root'], $file['relative'] )
+				|| ! is_int( $file['root'] ) || ! isset( $roots[ $file['root'] ] )
+				|| ! is_string( $file['relative'] ) || '' === $file['relative']
+				|| AssetRecord::normalize_relative_path( $file['relative'] ) !== $file['relative']
+			) {
+				return null;
+			}
+
+			$root = $roots[ $file['root'] ];
+			$path = $root['path'] . '/' . $file['relative'];
+			clearstatcache( true, $path );
+			$canonical      = realpath( $path );
+			$canonical_root = realpath( $root['path'] );
+
+			if (
+				false === $canonical || false === $canonical_root
+				|| 0 !== strpos( $canonical, rtrim( $canonical_root, '/\\' ) . DIRECTORY_SEPARATOR )
+				|| ! is_file( $path ) || ! is_readable( $path )
 			) {
 				return null;
 			}
 
 			$record = array(
-				'path'        => (string) $file['path'],
-				'priority'    => isset( $file['priority'] ) ? (int) $file['priority'] : 0,
-				'relative'    => (string) $file['relative'],
-				'root_path'   => (string) $file['root_path'],
-				'root_source' => (string) $file['root_source'],
+				'path'        => $path,
+				'priority'    => $root['priority'],
+				'relative'    => $file['relative'],
+				'root_path'   => $root['path'],
+				'root_source' => $root['source'],
 			);
 
-			if ( isset( $file['root_uri'] ) && is_scalar( $file['root_uri'] ) ) {
-				$record['root_uri'] = (string) $file['root_uri'];
+			if ( isset( $root['uri'] ) ) {
+				$record['root_uri'] = $root['uri'];
 			}
 
 			$normalized[] = $record;
@@ -675,6 +779,8 @@ final class ComponentLocator {
 			$candidates = $filtered;
 		}
 
+		// Release symlinks can change in a long-running WP-CLI process too.
+		clearstatcache( true );
 		$this->component_roots = FileDiscovery::normalize_roots(
 			$candidates,
 			array(
@@ -712,7 +818,12 @@ final class ComponentLocator {
 	 * @return string Native block name, or an empty string when unavailable.
 	 */
 	private function native_block_name( string $path ): string {
-		$contents = file_get_contents( $path );
+		if ( ! is_file( $path ) || ! is_readable( $path ) ) {
+			return '';
+		}
+
+		// A build can remove metadata between the readability check and the read.
+		$contents = @file_get_contents( $path ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Expected deploy race after the guarded check above.
 
 		if ( ! is_string( $contents ) ) {
 			return '';

@@ -20,6 +20,12 @@ Emulsify WordPress 2.0 should stay focused on the parent and generated child the
 - `switch_theme` cache invalidation and cache-key parts for theme versions, environment, and manifest mtime.
 - Safer WP-CLI `--force` replacement checks using generated child theme metadata.
 
+The 2.1 hardening adds theme and component directory identity and build-state
+signals to the persistent discovery key, with relative cached paths and stale
+file validation. Custom builds that change nested output in place still need a
+build token or explicit cache clear; see the
+[cache invalidation guidance](parent-child-architecture.md#optional-persistent-discovery-cache).
+
 ## Recommended implementation order
 
 1. Keep the 2.0 release branch focused on release readiness only.

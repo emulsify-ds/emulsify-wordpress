@@ -225,7 +225,12 @@ final class AcfBlocks {
 	 * @return array|null Component metadata, or null when invalid.
 	 */
 	private function metadata( string $path ): ?array {
-		$contents = file_get_contents( $path );
+		if ( ! is_file( $path ) || ! is_readable( $path ) ) {
+			return null;
+		}
+
+		// A build can remove metadata between the readability check and the read.
+		$contents = @file_get_contents( $path ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Expected deploy race after the guarded check above.
 
 		if ( ! is_string( $contents ) ) {
 			return null;

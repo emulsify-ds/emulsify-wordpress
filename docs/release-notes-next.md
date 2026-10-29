@@ -70,6 +70,13 @@ lineage. See the [release process](release-process.md).
 
 ## Fixed
 
+- Recursive file discovery skips unreadable or disappearing directories and
+  reports failures when debugging, so a broken component folder no longer makes
+  frontend or admin requests fatal.
+- Persistent component discovery invalidates after release-directory deploys
+  and standard builds without requiring a theme-version bump or asset manifest.
+  Cached paths resolve against the current roots, and stale or unreadable files
+  trigger a fresh scan instead of reusing a dead index.
 - Click-to-load media failures produce an escaped video link without contacting
   the provider before activation. Poster `srcdoc` escaping is exact on the
   minimum WordPress version, with a script-blocking meta CSP. Provider
