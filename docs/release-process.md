@@ -110,9 +110,17 @@ maintainer account before creating anything.
 
 Use the ZIP and checksum from the successful readiness run for that exact tag.
 Verify the checksum before uploading. If that artifact has expired, check out
-the tag in a full clone, rebuild it with `npm run build:dist`, and run readiness
-against that ZIP before recovering the release. Do not rebuild from a newer
-branch tip, move the tag, or prepare another version to hide a partial release.
+the tag in a full clone and rebuild it with `npm run build:dist`. With WP-CLI,
+MySQL, Chrome and the `WP_SMOKE_DB_*` settings configured, validate that ZIP:
+
+```sh
+WP_SMOKE_REQUIRED=1 WP_SMOKE_A11Y=1 WP_SMOKE_THEME_ARCHIVE=dist-artifact/emulsify.zip node .github/scripts/wordpress-fixture-smoke.cjs
+```
+
+Use the standalone fixture for this already-tagged recovery: the unreleased-draft
+contract intentionally rejects the historical draft notes at the tag. Do not
+edit the tag's sources, rebuild from a newer branch tip, move the tag, or prepare
+another version to hide a partial release.
 Review release notes before publishing a recovered draft. After recovery,
 rotate the release draft as described above and start a new workflow dispatch
 on `main`; the publication check should pass and publishing should skip.
