@@ -353,6 +353,13 @@ try {
 
 	$resolution_cases = array(
 		array( 'whisk:button', 'Grouped button', 'A component name should resolve inside a group.' ),
+		array( '@components/button/button.twig', 'Grouped button', '@components explicit paths should use grouped lookup.' ),
+		array( '@components/button', 'Grouped button', '@components shorthand should use grouped lookup.' ),
+		array( 'components:button', 'Grouped button', 'The components colon namespace should use grouped lookup.' ),
+		array( 'components::button', 'Grouped button', 'The components double-colon namespace should use grouped lookup.' ),
+		array( 'components/button', 'Grouped button', 'The components slash namespace should use grouped lookup.' ),
+		array( 'project:button', 'Grouped button', 'Unregistered colon prefixes should use component shorthand.' ),
+		array( '@organisms/button', 'Grouped button', 'Unregistered at-prefixes should use component shorthand.' ),
 		array( 'whisk:deep-card', 'Deep grouped card', 'A component name should resolve inside two grouping levels.' ),
 		array( 'whisk:ui/controls/deep-card', 'Deep grouped card', 'Explicit grouping paths should support more than two segments.' ),
 		array( 'whisk:atoms\\button', 'Grouped button', 'Windows-style separators should normalize before candidate construction.' ),
@@ -438,9 +445,10 @@ try {
 		'Missing project.emulsify.json should not break @components.'
 	);
 
-	emulsify_twig_project_smoke_assert(
-		false === $missing_environment->getLoader()->exists( 'whisk:example-card' ),
-		'Missing project.emulsify.json should not register a project component loader.'
+	emulsify_twig_project_smoke_assert_same(
+		'Missing project example card',
+		emulsify_twig_project_smoke_render( $missing_environment, '{% include "whisk:example-card" %}' ),
+		'Without project metadata, an unregistered prefix should use Core component shorthand.'
 	);
 
 	emulsify_twig_project_smoke_write( $invalid_child . '/project.emulsify.json', '{"project":' );

@@ -301,10 +301,6 @@ final class Twig {
 
 		$machine_name = ProjectConfig::machine_name();
 
-		if ( '' === $machine_name ) {
-			return $loader;
-		}
-
 		$roots = $this->project_component_roots( $machine_name, $loader );
 
 		if ( empty( $roots ) ) {
@@ -324,7 +320,9 @@ final class Twig {
 		return interface_exists( '\Twig\Loader\LoaderInterface' )
 			&& class_exists( '\Twig\Source' )
 			&& class_exists( '\Twig\Error\LoaderError' )
-			&& is_a( $loader, '\Twig\Loader\LoaderInterface' );
+			&& is_a( $loader, '\Twig\Loader\LoaderInterface' )
+			&& method_exists( $loader, 'getNamespaces' )
+			&& method_exists( $loader, 'getPaths' );
 	}
 
 	/**
@@ -335,24 +333,16 @@ final class Twig {
 	 * @return array Component root paths.
 	 */
 	private function project_component_roots( string $machine_name, $loader ): array {
-		$roots = array(
-			array(
-				'path'   => get_stylesheet_directory() . '/src/components',
-				'source' => 'child',
-			),
-			array(
-				'path'   => get_stylesheet_directory() . '/components',
-				'source' => 'child',
-			),
-			array(
-				'path'   => get_template_directory() . '/src/components',
-				'source' => 'parent',
-			),
-			array(
-				'path'   => get_template_directory() . '/components',
-				'source' => 'parent',
-			),
-		);
+		$roots  = array();
+		$child  = rtrim( get_stylesheet_directory(), '/\\' ) . '/';
+		$parent = rtrim( get_template_directory(), '/\\' ) . '/';
+		foreach ( $loader->getPaths( 'components' ) as $path ) {
+			$source  = str_starts_with( $path, $child ) ? 'child' : ( str_starts_with( $path, $parent ) ? 'parent' : 'filtered' );
+			$roots[] = array(
+				'path'   => $path,
+				'source' => $source,
+			);
+		}
 
 		/**
 		 * Filters roots used for machineName:component Twig references.

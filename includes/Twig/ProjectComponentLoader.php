@@ -1,6 +1,6 @@
 <?php
 /**
- * Resolves project machine-name component references.
+ * Resolves explicit component references with Emulsify Core candidate order.
  *
  * @package Emulsify
  */
@@ -8,23 +8,9 @@
 namespace Emulsify\Theme\Twig;
 
 /**
- * Wraps a Twig loader with project machine-name component support.
+ * Wraps a Twig loader with component aliases and grouped lookup.
  */
 final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
-
-	/**
-	 * Project template prefix.
-	 *
-	 * @var string
-	 */
-	private $prefix;
-
-	/**
-	 * Project at-namespace prefix.
-	 *
-	 * @var string
-	 */
-	private $at_prefix;
 
 	/**
 	 * Component root paths.
@@ -69,18 +55,28 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 	 * @param \Twig\Loader\LoaderInterface $loader       Wrapped Twig loader.
 	 */
 	public function __construct( string $machine_name, array $roots, \Twig\Loader\LoaderInterface $loader ) {
-		$this->prefix    = $machine_name . ':';
-		$this->at_prefix = '@' . $machine_name . '/';
-		$this->roots     = array();
-		$this->loader    = $loader;
+		$this->loader = $loader;
+		$this->set_roots( $roots );
+	}
 
+	/**
+	 * Refreshes canonical roots when a later Twig filter changes components.
+	 *
+	 * @param array $roots Component paths in namespace order.
+	 * @return void
+	 */
+	private function set_roots( array $roots ): void {
+		$this->roots = array();
 		foreach ( $roots as $root ) {
 			$real = realpath( $root );
-
 			if ( false !== $real && is_dir( $real ) && is_readable( $real ) ) {
-				$this->roots[] = str_replace( '\\', '/', $real );
+				$path = str_replace( '\\', '/', $real );
+				if ( ! in_array( $path, $this->roots, true ) ) {
+					$this->roots[] = $path;
+				}
 			}
 		}
+		$this->cache = array();
 	}
 
 	/**
@@ -93,6 +89,9 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 	public function addPath( string $path, string $namespace = '__main__' ): void {
 		if ( method_exists( $this->loader, 'addPath' ) ) {
 			$this->loader->addPath( $path, $namespace );
+			if ( 'components' === $namespace ) {
+				$this->set_roots( $this->getPaths( 'components' ) );
+			}
 		}
 	}
 
@@ -106,6 +105,9 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 	public function prependPath( string $path, string $namespace = '__main__' ): void {
 		if ( method_exists( $this->loader, 'prependPath' ) ) {
 			$this->loader->prependPath( $path, $namespace );
+			if ( 'components' === $namespace ) {
+				$this->set_roots( $this->getPaths( 'components' ) );
+			}
 		}
 	}
 
@@ -162,7 +164,7 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 			throw new \Twig\Error\LoaderError( $this->project_loader_error( $name ) );
 		}
 
-		return $this->loader->getSourceContext( $name );
+		return $this->loader->getSourceContext( $this->delegate_name( $name ) );
 	}
 
 	/**
@@ -184,7 +186,7 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 			throw new \Twig\Error\LoaderError( $this->project_loader_error( $name ) );
 		}
 
-		return $this->loader->getCacheKey( $name );
+		return $this->loader->getCacheKey( $this->delegate_name( $name ) );
 	}
 
 	/**
@@ -209,7 +211,7 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 			throw new \Twig\Error\LoaderError( $this->project_loader_error( $name ) );
 		}
 
-		return $this->loader->isFresh( $name, $time );
+		return $this->loader->isFresh( $this->delegate_name( $name ), $time );
 	}
 
 	/**
@@ -223,7 +225,7 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 			return null !== $this->find_project_template( $name );
 		}
 
-		return $this->loader->exists( $name );
+		return $this->loader->exists( $this->delegate_name( $name ) );
 	}
 
 	/**
@@ -233,18 +235,24 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 	 * @return string|null Resolved template path.
 	 */
 	private function find_project_template( string $name ): ?string {
-		if ( array_key_exists( $name, $this->cache ) ) {
-			return $this->cache[ $name ];
-		}
-
 		$component = $this->project_component_name( $name );
 
 		if ( null === $component ) {
 			return null;
 		}
 
+		if ( array_key_exists( $name, $this->cache ) ) {
+			return $this->cache[ $name ];
+		}
+
 		foreach ( $this->roots as $root ) {
-			$path = $this->find_in_directory( $root, $component, $root );
+			// Core tries a literal unregistered reference before stripping its prefix.
+			$path = null === $this->registered_reference( $name )
+				? $this->find_in_directory( $root, str_replace( '\\', '/', $name ), $root )
+				: null;
+			if ( null === $path ) {
+				$path = $this->find_in_directory( $root, $component, $root );
+			}
 
 			if ( null === $path ) {
 				foreach ( $this->group_directories( $root ) as $directory ) {
@@ -412,10 +420,16 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 			return null;
 		}
 
-		$prefix    = str_starts_with( $name, $this->prefix ) ? $this->prefix : $this->at_prefix;
-		$component = str_replace( '\\', '/', substr( $name, strlen( $prefix ) ) );
+		$registered = $this->registered_reference( $name );
+		if ( null !== $registered ) {
+			$component = $registered['path'];
+		} else {
+			preg_match( '#^(?:@[^/:]+/|@?[^/:]+:)(.+)$#D', $name, $matches );
+			$component = $matches[1];
+		}
+		$component = str_replace( '\\', '/', $component );
 
-		if ( '' === $component || str_contains( $component, "\0" ) || str_starts_with( $component, '/' ) || preg_match( '/^[A-Za-z]:/', $component ) ) {
+		if ( '' === $component || str_contains( $name, "\0" ) || str_starts_with( $component, '/' ) || preg_match( '/^[A-Za-z]:/', $component ) ) {
 			return null;
 		}
 
@@ -441,13 +455,53 @@ final class ProjectComponentLoader implements \Twig\Loader\LoaderInterface {
 	}
 
 	/**
-	 * Checks whether a template name starts with the project prefix.
+	 * Checks explicit component aliases without claiming registered namespaces.
 	 *
 	 * @param string $name Template logical name.
-	 * @return bool TRUE when the name targets this project namespace.
+	 * @return bool TRUE when component resolution owns this reference.
 	 */
 	private function is_project_reference( string $name ): bool {
-		return str_starts_with( $name, $this->prefix ) || str_starts_with( $name, $this->at_prefix );
+		$registered = $this->registered_reference( $name );
+		if ( null !== $registered ) {
+			return 'components' === $registered['namespace'];
+		}
+		return ! str_starts_with( $name, '.' ) && 1 === preg_match( '#^(?:@[^/:]+/|@?[^/:]+:)(.+)$#D', $name );
+	}
+
+	/**
+	 * Parses Core's component aliases and the wrapped loader's namespaces.
+	 *
+	 * @param string $name Template logical name.
+	 * @return array|null Registered namespace and relative path.
+	 */
+	private function registered_reference( string $name ): ?array {
+		$namespaces = array_merge( array( 'components' ), $this->getNamespaces() );
+		foreach ( array( '#^@([^/]+)/(.+)$#D', '#^([^:]+)::(.+)$#D', '#^([^:/.]+):(.+)$#D' ) as $pattern ) {
+			if ( 1 === preg_match( $pattern, $name, $matches ) && in_array( $matches[1], $namespaces, true ) ) {
+				return array(
+					'namespace' => $matches[1],
+					'path'      => $matches[2],
+				);
+			}
+		}
+		if ( str_starts_with( $name, 'components/' ) ) {
+			return array(
+				'namespace' => 'components',
+				'path'      => substr( $name, strlen( 'components/' ) ),
+			);
+		}
+		return null;
+	}
+
+	/**
+	 * Converts registered namespace aliases for Twig's native loader.
+	 *
+	 * @param string $name Template logical name.
+	 * @return string Native Twig template name.
+	 */
+	private function delegate_name( string $name ): string {
+		$registered = $this->registered_reference( $name );
+		return null !== $registered ? '@' . $registered['namespace'] . '/' . $registered['path'] : $name;
 	}
 
 	/**
