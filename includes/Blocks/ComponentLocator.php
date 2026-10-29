@@ -99,6 +99,23 @@ final class ComponentLocator {
 	private $skipped_duplicates = array();
 
 	/**
+	 * Gets component metadata files, including components without a Twig template.
+	 *
+	 * @return array Absolute metadata paths in child-first discovery order.
+	 */
+	public function component_metadata_files(): array {
+		$paths = array();
+
+		foreach ( $this->component_files() as $file ) {
+			if ( preg_match( '/\.component\.json$/', basename( $file['path'] ) ) ) {
+				$paths[] = $file['path'];
+			}
+		}
+
+		return $paths;
+	}
+
+	/**
 	 * Clears the optional persistent discovery cache for the current theme state.
 	 *
 	 * @return bool TRUE when WordPress deleted a transient, otherwise false.

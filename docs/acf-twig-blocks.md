@@ -106,3 +106,11 @@ Scoped asset records can be adjusted before registration with `emulsify_theme_ac
 The child theme is scanned before the parent theme. Duplicate component paths, duplicate component slugs, and duplicate final ACF block `name` values are skipped instead of being registered twice.
 
 When `WP_DEBUG` is enabled, skipped duplicates are logged and shown as admin-only notices to users who can edit themes. Normal frontend visitors do not see duplicate diagnostics.
+
+### Scoped assets in subfolders
+
+Asset paths declared by `*.component.json` remain component-scoped even when
+CSS or JavaScript lives in nested folders. The parent reuses its component
+metadata index and asset scan, including custom asset-only roots. Editor-only
+files are excluded from global frontend enqueueing; components without a Twig
+template retain that exclusion too.

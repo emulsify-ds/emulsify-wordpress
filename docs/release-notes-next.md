@@ -77,6 +77,9 @@ lineage. See the [release process](release-process.md).
 
 ## Fixed
 
+- Component-scoped CSS and JavaScript in subfolders, including editor-only
+  files, no longer load globally when no asset manifest is present.
+
 - Installable ZIPs contain only committed inputs from one Git revision and
   refuse symlinks instead of packaging their targets.
 

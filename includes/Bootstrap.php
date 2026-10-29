@@ -64,18 +64,19 @@ final class Bootstrap {
 		$this->load_classes();
 
 		$asset_manifest = new AssetManifest();
+		$components     = new Blocks\ComponentLocator();
 
 		// These services use WordPress APIs directly and must stay available even
 		// when Timber is missing. The MissingTimber service owns frontend failure
 		// handling later in this method.
 		( new Setup() )->register();
-		( new Assets( $asset_manifest ) )->register();
+		( new Assets( $asset_manifest, $components ) )->register();
 		( new LocalJson() )->register();
 		( new CoreBlockTwigRenderer() )->register();
 		( new Enhancements( $asset_manifest ) )->register();
 		( new Policy() )->register();
 		( new Patterns() )->register();
-		( new Blocks\Registry( $asset_manifest ) )->register();
+		( new Blocks\Registry( $asset_manifest, $components ) )->register();
 		( new GenerateChildThemeCommand() )->register();
 		( new Embeds() )->register();
 
