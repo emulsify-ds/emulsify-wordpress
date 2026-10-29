@@ -13,6 +13,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // Page rendering is intentionally thin: route data comes from Timber context,
 // while markup and extension points live in Twig.
-$context = Timber::context();
+$context  = Timber::context();
+$wp_post  = $context['post'] ?? null;
+$template = '@templates/page.twig';
 
-Timber::render( '@templates/page.twig', $context );
+if ( $wp_post && post_password_required( $wp_post->ID ) ) {
+	$template = '@templates/single-password.twig';
+}
+
+Timber::render( $template, $context );

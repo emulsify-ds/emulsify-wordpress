@@ -13,12 +13,28 @@ namespace Emulsify\Theme\Runtime;
 final class Context {
 
 	/**
-	 * Registers context filters.
+	 * Registers context and protected-content filters.
 	 *
 	 * @return void
 	 */
 	public function register(): void {
 		add_filter( 'timber/context', array( $this, 'add' ) );
+		// Timber otherwise returns protected content instead of WordPress's form.
+		add_filter( 'timber/post/content/show_password_form_for_protected', '__return_true' );
+		add_filter( 'timber/post/content/password_form', array( $this, 'protect_password_form' ), PHP_INT_MAX );
+	}
+
+	/**
+	 * Keeps hidden password forms from exposing content through Timber.
+	 *
+	 * Timber treats an empty form as permission to continue to post content.
+	 * A non-empty space preserves a plugin's hidden form without that fallback.
+	 *
+	 * @param mixed $form Filtered WordPress password form.
+	 * @return string Form markup or an invisible, non-empty placeholder.
+	 */
+	public function protect_password_form( $form ): string {
+		return is_string( $form ) && $form ? $form : ' ';
 	}
 
 	/**

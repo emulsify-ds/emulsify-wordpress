@@ -30,7 +30,7 @@
         {% endblock %}
 
         {% block summary %}
-            {% if post.excerpt|default(null) %}
+            {% if not post.password_required and post.excerpt|default(null) %}
                 <div {{ add_attributes(teaser_summary_attributes) }}>{{ post.excerpt|raw }}</div>
             {% endif %}
         {% endblock %}
