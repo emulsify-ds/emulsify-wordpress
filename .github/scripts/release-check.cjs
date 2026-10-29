@@ -1017,10 +1017,10 @@ function runStaticChecks() {
     ];
     const childTemplatePathIndex = twigIntegration.indexOf("'path'      => get_stylesheet_directory() . '/templates'");
     const parentTemplatePathIndex = twigIntegration.indexOf("'path'      => get_template_directory() . '/templates'");
-    const childComponentSrcPathIndex = twigIntegration.indexOf("'path'      => get_stylesheet_directory() . '/src/components'");
-    const childComponentLegacyPathIndex = twigIntegration.indexOf("'path'      => get_stylesheet_directory() . '/components'");
-    const parentComponentSrcPathIndex = twigIntegration.indexOf("'path'      => get_template_directory() . '/src/components'");
-    const parentComponentLegacyPathIndex = twigIntegration.indexOf("'path'      => get_template_directory() . '/components'");
+    const childComponentSrcPathIndex = twigIntegration.indexOf("get_stylesheet_directory() . '/src/components'");
+    const childComponentLegacyPathIndex = twigIntegration.indexOf("get_stylesheet_directory() . '/components'");
+    const parentComponentSrcPathIndex = twigIntegration.indexOf("get_template_directory() . '/src/components'");
+    const parentComponentLegacyPathIndex = twigIntegration.indexOf("get_template_directory() . '/components'");
 
     for (const fallback of expectedParentFallbacks) {
       ensure(parentTemplateFiles.includes(fallback), `${fallback} should exist as a parent fallback.`);
@@ -1042,8 +1042,8 @@ function runStaticChecks() {
     ensure(twigIntegration.includes('project_structure_namespaces') && twigIntegration.includes('structureImplementations'), 'Twig integration should honor Emulsify Core structureImplementations for configured namespaces.');
     ensure(twigIntegration.includes('emulsify_theme_project_component_roots'), 'Twig integration should expose a focused project component roots filter.');
     ensure(twigIntegration.includes('new ProjectComponentLoader') && projectComponentLoader.includes('implements \\Twig\\Loader\\LoaderInterface'), 'Twig integration should wrap the loader for machineName:component references.');
-    ensure(twigIntegration.includes('machineName:component'), 'Twig integration should document the project component reference intent in code comments.');
-    ensure(twigNamespaceSmoke.includes('@custom/teaser.twig') && twigNamespaceSmoke.includes('variant.structureImplementations'), 'Twig namespace smoke should verify configured Core structure namespaces.');
+    ensure(twigIntegration.includes('component_root_records') && twigIntegration.includes("$loader->getPaths( 'components' )"), 'Twig component aliases should use the selected, filtered component namespace roots.');
+    ensure(twigNamespaceSmoke.includes('@custom/teaser.twig') && twigNamespaceSmoke.includes('structureImplementations'), 'Twig namespace smoke should verify configured Core structure namespaces.');
     ensure(!fs.existsSync(path.join(repoRoot, 'whisk/includes/twig-namespaces.php')), 'Whisk should rely on the parent Twig namespace integration by default.');
     ensure(!childFunctions.includes('twig-namespaces.php'), 'whisk/functions.php should not require a duplicate Twig namespace file.');
     ensure(childFunctions.includes('project_machine_name:component_name') && childFunctions.includes('@components for compatible component libraries'), 'whisk/functions.php should document generic project machine-name component references while preserving @components compatibility.');

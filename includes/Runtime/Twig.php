@@ -57,6 +57,8 @@ final class Twig {
 			return $loader;
 		}
 
+		$structures = $this->project_structure_namespaces();
+		$components = $this->component_root_records( $structures );
 		$namespaces = array_merge(
 			array(
 				array(
@@ -72,27 +74,13 @@ final class Twig {
 					'path'      => get_template_directory() . '/templates',
 				),
 			),
-			$this->project_structure_namespaces(),
-			array(
-				// @components remains a compatibility namespace for component
-				// systems and existing projects that have not moved to
-				// project_machine_name:component references.
-				array(
+			array_filter( $structures, static fn( array $record ): bool => 'components' !== $record['namespace'] ),
+			array_map(
+				static fn( array $record ): array => array(
 					'namespace' => 'components',
-					'path'      => get_stylesheet_directory() . '/src/components',
+					'path'      => $record['path'],
 				),
-				array(
-					'namespace' => 'components',
-					'path'      => get_stylesheet_directory() . '/components',
-				),
-				array(
-					'namespace' => 'components',
-					'path'      => get_template_directory() . '/src/components',
-				),
-				array(
-					'namespace' => 'components',
-					'path'      => get_template_directory() . '/components',
-				),
+				$components
 			)
 		);
 
@@ -262,14 +250,15 @@ final class Twig {
 		$records   = array();
 		$theme_dir = rtrim( get_stylesheet_directory(), '/\\' );
 
-		foreach ( ProjectConfig::structure_implementations() as $implementation ) {
-			if ( ! is_array( $implementation ) || empty( $implementation['name'] ) || empty( $implementation['directory'] ) ) {
+		foreach ( array_values( ProjectConfig::structure_implementations() ) as $index => $implementation ) {
+			if ( ! is_array( $implementation ) || empty( $implementation['directory'] ) || ! is_string( $implementation['directory'] ) ) {
 				continue;
 			}
 
-			$namespace = ltrim( (string) $implementation['name'], '@' );
+			$namespace = isset( $implementation['name'] ) && is_string( $implementation['name'] ) ? strtolower( trim( $implementation['name'] ) ) : '';
+			$namespace = '' !== $namespace ? $namespace : 'structure-' . ( $index + 1 );
 
-			if ( 1 !== preg_match( '/^[A-Za-z0-9_-]+$/', $namespace ) ) {
+			if ( 1 !== preg_match( '/^[A-Za-z0-9_-]+$/', $namespace ) || in_array( $namespace, array_column( $records, 'namespace' ), true ) ) {
 				continue;
 			}
 
@@ -326,6 +315,47 @@ final class Twig {
 	}
 
 	/**
+	 * Selects Core's configured child root while retaining WordPress inheritance.
+	 *
+	 * @param array $structures Safe structure namespace records.
+	 * @return array Child-first root records.
+	 */
+	private function component_root_records( array $structures ): array {
+		$roots = array(
+			array(
+				'path'   => get_stylesheet_directory() . '/src/components',
+				'source' => 'child',
+			),
+			array(
+				'path'   => get_stylesheet_directory() . '/components',
+				'source' => 'child',
+			),
+			array(
+				'path'   => get_template_directory() . '/src/components',
+				'source' => 'parent',
+			),
+			array(
+				'path'   => get_template_directory() . '/components',
+				'source' => 'parent',
+			),
+		);
+		if ( ! empty( $structures ) ) {
+			$components = array_values( array_filter( $structures, static fn( array $record ): bool => 'components' === $record['namespace'] ) );
+			$selected   = $components[0] ?? $structures[0];
+			$roots      = array_merge(
+				array(
+					array(
+						'path'   => $selected['path'],
+						'source' => 'child',
+					),
+				),
+				array_slice( $roots, 2 )
+			);
+		}
+		return $roots;
+	}
+
+	/**
 	 * Gets project component root paths in child-first order.
 	 *
 	 * @param string $machine_name Active project machine name.
@@ -345,10 +375,10 @@ final class Twig {
 		}
 
 		/**
-		 * Filters roots used for machineName:component Twig references.
+		 * Filters roots used for explicit component Twig references.
 		 *
 		 * Roots can be path strings or arrays with a path key. The default order
-		 * mirrors @components: active child paths first, then parent paths.
+		 * uses the filtered @components paths: active child first, then parent.
 		 *
 		 * @param array  $roots        Project component root records.
 		 * @param string $machine_name Active project machine name.
