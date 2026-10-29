@@ -27,6 +27,13 @@ function emulsify_media_smoke_assert( bool $condition, string $message ): void {
 	}
 }
 
+/** Records independent regressions so the pre-fix run reports each problem. */
+function emulsify_media_smoke_check( bool $condition, string $message ): void {
+	if ( ! $condition ) {
+		$GLOBALS['emulsify_media_regressions'][] = $message;
+	}
+}
+
 /**
  * Gets an iframe attribute through WordPress's real HTML parser.
  *
@@ -92,6 +99,7 @@ $fixtures      = array(
 		'source' => 'https://player.vimeo.com/video/123456789?h=abc123&x.y=a%20b&x.y=second&list[]=one&list[]=two&dnt=0#chapter',
 	),
 );
+$GLOBALS['emulsify_media_regressions'] = array();
 $service       = new Embeds();
 $canonical     = 'https://vimeo.com/123456789/abc123';
 $metadata_key  = Embeds::METADATA_PREFIX . md5( $canonical );
@@ -383,6 +391,17 @@ try {
 		$environment->removeCache( '@templates/partials/oembed-poster.twig' );
 		return $environment;
 	};
+	$diagnostics = 0;
+	$diagnostic = static function ( $function ) use ( &$diagnostics ): void {
+		if ( str_contains( $function, 'Embeds::filter_html' ) ) {
+			++$diagnostics;
+		}
+	};
+	$suppress_expected_notice = static function ( $trigger, $function ) {
+		return str_contains( $function, 'Embeds::filter_html' ) ? false : $trigger;
+	};
+	add_action( 'doing_it_wrong_run', $diagnostic );
+	add_filter( 'doing_it_wrong_trigger_error', $suppress_expected_notice, 999, 2 );
 	emulsify_media_smoke_assert( false !== file_put_contents( $override, '{# Intentionally empty project override. #}' ), 'Unable to write the temporary empty poster override.' );
 	add_filter( 'timber/twig', $refresh_template, 999 );
 	$empty_rejected = false;
@@ -395,6 +414,38 @@ try {
 		file_put_contents( $override, $custom );
 	}
 	emulsify_media_smoke_assert( $empty_rejected, 'An empty project poster must fail closed instead of silently loading a third-party player.' );
+
+	// An invalid child Twig document must rethrow in the debug fixture, too.
+	file_put_contents( $override, '{% if %}' );
+	add_filter( 'timber/twig', $refresh_template, 999 );
+	$syntax_rejected = false;
+	try {
+		apply_filters( 'embed_oembed_html', emulsify_media_smoke_markup( $fixtures['youtube']['source'] ), $fixtures['youtube']['url'], array(), 0 );
+	} catch ( \Twig\Error\SyntaxError $exception ) {
+		$syntax_rejected = true;
+	} finally {
+		remove_filter( 'timber/twig', $refresh_template, 999 );
+		file_put_contents( $override, $custom );
+	}
+	emulsify_media_smoke_check( $syntax_rejected, 'Invalid child Twig must rethrow its original error in debug mode.' );
+	emulsify_media_smoke_check( 2 === $diagnostics, 'Both debug poster failures must emit a WordPress diagnostic before rethrowing.' );
+	remove_action( 'doing_it_wrong_run', $diagnostic );
+	remove_filter( 'doing_it_wrong_trigger_error', $suppress_expected_notice, 999 );
+	// Isolate missing Timber and the non-debug constant without changing the
+	// fixture's WP_DEBUG setting or unloading its real Timber classes.
+	foreach ( array( 'empty', 'error', 'missing' ) as $failure ) {
+		foreach ( array( '0', '1' ) as $debug ) {
+			$process = proc_open( array( PHP_BINARY, __DIR__ . '/media-embed-failure-smoke.php', get_template_directory() . '/includes/Media/Embeds.php', $failure, $debug ), array( 1 => array( 'pipe', 'w' ), 2 => array( 'pipe', 'w' ) ), $pipes );
+			emulsify_media_smoke_assert( is_resource( $process ), 'Unable to launch isolated poster failure smoke.' );
+			$failure_output = stream_get_contents( $pipes[1] ) . stream_get_contents( $pipes[2] );
+			fclose( $pipes[1] );
+			fclose( $pipes[2] );
+			emulsify_media_smoke_check( 0 === proc_close( $process ), 'Isolated ' . $failure . ' poster behavior with WP_DEBUG=' . $debug . ': ' . trim( $failure_output ) );
+		}
+	}
+	if ( ! empty( $GLOBALS['emulsify_media_regressions'] ) ) {
+		throw new RuntimeException( "Media regressions:\n" . implode( "\n", array_unique( $GLOBALS['emulsify_media_regressions'] ) ) );
+	}
 
 	echo "PASS media embeds: missing post IDs and no-post shortcodes, normalized public filter context, off defaults, raw parameter preservation, privacy, translated srcdoc posters with Arabic RTL and restored LTR locales, safe URLs, asynchronous metadata, classic/block filters, child overrides, and fail-closed poster errors.\n";
 } finally {
@@ -416,6 +467,10 @@ try {
 		delete_transient( $metadata_key );
 	} else {
 		set_transient( $metadata_key, $original_data, DAY_IN_SECONDS );
+	}
+	if ( isset( $diagnostic ) ) {
+		remove_action( 'doing_it_wrong_run', $diagnostic );
+		remove_filter( 'doing_it_wrong_trigger_error', $suppress_expected_notice, 999 );
 	}
 	if ( null !== $original_file ) {
 		file_put_contents( $override, $original_file );

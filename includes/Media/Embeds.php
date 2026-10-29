@@ -34,8 +34,9 @@ final class Embeds {
 	 * @param mixed $attr    Embed attributes, normalized to an array.
 	 * @param mixed $post_id Positive post ID or numeric string, otherwise null.
 	 * @return mixed Rendered embed HTML, or the unchanged non-string input.
-	 * @throws \RuntimeException When click-to-load rendering requires missing Timber.
-	 * @throws \UnexpectedValueException When the poster template renders no document.
+	 * @throws \RuntimeException In debug mode when Timber is missing.
+	 * @throws \UnexpectedValueException In debug mode when the poster is empty.
+	 * @throws \Throwable Rethrows other poster failures only in debug mode.
 	 */
 	public function filter_html( $html, $url = '', $attr = array(), $post_id = 0 ) {
 		if ( ! is_string( $html ) ) {
@@ -84,46 +85,54 @@ final class Embeds {
 			$processor->set_attribute( 'src', $player_url );
 		}
 		if ( $options['click_to_load'] ) {
-			if ( ! class_exists( '\Timber\Timber' ) ) {
-				throw new \RuntimeException( 'Timber is required to render click-to-load media embeds.' );
-			}
-			$metadata  = array();
-			$thumbnail = '';
-			if ( 'neutral' !== $options['poster'] ) {
-				if ( 'youtube' === $player['provider'] ) {
-					$thumbnail = 'https://i.ytimg.com/vi/' . $player['id'] . '/hqdefault.jpg';
-				} else {
-					$metadata  = $this->vimeo_metadata( $source, $player['id'] );
-					$thumbnail = $metadata['thumbnail_url'] ?? '';
-				}
-			}
 			$title     = $processor->get_attribute( 'title' );
 			$has_title = is_string( $title ) && '' !== trim( $title );
-			$title     = $has_title ? $title : ( $metadata['title'] ?? '' );
-			if ( '' === trim( $title ) ) {
-				$title = 'youtube' === $player['provider'] ? __( 'YouTube video', 'emulsify' ) : __( 'Vimeo video', 'emulsify' );
-			}
-			$language = get_bloginfo( 'language' );
-			$context  = array(
-				'media_embed' => array(
-					'player_url'         => $this->set_parameter( $player_url, 'autoplay' ),
-					'title'              => $title,
-					'provider'           => 'youtube' === $player['provider'] ? 'YouTube' : 'Vimeo',
-					'thumbnail_url'      => $thumbnail,
-					'language_code'      => '' !== $language ? $language : 'en',
-					'language_direction' => is_rtl() ? 'rtl' : 'ltr',
-					'play_label'         => __( 'Play video', 'emulsify' ),
-				),
-			);
-			$document = \Timber\Timber::compile( '@templates/partials/oembed-poster.twig', $context );
-			if ( ! is_string( $document ) || '' === trim( $document ) ) {
-				throw new \UnexpectedValueException( 'The media embed poster template must render a non-empty HTML document.' );
-			}
-			// Without src, browsers fall back to about:blank even without srcdoc support.
-			$processor->remove_attribute( 'src' );
-			$processor->set_attribute( 'srcdoc', $this->srcdoc_value( $document ) );
-			if ( ! $has_title ) {
-				$processor->set_attribute( 'title', $title );
+			$title     = $has_title ? $title : ( 'youtube' === $player['provider'] ? __( 'YouTube video', 'emulsify' ) : __( 'Vimeo video', 'emulsify' ) );
+			try {
+				if ( ! class_exists( '\Timber\Timber' ) ) {
+					throw new \RuntimeException( 'Timber is required to render click-to-load media embeds.' );
+				}
+				$metadata  = array();
+				$thumbnail = '';
+				if ( 'neutral' !== $options['poster'] ) {
+					if ( 'youtube' === $player['provider'] ) {
+						$thumbnail = 'https://i.ytimg.com/vi/' . $player['id'] . '/hqdefault.jpg';
+					} else {
+						$metadata  = $this->vimeo_metadata( $source, $player['id'] );
+						$thumbnail = $metadata['thumbnail_url'] ?? '';
+					}
+				}
+				if ( ! $has_title && isset( $metadata['title'] ) && '' !== trim( $metadata['title'] ) ) {
+					$title = $metadata['title'];
+				}
+				$language = get_bloginfo( 'language' );
+				$context  = array(
+					'media_embed' => array(
+						'player_url'         => $this->set_parameter( $player_url, 'autoplay' ),
+						'title'              => $title,
+						'provider'           => 'youtube' === $player['provider'] ? 'YouTube' : 'Vimeo',
+						'thumbnail_url'      => $thumbnail,
+						'language_code'      => '' !== $language ? $language : 'en',
+						'language_direction' => is_rtl() ? 'rtl' : 'ltr',
+						'play_label'         => __( 'Play video', 'emulsify' ),
+					),
+				);
+				$document = \Timber\Timber::compile( '@templates/partials/oembed-poster.twig', $context );
+				if ( ! is_string( $document ) || '' === trim( $document ) ) {
+					throw new \UnexpectedValueException( 'The media embed poster template must render a non-empty HTML document.' );
+				}
+				// Without src, browsers fall back to about:blank even without srcdoc support.
+				$processor->remove_attribute( 'src' );
+				$processor->set_attribute( 'srcdoc', $this->srcdoc_value( $document ) );
+				if ( ! $has_title ) {
+					$processor->set_attribute( 'title', $title );
+				}
+			} catch ( \Throwable $exception ) {
+				_doing_it_wrong( __METHOD__, 'The media embed poster could not render. Check Timber and the child poster template.', '2.1.0' );
+				if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+					throw $exception;
+				}
+				return '<a href="' . esc_url( $url ) . '">' . esc_html( $title ) . '</a>';
 			}
 		}
 		$this->player_permissions( $processor );
