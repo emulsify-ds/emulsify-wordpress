@@ -146,6 +146,40 @@ Use `|raw` only for already-rendered, trusted WordPress HTML. Do not use it to p
 
 The `bem()` and `add_attributes()` helpers build and escape their own attribute values and are registered as safe HTML. Print them directly without `|raw`.
 
+### WordPress-formatted text
+
+WordPress can return text that already contains HTML entities. Post and page
+titles pass through `the_title`, which texturizes punctuation; site and term
+names can be stored escaped; `get_search_query()` escapes its result by default.
+Menu titles and author names can contain encoded characters too. Plain Twig
+autoescaping would encode those entities again.
+
+Use Timber's WordPress escaper filters at the output boundary. They handle both
+raw text and existing entities and tell Twig that the result is safe HTML:
+
+| Output | Filter |
+| --- | --- |
+| Post/page titles in headings and teaser links | `post.title\|wp_kses_post` |
+| Site name, archive/search/author heading, menu title, author or comment-author name | `value\|esc_html` |
+| Thumbnail alt text, including a post-title fallback | `function('wp_strip_all_tags', value)\|esc_attr` |
+
+`wp_kses_post` preserves WordPress's allowed post markup and removes disallowed
+tags, event handlers, and unsafe URL protocols. Its allowlist is broader than
+inline markup. `esc_html` displays tag-looking text literally, without creating
+elements. Strip literal tags and script/style contents from alt text before
+`esc_attr`; encoded tag-looking text remains inert text in the attribute.
+
+```twig
+<h1>{{ post.title|wp_kses_post }}</h1>
+<span>{{ site.name|esc_html }}</span>
+<img src="{{ post.thumbnail.src }}" alt="{{ function('wp_strip_all_tags', post.thumbnail.alt|default(post.title))|esc_attr }}">
+```
+
+The parent keeps `get_search_query()`'s default escaping and prints the composed
+search title with `esc_html`. Do not decode these values or use `|raw` as a
+double-escaping workaround. Keep ordinary autoescaping for ACF values, parsed
+block data, and other strings that do not have a WordPress formatting contract.
+
 ## Attribute helpers
 
 The parent theme registers Core-style helpers for class and attribute handling:

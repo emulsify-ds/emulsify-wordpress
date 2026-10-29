@@ -90,6 +90,14 @@ remain project-owned. New generated themes receive the updated defaults.
    WordPress's filtered password form and site URL. Review styles targeting the
    former custom form; core uses `.post-password-form`. See
    [password-protected template handling](docs/template-extension.md#password-protected-content).
+7. **Use WordPress escapers for formatted text in child overrides.** Print
+   post/page titles in headings and links with `|wp_kses_post`; site names,
+   archive/search titles, menu titles, and author names with `|esc_html`.
+   Strip literal tags with `wp_strip_all_tags` before `|esc_attr` for alt text,
+   including title fallbacks. These filters avoid encoding WordPress entities
+   twice while retaining output safety. Keep Twig autoescaping enabled and do
+   not substitute `|raw`. See
+   [WordPress-formatted text](docs/timber-and-twig-authoring.md#wordpress-formatted-text).
 
 Render representative pages as both an administrator and an anonymous visitor,
 check the editor where blocks are used, and inspect `debug.log`. Storybook

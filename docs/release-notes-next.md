@@ -70,6 +70,9 @@ lineage. See the [release process](release-process.md).
 
 ## Fixed
 
+- Parent templates use WordPress escapers for formatted titles, site/menu and
+  author names, archive/search headings, and thumbnail alt text, so encoded
+  punctuation and ampersands display once without weakening Twig autoescaping.
 - Security: password-protected pages and listing excerpts no longer expose
   content without a valid post-password cookie, fixing an issue present in
   `2.0.0`. Timber content reads now show the password form, and protected pages
