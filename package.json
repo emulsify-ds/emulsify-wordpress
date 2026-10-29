@@ -48,6 +48,7 @@
     "smoke:child-theme-generator": "php .github/scripts/child-theme-generator-smoke.php",
     "smoke:generation-parity": "node .github/scripts/generation-parity-smoke.cjs",
     "smoke:component-locator": "php .github/scripts/component-locator-smoke.php",
+    "smoke:file-discovery": "php .github/scripts/file-discovery-smoke.php",
     "smoke:component-request-cache": "php .github/scripts/component-request-cache-smoke.php",
     "smoke:core-block-twig": "php .github/scripts/core-block-twig-renderer-smoke.php",
     "smoke:editor-enhancements": "php .github/scripts/editor-enhancements-smoke.php",

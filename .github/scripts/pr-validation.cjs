@@ -38,6 +38,7 @@ run('Run Twig attribute helper smoke test', 'npm', ['run', 'smoke:attributes']);
 run('Run block scoped asset smoke test', 'npm', ['run', 'smoke:block-assets']);
 run('Run child theme generator smoke test', 'npm', ['run', 'smoke:child-theme-generator']);
 run('Run component locator smoke test', 'npm', ['run', 'smoke:component-locator']);
+run('Run filesystem discovery failure smoke test', 'npm', ['run', 'smoke:file-discovery']);
 run('Run core block Twig renderer smoke test', 'npm', ['run', 'smoke:core-block-twig']);
 run('Run editor enhancements smoke test', 'npm', ['run', 'smoke:editor-enhancements']);
 run('Run editor policy smoke test', 'npm', ['run', 'smoke:editor-policy']);
