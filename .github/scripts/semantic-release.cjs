@@ -24,6 +24,24 @@ function assertPublishedStableTags(repoRoot) {
   }
 }
 
+function assertCurrentMain(repoRoot) {
+  const head = git(repoRoot, ['rev-parse', 'HEAD']);
+  let remoteMain;
+  try {
+    remoteMain = git(repoRoot, ['ls-remote', 'origin', 'refs/heads/main']).split(/\s+/)[0];
+  } catch (error) {
+    throw new Error(`Unable to verify origin/main before releasing; check origin connectivity and retry. ${error.message}`);
+  }
+  if (!remoteMain) {
+    throw new Error('Unable to verify origin/main before releasing: origin has no refs/heads/main.');
+  }
+  if (head !== remoteMain) {
+    throw new Error(
+      `Main moved during the release: HEAD ${head} differs from origin/main ${remoteMain}. The Semantic release job is stale. Start a new workflow_dispatch run of WordPress Release (semantic-release.yml) on main instead of re-running the old job.`,
+    );
+  }
+}
+
 function releaseOptions(args) {
   const { values } = parseArgs({
     args,
@@ -54,8 +72,10 @@ async function main({
   repoRoot = path.resolve(__dirname, '../..'),
   args = process.argv.slice(2),
   runRelease = runSemanticRelease,
+  env = process.env,
 } = {}) {
   const options = releaseOptions(args);
+  const isCI = Boolean(env.CI) && env.CI !== 'false';
   const contract = validateReleaseVersionContract({ repoRoot });
   if (contract.errors.length > 0) {
     throw new Error(contract.errors.join('\n'));
@@ -69,9 +89,11 @@ async function main({
     return 0;
   }
 
+  if (isCI) assertCurrentMain(repoRoot);
+
   // A release PR can verify its version before merging to main. This override
   // is only for an explicit local dry run, which cannot tag or publish.
-  if (options.dryRun && options.ci === false) {
+  if (!isCI && options.dryRun && options.ci === false) {
     options.branches = [git(repoRoot, ['branch', '--show-current'])];
   }
 

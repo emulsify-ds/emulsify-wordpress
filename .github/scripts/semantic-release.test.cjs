@@ -40,13 +40,13 @@ test('publish guard accepts the exact prepared version on every subsequent relea
 
 test('skips publishing successfully when package.json equals the latest tag', async (t) => {
   const { repoRoot } = fixture(t, '2.0.0');
-  const status = await main({ repoRoot, args: ['--dry-run', '--debug', '--no-ci'], runRelease: () => assert.fail('An unprepared release must not invoke semantic-release.') });
+  const status = await main({ repoRoot, env: {}, args: ['--dry-run', '--debug', '--no-ci'], runRelease: () => assert.fail('An unprepared release must not invoke semantic-release.') });
   assert.equal(status, 0);
 });
 
 test('prepared release accepts a matching semantic-release result and forwards documented flags', async (t) => {
   const { repoRoot } = fixture(t);
-  const status = await main({ repoRoot, args: ['--tag-format', '${version}', '--dry-run', '--debug', '--no-ci'], runRelease: async (options, context) => {
+  const status = await main({ repoRoot, env: {}, args: ['--tag-format', '${version}', '--dry-run', '--debug', '--no-ci'], runRelease: async (options, context) => {
     assert.equal(context.cwd, repoRoot);
     assert.equal(options.tagFormat, '${version}');
     assert.equal(options.dryRun, true);
@@ -61,7 +61,7 @@ test('prepared release accepts a matching semantic-release result and forwards d
 test('prepared release rejects mismatched or absent semantic-release results', async (t) => {
   const { repoRoot } = fixture(t);
   for (const result of [false, { nextRelease: { version: '2.0.1' } }]) {
-    await assert.rejects(main({ repoRoot, args: [], runRelease: async () => result }), /Prepared package.json version 2\.1\.0.*(?:computed 2\.0\.1|did not compute a release).*Conventional Commits/);
+    await assert.rejects(main({ repoRoot, env: {}, args: [], runRelease: async () => result }), /Prepared package.json version 2\.1\.0.*(?:computed 2\.0\.1|did not compute a release).*Conventional Commits/);
   }
 });
 
@@ -70,7 +70,7 @@ test('refuses local-only stable tags before any publishing or skip', async (t) =
   assert.doesNotThrow(() => assertPublishedStableTags(repoRoot));
   git('tag', '2.0.1');
   assert.throws(() => assertPublishedStableTags(repoRoot), /Refusing to publish local-only stable tag\(s\): 2\.0\.1/);
-  await assert.rejects(main({ repoRoot, args: [], runRelease: () => assert.fail('Local-only stable tags must block semantic-release.') }), /Refusing to publish local-only stable tag\(s\): 2\.0\.1/);
+  await assert.rejects(main({ repoRoot, env: {}, args: [], runRelease: () => assert.fail('Local-only stable tags must block semantic-release.') }), /Refusing to publish local-only stable tag\(s\): 2\.0\.1/);
 });
 
 test('also refuses local-only stable tags on unmerged branches', (t) => {
@@ -81,6 +81,72 @@ test('also refuses local-only stable tags on unmerged branches', (t) => {
   git('switch', 'main');
   assert.equal(git('tag', '--merged', 'HEAD'), '2.0.0');
   assert.throws(() => assertPublishedStableTags(repoRoot), /Refusing to publish local-only stable tag\(s\): 2\.0\.1/);
+});
+
+function advanceRemoteMain({ repoRoot, remote }) {
+  const otherCheckout = path.join(path.dirname(repoRoot), 'main-mover');
+  execFileSync('git', ['clone', '--quiet', remote, otherCheckout], { stdio: 'pipe' });
+  const git = (...args) => execFileSync('git', args, { cwd: otherCheckout, encoding: 'utf8', stdio: 'pipe' }).trim();
+  git('-c', 'user.name=Contract Test', '-c', 'user.email=contract@example.invalid', 'commit', '--allow-empty', '-m', 'docs: update contributors');
+  git('push', 'origin', 'main');
+  return git('rev-parse', 'HEAD');
+}
+
+test('CI refuses a moved remote main before semantic-release, even with --no-ci and a stale tracking ref', async (t) => {
+  const repository = fixture(t);
+  const { repoRoot, git } = repository;
+  const checkedOut = git('rev-parse', 'HEAD');
+  const remoteHead = advanceRemoteMain(repository);
+  assert.notEqual(remoteHead, checkedOut);
+  assert.equal(git('rev-parse', 'origin/main'), checkedOut, 'The regression must not refresh the stale tracking ref.');
+  let released = false;
+  await assert.rejects(main({
+    repoRoot, env: { CI: 'true' }, args: ['--dry-run', '--no-ci'],
+    runRelease: async () => { released = true; return { nextRelease: { version: '2.1.0' } }; },
+  }), /main moved.*Semantic release.*workflow_dispatch.*main/i);
+  assert.equal(released, false, 'The preflight must stop before semantic-release can run.');
+});
+
+test('CI accepts current main and a fresh detached workflow_dispatch after main moved', async (t) => {
+  const repository = fixture(t);
+  const { repoRoot, git } = repository;
+  const runRelease = async (options) => {
+    assert.equal(options.branches, undefined, 'CI must keep the configured main branch even with --no-ci.');
+    return { nextRelease: { version: '2.1.0' } };
+  };
+  assert.equal(await main({ repoRoot, env: { CI: 'true' }, args: [], runRelease }), 0);
+  const currentMain = advanceRemoteMain(repository);
+  git('fetch', 'origin', 'main');
+  git('switch', '--detach', 'origin/main');
+  assert.equal(git('rev-parse', 'HEAD'), currentMain);
+  assert.equal(await main({
+    repoRoot, env: { CI: 'true', GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF: 'refs/heads/main' },
+    args: ['--dry-run', '--no-ci'], runRelease,
+  }), 0);
+});
+
+test('local dry runs on a release branch do not require HEAD to equal remote main', async (t) => {
+  const { repoRoot, git } = fixture(t);
+  git('switch', '-c', 'release-2.1.x');
+  git('-c', 'user.name=Contract Test', '-c', 'user.email=contract@example.invalid', 'commit', '--allow-empty', '-m', 'feat: prepare the next release');
+  for (const env of [{}, { CI: 'false' }]) {
+    assert.equal(await main({
+      repoRoot, env, args: ['--dry-run', '--no-ci'],
+      runRelease: async (options) => {
+        assert.deepEqual(options.branches, ['release-2.1.x']);
+        return { nextRelease: { version: '2.1.0' } };
+      },
+    }), 0);
+  }
+});
+
+test('CI still skips a valid unprepared release without invoking semantic-release', async (t) => {
+  const repository = fixture(t, '2.0.0');
+  advanceRemoteMain(repository);
+  assert.equal(await main({
+    repoRoot: repository.repoRoot, env: { CI: 'true' }, args: [],
+    runRelease: () => assert.fail('An unprepared release must not invoke semantic-release.'),
+  }), 0);
 });
 
 test('parses the existing publish and publish-test command options', () => {
@@ -106,7 +172,7 @@ test('real semantic-release dry run analyzes a pushed release PR branch and bloc
       const runRelease = (options, context) => semanticRelease({
         ...config, ...options, repositoryUrl: ${JSON.stringify(remote)}, plugins: [config.plugins[0], guard],
       }, context);
-      const options = { repoRoot: process.cwd(), args: ['--dry-run', '--no-ci'], runRelease };
+      const options = { repoRoot: process.cwd(), env: {}, args: ['--dry-run', '--no-ci'], runRelease };
       assert.equal(await main(options), 0);
       fs.writeFileSync('package.json', JSON.stringify({ version: '2.0.1' }));
       await assert.rejects(main(options), /Prepared package.json version 2\\.0\\.1.*computed 2\\.1\\.0/);
