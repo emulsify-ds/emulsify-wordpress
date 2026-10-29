@@ -77,6 +77,9 @@ lineage. See the [release process](release-process.md).
 
 ## Fixed
 
+- Native robots, favicon, feed, trackback and sitemap responses remain
+  available when Timber is missing, while theme pages retain a clear error.
+
 - PHP attribute helpers reject script-bearing URLs, `srcdoc`, framework event
   and expression directives, and arbitrary object attribute sources. Class
   names are handled case-insensitively while SVG name case is preserved.

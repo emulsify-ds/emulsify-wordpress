@@ -48,6 +48,10 @@ final class MissingTimber {
 			return;
 		}
 
+		if ( is_robots() || is_favicon() || is_feed() || is_trackback() || get_query_var( 'sitemap' ) || get_query_var( 'sitemap-stylesheet' ) ) {
+			return;
+		}
+
 		wp_die(
 			wp_kses_post(
 				sprintf(

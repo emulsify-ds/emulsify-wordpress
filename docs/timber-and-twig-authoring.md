@@ -13,7 +13,10 @@ composer install
 
 In Bedrock, prefer the application-level Composer project when that is where PHP dependencies are managed. Either approach works as long as WordPress loads the Composer autoloader before the theme renders.
 
-If Timber is missing, the parent theme shows an admin notice and stops frontend rendering with a clear runtime error.
+If Timber is missing, the parent theme shows an admin notice and stops theme
+page rendering with a clear runtime error. Native WordPress robots, favicon,
+feed, trackback, sitemap and sitemap-stylesheet responses remain available,
+as do admin, AJAX and JSON requests.
 
 ## Twig namespaces
 

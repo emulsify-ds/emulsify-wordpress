@@ -32,6 +32,7 @@ run('Install Composer dependencies for Twig smoke coverage', 'composer', [
   '--prefer-dist',
 ]);
 run('Run Bootstrap loader smoke test', 'npm', ['run', 'smoke:bootstrap-loader']);
+run('Run missing Timber native-route smoke test', 'npm', ['run', 'smoke:missing-timber']);
 run('Run ACF Local JSON smoke test', 'npm', ['run', 'smoke:acf-json']);
 run('Run asset manifest smoke test', 'npm', ['run', 'smoke:asset-manifest']);
 run('Run Twig attribute helper smoke test', 'npm', ['run', 'smoke:attributes']);
