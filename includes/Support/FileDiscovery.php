@@ -13,6 +13,13 @@ namespace Emulsify\Theme\Support;
 final class FileDiscovery {
 
 	/**
+	 * Roots whose discovery failures have already been reported this request.
+	 *
+	 * @var array<string, bool>
+	 */
+	private static array $reported_roots = array();
+
+	/**
 	 * Builds child-first theme root candidates for a theme-relative directory.
 	 *
 	 * @param string $directory  Theme-relative directory.
@@ -82,8 +89,12 @@ final class FileDiscovery {
 				false === $real
 				|| isset( $seen[ $real ] )
 				|| ! is_dir( $candidate['path'] )
-				|| ! is_readable( $candidate['path'] )
 			) {
+				continue;
+			}
+
+			if ( ! is_readable( $candidate['path'] ) ) {
+				self::report_unreadable_directory( $candidate['path'], $candidate['path'] );
 				continue;
 			}
 
@@ -100,18 +111,24 @@ final class FileDiscovery {
 	 * @param array $roots      Normalized root records.
 	 * @param array $extensions Allowed extensions. Empty allows all files.
 	 * @param bool  $recursive  Whether child directories should be scanned.
+	 * @param bool  $complete   Receives whether every directory could be scanned.
 	 * @return array File records.
 	 */
-	public static function file_records( array $roots, array $extensions = array(), bool $recursive = true ): array {
-		$records = array();
+	public static function file_records( array $roots, array $extensions = array(), bool $recursive = true, bool &$complete = true ): array {
+		$records  = array();
+		$complete = true;
 
 		foreach ( $roots as $root ) {
 			if ( empty( $root['path'] ) || ! is_scalar( $root['path'] ) ) {
 				continue;
 			}
 
-			$path  = rtrim( (string) $root['path'], '/\\' );
-			$files = $recursive ? self::recursive_files( $path, $extensions ) : self::directory_files( $path, $extensions );
+			$path          = rtrim( (string) $root['path'], '/\\' );
+			$root_complete = true;
+			$files         = $recursive
+				? self::recursive_files( $path, $extensions, $root_complete )
+				: self::directory_files( $path, $extensions, $root_complete );
+			$complete      = $complete && $root_complete;
 
 			foreach ( $files as $file ) {
 				$record = array(
@@ -138,18 +155,38 @@ final class FileDiscovery {
 	 *
 	 * @param string $directory  Directory to scan.
 	 * @param array  $extensions Allowed extensions. Empty allows all files.
+	 * @param bool   $complete   Receives whether every directory could be scanned.
 	 * @return array Absolute file paths.
 	 */
-	public static function recursive_files( string $directory, array $extensions = array() ): array {
+	public static function recursive_files( string $directory, array $extensions = array(), bool &$complete = true ): array {
 		$files      = array();
 		$extensions = self::normalize_extensions( $extensions );
-		$iterator   = new \RecursiveIteratorIterator(
-			new \RecursiveDirectoryIterator( $directory, \RecursiveDirectoryIterator::SKIP_DOTS )
-		);
+		$pending    = array( $directory );
+		$complete   = true;
 
-		foreach ( $iterator as $file ) {
-			if ( $file->isFile() && self::extension_allowed( $file, $extensions ) ) {
-				$files[] = $file->getPathname();
+		// Open each directory separately so a failed branch cannot hide its siblings.
+		while ( $pending ) {
+			$path = array_pop( $pending );
+
+			if ( ! is_dir( $path ) || ! is_readable( $path ) ) {
+				$complete = false;
+				self::report_unreadable_directory( $directory, $path );
+				continue;
+			}
+
+			try {
+				$iterator = new \FilesystemIterator( $path, \FilesystemIterator::SKIP_DOTS );
+
+				foreach ( $iterator as $file ) {
+					if ( $file->isDir() && ! $file->isLink() ) {
+						$pending[] = $file->getPathname();
+					} elseif ( $file->isFile() && self::extension_allowed( $file, $extensions ) ) {
+						$files[] = $file->getPathname();
+					}
+				}
+			} catch ( \UnexpectedValueException $error ) {
+				$complete = false;
+				self::report_unreadable_directory( $directory, $path );
 			}
 		}
 
@@ -163,22 +200,58 @@ final class FileDiscovery {
 	 *
 	 * @param string $directory  Directory to scan.
 	 * @param array  $extensions Allowed extensions. Empty allows all files.
+	 * @param bool   $complete   Receives whether the directory could be scanned.
 	 * @return array Absolute file paths.
 	 */
-	public static function directory_files( string $directory, array $extensions = array() ): array {
+	public static function directory_files( string $directory, array $extensions = array(), bool &$complete = true ): array {
 		$files      = array();
 		$extensions = self::normalize_extensions( $extensions );
-		$iterator   = new \FilesystemIterator( $directory, \FilesystemIterator::SKIP_DOTS );
+		$complete   = true;
 
-		foreach ( $iterator as $file ) {
-			if ( $file->isFile() && self::extension_allowed( $file, $extensions ) ) {
-				$files[] = $file->getPathname();
+		if ( ! is_dir( $directory ) || ! is_readable( $directory ) ) {
+			$complete = false;
+			self::report_unreadable_directory( $directory, $directory );
+			return $files;
+		}
+
+		try {
+			$iterator = new \FilesystemIterator( $directory, \FilesystemIterator::SKIP_DOTS );
+
+			foreach ( $iterator as $file ) {
+				if ( $file->isFile() && self::extension_allowed( $file, $extensions ) ) {
+					$files[] = $file->getPathname();
+				}
 			}
+		} catch ( \UnexpectedValueException $error ) {
+			$complete = false;
+			self::report_unreadable_directory( $directory, $directory );
 		}
 
 		sort( $files );
 
 		return $files;
+	}
+
+	/**
+	 * Reports a failed scan once per root in debug environments only.
+	 *
+	 * @param string $root      Discovery root.
+	 * @param string $directory Unreadable or vanished directory.
+	 * @return void
+	 */
+	private static function report_unreadable_directory( string $root, string $directory ): void {
+		if ( ! defined( 'WP_DEBUG' ) || ! WP_DEBUG || isset( self::$reported_roots[ $root ] ) ) {
+			return;
+		}
+
+		self::$reported_roots[ $root ] = true;
+		$message                       = sprintf( 'Skipping unreadable or missing discovery directory: %s (root: %s).', $directory, $root );
+
+		if ( function_exists( 'wp_trigger_error' ) ) {
+			wp_trigger_error( __METHOD__, $message, E_USER_WARNING );
+		} else {
+			error_log( $message );
+		}
 	}
 
 	/**
