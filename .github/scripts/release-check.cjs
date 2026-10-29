@@ -1497,15 +1497,10 @@ function runStaticChecks() {
       ensure(!Object.hasOwn(workflow.on || {}, 'pull_request_target'), `${file} must not run untrusted pull requests with pull_request_target credentials.`);
       for (const [jobName, job] of Object.entries(workflow.jobs || {})) {
         const publishingJob = file === '.github/workflows/semantic-release.yml' && jobName === 'semantic-release';
-        const contributorsJob = file === '.github/workflows/contributors.yml' && jobName === 'add-contributors';
         if (publishingJob) {
           ensure(job.permissions?.contents === 'write' && job.permissions?.issues === 'write'
             && job.permissions?.['pull-requests'] === 'write' && Object.keys(job.permissions).length === 3,
           'The semantic-release publishing job must request exactly contents, issues, and pull-requests write permissions.');
-        }
-        else if (contributorsJob) {
-          ensure(job.permissions?.contents === 'write' && Object.keys(job.permissions).length === 1,
-            'Contributor automation must request only contents: write.');
         }
         else {
           ensure(job.permissions === undefined || (typeof job.permissions === 'object'
