@@ -18,7 +18,8 @@ In a child `templates/page.twig`, extend the parent-only namespace:
 {% endblock %}
 ```
 
-WordPress selects the parent's `page.php`, which renders `@templates/page.twig`.
+For pages that do not require a password, WordPress selects the parent's
+`page.php`, which renders `@templates/page.twig`.
 That child-first lookup selects the child's override. Its `@emulsify-tpl` extends
 then selects the parent explicitly, so surrounding layout and later parent fixes
 continue to reach the child. `parent()` preserves the selected block's default
@@ -47,7 +48,7 @@ blocks retain their original names and boundaries.
 | `layouts/base.twig` | `footer` | The footer partial and copyright markup |
 | `page.twig` | `content` | Page article with title/content, or the empty-page message |
 | `single.twig` | `content` | Post article, metadata, content, and comments |
-| `single-password.twig` | `content` | Password-protected post form |
+| `single-password.twig` | `content` | WordPress password form for protected posts and pages |
 | `index.twig`, `archive.twig`, `author.twig`, `search.twig` | `content` | Teasers, pagination, or the route's empty-result message |
 | `404.twig` | `content` | Not-found heading and message |
 
@@ -60,6 +61,26 @@ usually by calling `parent()`.
 The base layout keeps `wp_body_open()`, the skip link, `wp_footer()`, and the
 `get_footer` action outside every overridable block. Block overrides therefore
 preserve these WordPress hooks and the skip link.
+
+## Password-protected content
+
+When `post_password_required()` is true, the parent page and single controllers
+render `@templates/single-password.twig`. This remains a child-first extension
+point for both posts and pages. A same-path child override can extend
+`@emulsify-tpl/single-password.twig` and call `parent()` in its `content` block.
+
+The parent fallback sets its title with `get_the_title()` and prints
+`get_the_password_form( post.id )`, preserving WordPress's protected-title
+format, site URL, password-cookie flow, and `the_password_form` filter. Use that
+WordPress filter to customize the form; core's form uses `.post-password-form`
+rather than the former custom `.password-form` markup.
+
+The parent enables Timber's password-form handling for `post.content` even in
+child templates. Empty filtered forms stay hidden without falling through to
+protected content. Excerpts and raw `post.post_content` do not have that
+protection. Check `post.password_required` before rendering them, including in
+overrides of `partials/tease.twig` and `partials/tease-post.twig`. A correct
+post-password cookie makes that check false and restores normal rendering.
 
 ## Verification
 

@@ -65,6 +65,11 @@ lineage. See the [release process](release-process.md).
 
 ## Fixed
 
+- Security: password-protected pages and listing excerpts no longer expose
+  content without a valid post-password cookie, fixing an issue present in
+  `2.0.0`. Timber content reads now show the password form, and protected pages
+  and posts use WordPress's filtered form with the correct site URL, including
+  installations in a subdirectory.
 - The media embed filter accepts missing post IDs and normalizes public-filter
   inputs, including embeds rendered outside a post, without interrupting the
   request.

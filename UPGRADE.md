@@ -80,6 +80,16 @@ remain project-owned. New generated themes receive the updated defaults.
    copied anchor would duplicate its ID. The PHP attribute bag also rejects
    case-insensitive `on*` names to prevent event-handler attributes. See
    [core-block context](docs/core-block-twig-rendering.md#twig-context).
+6. **Review password-protected content in child overrides.** Check
+   `post.password_required` in copied `page.twig`, `single.twig`,
+   `partials/tease.twig`, and `partials/tease-post.twig` before printing protected
+   content or excerpts. The parent now enables Timber's password-form handling
+   for `post.content`, including child templates; `post.excerpt`, raw
+   `post.post_content`, and custom rendering still need an explicit guard.
+   Protected pages and posts share `single-password.twig`, which now uses
+   WordPress's filtered password form and site URL. Review styles targeting the
+   former custom form; core uses `.post-password-form`. See
+   [password-protected template handling](docs/template-extension.md#password-protected-content).
 
 Render representative pages as both an administrator and an anonymous visitor,
 check the editor where blocks are used, and inspect `debug.log`. Storybook
