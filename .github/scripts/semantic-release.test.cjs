@@ -8,6 +8,26 @@ const { assertPublishedStableTags, main, releaseOptions } = require('./semantic-
 const releaseConfig = require('../../release.config.js');
 const guard = releaseConfig.plugins.find((plugin) => typeof plugin.verifyRelease === 'function');
 
+const githubEnv = {
+  CI: 'true',
+  GITHUB_TOKEN: 'fixture-token',
+  GITHUB_REPOSITORY: 'emulsify-ds/emulsify-wordpress',
+};
+
+function publishedRelease(overrides = {}) {
+  return {
+    draft: false,
+    prerelease: false,
+    published_at: '2026-10-28T12:00:00Z',
+    assets: [{ name: 'emulsify.zip', state: 'uploaded', size: 42 }],
+    ...overrides,
+  };
+}
+
+function releaseResponse(status = 200, release = publishedRelease()) {
+  return { ok: status >= 200 && status < 300, status, json: async () => release };
+}
+
 function fixture(t, version = '2.1.0') {
   const workRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'emulsify-publish-contract-'));
   t.after(() => fs.rmSync(workRoot, { recursive: true, force: true }));
@@ -143,15 +163,100 @@ test('local dry runs on a release branch do not require HEAD to equal remote mai
 test('CI still skips a valid unprepared release without invoking semantic-release', async (t) => {
   const repository = fixture(t, '2.0.0');
   advanceRemoteMain(repository);
+  let checked = 0;
   assert.equal(await main({
-    repoRoot: repository.repoRoot, env: { CI: 'true' }, args: [],
+    repoRoot: repository.repoRoot, env: githubEnv, args: [],
+    fetchRelease: async (url, options) => {
+      checked += 1;
+      assert.equal(url, 'https://api.github.com/repos/emulsify-ds/emulsify-wordpress/releases/tags/2.0.0');
+      assert.equal(options.headers.Authorization, 'Bearer fixture-token');
+      assert.equal(options.redirect, 'error', 'Release credentials must not follow redirects.');
+      return releaseResponse();
+    },
     runRelease: () => assert.fail('An unprepared release must not invoke semantic-release.'),
+  }), 0);
+  assert.equal(checked, 1, 'CI must verify publication health before treating the tagged version as a successful skip.');
+});
+
+test('CI refuses a missing GitHub release for a tag and reports safe recovery commands', async (t) => {
+  const { repoRoot } = fixture(t, '2.0.0');
+  await assert.rejects(main({
+    repoRoot, env: githubEnv, args: [], fetchRelease: async () => releaseResponse(404),
+    runRelease: () => assert.fail('A partial release must never invoke semantic-release.'),
+  }), /release 2\.0\.0.*missing or still a draft.*gh release view 2\.0\.0.*gh release create 2\.0\.0.*--verify-tag.*--draft[\s\S]*gh release upload 2\.0\.0[\s\S]*gh release edit 2\.0\.0.*--draft=false/i);
+});
+
+test('CI refuses unpublished releases and missing or incomplete release ZIP assets', async (t) => {
+  const { repoRoot } = fixture(t, '2.0.0');
+  for (const release of [
+    publishedRelease({ draft: true, published_at: null }),
+    publishedRelease({ prerelease: true }),
+    publishedRelease({ published_at: null }),
+    publishedRelease({ assets: [] }),
+    publishedRelease({ assets: [{ name: 'source.zip', state: 'uploaded', size: 42 }] }),
+    publishedRelease({ assets: [{ name: 'emulsify.zip', state: 'starter', size: 42 }] }),
+    publishedRelease({ assets: [{ name: 'emulsify.zip', state: 'uploaded', size: 0 }] }),
+  ]) {
+    await assert.rejects(main({
+      repoRoot, env: githubEnv, args: [], fetchRelease: async () => releaseResponse(200, release),
+      runRelease: () => assert.fail('A partial release must never invoke semantic-release.'),
+    }), /gh release (?:upload|edit) 2\.0\.0/);
+  }
+});
+
+test('CI recovery check fails closed on absent credentials, API failures, and invalid release responses', async (t) => {
+  const { repoRoot } = fixture(t, '2.0.0');
+  for (const env of [{ CI: 'true' }, { CI: 'true', GITHUB_TOKEN: 'fixture-token' }]) {
+    await assert.rejects(main({
+      repoRoot, env, args: [], fetchRelease: () => assert.fail('Missing CI configuration must fail before requesting GitHub.'),
+    }), /GITHUB_TOKEN|GITHUB_REPOSITORY/);
+  }
+  for (const status of [401, 403, 500]) {
+    await assert.rejects(main({ repoRoot, env: githubEnv, args: [], fetchRelease: async () => releaseResponse(status) }), new RegExp(`HTTP ${status}`));
+  }
+  await assert.rejects(main({ repoRoot, env: githubEnv, args: [], fetchRelease: async () => { throw new Error('network unavailable'); } }), /Unable to verify GitHub release.*network unavailable/);
+  await assert.rejects(main({ repoRoot, env: githubEnv, args: [], fetchRelease: async () => releaseResponse(200, null) }), /Unable to verify GitHub release/);
+});
+
+test('CI diagnoses partial tagged releases before stale-draft errors but keeps the draft contract strict', async (t) => {
+  const { repoRoot } = fixture(t, '2.0.0');
+  fs.writeFileSync(path.join(repoRoot, 'docs/release-notes-next.md'), '# 2.0.0 Release Notes Draft');
+  await assert.rejects(main({ repoRoot, env: githubEnv, args: [], fetchRelease: async () => releaseResponse(404) }), /gh release create 2\.0\.0/);
+  await assert.rejects(main({ repoRoot, env: githubEnv, args: [], fetchRelease: async () => releaseResponse() }), /already-tagged release 2\.0\.0/);
+});
+
+test('local unprepared runs remain tokenless and do not query GitHub', async (t) => {
+  const { repoRoot } = fixture(t, '2.0.0');
+  assert.equal(await main({
+    repoRoot, env: {}, args: ['--dry-run', '--no-ci'],
+    fetchRelease: () => assert.fail('Local skips do not require GitHub API access.'),
+    runRelease: () => assert.fail('An unprepared release must not invoke semantic-release.'),
+  }), 0);
+});
+
+test('publication preflight never invokes semantic-release and leaves draft validation to readiness', async (t) => {
+  const { repoRoot } = fixture(t);
+  fs.writeFileSync(path.join(repoRoot, 'README.md'), 'Latest release: 1.9.9');
+  assert.equal(await main({
+    repoRoot, env: githubEnv, args: ['--check-publication'],
+    fetchRelease: () => assert.fail('An upcoming untagged release has no GitHub release to check.'),
+    runRelease: () => assert.fail('Publication preflight must never publish.'),
+  }), 0);
+  fs.writeFileSync(path.join(repoRoot, 'package.json'), JSON.stringify({ version: '2.0.0' }));
+  await assert.rejects(main({
+    repoRoot, env: githubEnv, args: ['--check-publication'], fetchRelease: async () => releaseResponse(404),
+    runRelease: () => assert.fail('Publication preflight must never publish.'),
+  }), /gh release create 2\.0\.0/);
+  assert.equal(await main({
+    repoRoot, env: githubEnv, args: ['--check-publication'], fetchRelease: async () => releaseResponse(),
+    runRelease: () => assert.fail('Publication preflight must never publish.'),
   }), 0);
 });
 
 test('parses the existing publish and publish-test command options', () => {
   assert.deepEqual(releaseOptions(['--tag-format', '${version}', '--dry-run', '--debug', '--no-ci']), { tagFormat: '${version}', dryRun: true, debug: true, ci: false });
   assert.deepEqual(releaseOptions(['-t', '${version}', '-d']), { tagFormat: '${version}', dryRun: true });
+  assert.deepEqual(releaseOptions(['--check-publication']), { checkPublication: true });
 });
 
 test('real semantic-release dry run analyzes a pushed release PR branch and blocks mismatches before tagging', (t) => {
