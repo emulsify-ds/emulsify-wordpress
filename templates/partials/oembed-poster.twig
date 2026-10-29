@@ -31,7 +31,7 @@
 </head>
 <body>
   <a {{ add_attributes({ class: 'emulsify-oembed-poster' }) }} href="{{ media_embed.player_url }}" target="_self" referrerpolicy="strict-origin-when-cross-origin">
-    {% if media_embed.thumbnail_url %}<img {{ add_attributes({ class: 'emulsify-oembed-poster__thumbnail' }) }} src="{{ media_embed.thumbnail_url }}" alt="" referrerpolicy="no-referrer">{% endif %}
+    {% if media_embed.thumbnail_url %}<img {{ add_attributes({ class: 'emulsify-oembed-poster__thumbnail' }) }} src="{{ media_embed.thumbnail_url }}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">{% endif %}
     <span {{ add_attributes({ class: 'emulsify-oembed-poster__play' }) }} aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><path d="M18 12v24l20-12z" fill="currentColor" /></svg></span>
     <span {{ add_attributes({ class: 'emulsify-oembed-poster__label' }) }}>{{ media_embed.play_label }}{% if media_embed.title %}<span {{ add_attributes({ class: 'emulsify-oembed-visually-hidden' }) }}>: {{ media_embed.title }}</span>{% endif %}</span>
   </a>

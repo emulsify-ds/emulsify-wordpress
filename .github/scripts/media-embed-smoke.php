@@ -72,7 +72,7 @@ function emulsify_media_smoke_document( string $html ): DOMDocument {
  * @return string Provider markup.
  */
 function emulsify_media_smoke_markup( string $source, string $title = 'Fixture video', int $height = 360 ): string {
-	return '<iframe width="640" height="' . $height . '" src="' . esc_attr( $source ) . '" title="' . esc_attr( $title ) . '" class="fixture-video" loading="lazy" allow="clipboard-write; autoplay" allowfullscreen></iframe>';
+	return '<iframe width="640" height="' . $height . '" src="' . esc_attr( $source ) . '" title="' . esc_attr( $title ) . '" class="fixture-video" loading="lazy" allow="clipboard-write; accelerometer; gyroscope; camera \'none\'; autoplay" allowfullscreen></iframe>';
 }
 
 $options       = array();
@@ -261,6 +261,7 @@ try {
 				$images = $document->getElementsByTagName( 'img' );
 				emulsify_media_smoke_assert( ( 'provider' === $poster ? 1 : 0 ) === $images->length, 'Only provider posters may request thumbnails.' );
 				if ( 'provider' === $poster ) {
+					emulsify_media_smoke_check( 'lazy' === $images->item( 0 )->getAttribute( 'loading' ) && 'async' === $images->item( 0 )->getAttribute( 'decoding' ), 'Provider thumbnails must be lazy-loaded and asynchronously decoded.' );
 					emulsify_media_smoke_assert( '' === $images->item( 0 )->getAttribute( 'alt' ) && 'no-referrer' === $images->item( 0 )->getAttribute( 'referrerpolicy' ), 'Provider thumbnails must be decorative and omit the referrer.' );
 				} else {
 					emulsify_media_smoke_assert( 0 === $xpath->query( '//*[@src] | //link | //object | //embed' )->length, 'Neutral posters must not request third-party resources.' );
@@ -269,6 +270,10 @@ try {
 				emulsify_media_smoke_assert( 1 === $styles->length && 1 === preg_match( '/:focus(?:-visible)?\b[^}]*outline\s*:/s', $styles->item( 0 )->textContent ), 'The isolated poster needs an inline visible focus ring.' );
 				emulsify_media_smoke_assert( 1 === preg_match( '/@media[^\{]*max-height\s*:\s*160px/i', $styles->item( 0 )->textContent ), 'Posters must supply compact controls for frames at most 160px high.' );
 				$allow = emulsify_media_smoke_attribute( $output, 'allow' );
+				emulsify_media_smoke_check( is_string( $allow ) && str_contains( $allow, "camera 'none'" ), 'Explicit provider permission origin lists must remain unchanged.' );
+				foreach ( array( 'clipboard-write', 'accelerometer', 'gyroscope' ) as $permission ) {
+					emulsify_media_smoke_check( is_string( $allow ) && 1 === preg_match( '/(?:^|;\s*)' . preg_quote( $permission, '/' ) . '\s+[^;]*https:\/\/' . preg_quote( (string) wp_parse_url( $expected, PHP_URL_HOST ), '/' ) . '(?:\s|;|$)/', $allow ), 'Kept iframe permissions must retain their provider origin: ' . $permission );
+				}
 				foreach ( array( 'autoplay', 'fullscreen', 'picture-in-picture', 'encrypted-media' ) as $permission ) {
 					emulsify_media_smoke_assert( is_string( $allow ) && 1 === preg_match( '/(?:^|;\s*)' . preg_quote( $permission, '/' ) . '\s+[^;]*https:\/\/' . preg_quote( (string) wp_parse_url( $expected, PHP_URL_HOST ), '/' ) . '(?:\s|;|$)/', $allow ), 'The iframe must delegate ' . $permission . ' to the player origin.' );
 				}

@@ -37,6 +37,7 @@ async function verifyMediaEmbeds({ themeDir, url, outputDir }) {
           assert(response.ok());
           const frames = await page.$$('iframe[srcdoc]');
           assert.equal(frames.length, 2, 'Classic and block embeds must both use poster documents.');
+          const allow = await frames[index].evaluate((element) => element.getAttribute('allow'));
           const frame = await frames[index].contentFrame();
           const document = await frame.evaluate(() => ({
             language: document.documentElement.lang,
@@ -45,17 +46,28 @@ async function verifyMediaEmbeds({ themeDir, url, outputDir }) {
             link: document.querySelector('a').href,
             referrer: document.querySelector('a').referrerPolicy,
             height: innerHeight,
-            images: [...document.images].map((image) => ({ referrer: image.referrerPolicy, alt: image.alt })),
+            images: [...document.images].map((image) => ({ referrer: image.referrerPolicy, alt: image.alt, loading: image.loading, decoding: image.decoding })),
             hiddenTitle: document.querySelector('.emulsify-oembed-visually-hidden')?.textContent,
+            csp: document.querySelector('meta[http-equiv="Content-Security-Policy" i]')?.content,
           }));
           assert.equal(document.scripts, 0);
+          assert.equal(document.csp, "script-src 'none'", 'The poster must prohibit scripts through its own meta CSP.');
           assert(document.language && document.title && document.hiddenTitle);
+          const playerOrigin = new URL(document.link).origin;
+          for (const permission of ['autoplay', 'fullscreen', 'picture-in-picture', 'encrypted-media', 'clipboard-write', 'accelerometer', 'gyroscope']) {
+            const directive = allow.split(';').map((value) => value.trim()).find((value) => value.split(/\s+/)[0] === permission);
+            assert(directive?.split(/\s+/).includes(playerOrigin), `The iframe must delegate ${permission} to the player origin.`);
+          }
           assert.equal(document.referrer, 'strict-origin-when-cross-origin');
           assert.equal(requests.length, 0, 'No player request is allowed before activation.');
           if (poster === 'neutral') assert.equal(thumbnails.length, 0, 'Neutral mode must not request provider thumbnails.');
           if (poster === 'provider' && index === 0) assert(thumbnails.length > 0, 'Provider mode must render the YouTube thumbnail.');
           for (const thumbnail of thumbnails) assert(!thumbnail.referer, 'Thumbnail requests must not disclose a referrer.');
-          for (const image of document.images) assert(image.alt === '' && image.referrer === 'no-referrer');
+          for (const image of document.images) {
+            assert(image.alt === '' && image.referrer === 'no-referrer');
+            assert.equal(image.loading, 'lazy', 'Provider thumbnails must opt into native lazy loading.');
+            assert.equal(image.decoding, 'async');
+          }
           let focused = false;
           for (let count = 0; count < 30 && !focused; count++) {
             await page.keyboard.press('Tab');
@@ -98,11 +110,56 @@ async function verifyMediaEmbeds({ themeDir, url, outputDir }) {
         }
       }
     }
+    // This run keeps JavaScript enabled: the poster's meta CSP must block both
+    // scripts and event handlers, then cease applying after player navigation.
+    // The real fixture policy omits self from frame-src for the srcdoc poster.
+    const page = await browser.newPage();
+    const requests = [];
+    let activated = false;
+    try {
+      await page.setRequestInterception(true);
+      page.on('request', (request) => {
+        const target = new URL(request.url());
+        if (['www.youtube.com', 'www.youtube-nocookie.com', 'player.vimeo.com'].includes(target.hostname)) {
+          requests.push({ url: target.href, activated });
+          return request.respond({ status: 200, contentType: 'text/html', body: '<!doctype html><html lang="en"><title>Fixture player</title><body>Fixture player<script>document.body.dataset.playerScript = "ran";</script></body></html>' });
+        }
+        return request.continue();
+      });
+      const route = new URL(url);
+      route.searchParams.set('media_poster', 'neutral');
+      const response = await page.goto(route.href, { waitUntil: 'networkidle0' });
+      const policy = response.headers()['content-security-policy'];
+      assert(policy, 'The real fixture must send its Content-Security-Policy.');
+      assert(!/frame-src[^;]*'self'/.test(policy), 'The test policy must omit self from frame-src.');
+      const element = await page.$('iframe[srcdoc]');
+      const frame = await element.contentFrame();
+      await frame.waitForSelector('a.emulsify-oembed-poster');
+      const srcdoc = await element.evaluate((iframe) => iframe.srcdoc);
+      await page.evaluate(() => { window.emulsifyPosterScriptRan = false; window.emulsifyPosterEventRan = false; });
+      const hostileDocument = srcdoc.replace('<body>', '<body onload="parent.emulsifyPosterEventRan = true">').replace('</body>', '<script>parent.emulsifyPosterScriptRan = true;</script></body>');
+      assert.notEqual(hostileDocument, srcdoc);
+      await Promise.all([
+        frame.waitForNavigation({ waitUntil: 'load' }),
+        element.evaluate((iframe, document) => { iframe.srcdoc = document; }, hostileDocument),
+      ]);
+      assert.equal(await page.evaluate(() => window.emulsifyPosterScriptRan || window.emulsifyPosterEventRan), false, 'Poster meta CSP must block scripts and inline event handlers.');
+      assert.equal(requests.length, 0, 'The poster must not request the player before activation.');
+      activated = true;
+      await Promise.all([frame.waitForNavigation({ waitUntil: 'load' }), frame.click('a.emulsify-oembed-poster')]);
+      assert.equal(requests.length, 1);
+      assert(requests[0].activated);
+      assert.equal(new URL(frame.url()).hostname, 'www.youtube-nocookie.com');
+      assert.equal(await frame.evaluate(() => document.body.dataset.playerScript), 'ran', 'The poster meta CSP must not restrict the activated player document.');
+      evidence.push({ scriptPolicy: policy, requests, posterScriptsBlocked: true, playerScriptRan: true });
+    } finally {
+      await page.close();
+    }
   } finally {
     fs.writeFileSync(path.join(outputDir, 'media-browser.json'), JSON.stringify(evidence, null, 2) + '\n');
     await browser.close();
   }
-  console.log('Media posters passed JavaScript-free keyboard activation, privacy, network/referrer, compact focus, and Back-history checks.');
+  console.log('Media posters passed JavaScript-free keyboard activation, privacy, network/referrer, permissions, lazy thumbnails, meta CSP, frame-src without self, compact focus, and Back-history checks.');
 }
 
 module.exports = { verifyMediaEmbeds };

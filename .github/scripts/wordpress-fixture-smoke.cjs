@@ -603,10 +603,10 @@ function createFixtureContent(wpPath) {
 // Fixture-only provider responses keep CI independent of provider networks.
 add_filter( 'pre_oembed_result', function ( $result, $url ) {
   if ( 'https://www.youtube.com/watch?v=M7lc1UVf-VE' === $url ) {
-    return '<iframe width="200" height="113" src="https://www.youtube.com/embed/M7lc1UVf-VE?feature=oembed&amp;rel=0" title="YouTube fixture" allowfullscreen></iframe>';
+    return '<iframe width="200" height="113" src="https://www.youtube.com/embed/M7lc1UVf-VE?feature=oembed&amp;rel=0" title="YouTube fixture" allow="clipboard-write; accelerometer; gyroscope" allowfullscreen></iframe>';
   }
   if ( 'https://vimeo.com/76979871/fixturehash' === $url ) {
-    return '<iframe width="320" height="180" src="https://player.vimeo.com/video/76979871?h=fixturehash&amp;badge=0" title="Vimeo fixture" allowfullscreen></iframe>';
+    return '<iframe width="320" height="180" src="https://player.vimeo.com/video/76979871?h=fixturehash&amp;badge=0" title="Vimeo fixture" allow="clipboard-write; accelerometer; gyroscope" allowfullscreen></iframe>';
   }
   return $result;
 }, 10, 2 );

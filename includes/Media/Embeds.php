@@ -321,13 +321,13 @@ final class Embeds {
 		$permissions = array( 'autoplay', 'fullscreen', 'picture-in-picture', 'encrypted-media' );
 		$existing    = $processor->get_attribute( 'allow' );
 		$directives  = array();
+		$origins     = "'src' https://www.youtube.com https://youtube.com https://www.youtube-nocookie.com https://player.vimeo.com";
 		foreach ( explode( ';', is_string( $existing ) ? $existing : '' ) as $directive ) {
 			$directive = trim( $directive );
 			if ( '' !== $directive && ! in_array( preg_split( '/\s+/', $directive )[0], $permissions, true ) ) {
-				$directives[] = $directive;
+				$directives[] = 1 === count( preg_split( '/\s+/', $directive ) ) ? $directive . ' ' . $origins : $directive;
 			}
 		}
-		$origins = "'src' https://www.youtube.com https://youtube.com https://www.youtube-nocookie.com https://player.vimeo.com";
 		foreach ( $permissions as $permission ) {
 			$directives[] = $permission . ' ' . $origins;
 		}
