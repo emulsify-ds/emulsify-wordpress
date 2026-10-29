@@ -3,6 +3,7 @@
 <html lang="{{ media_embed.language_code }}" dir="{{ media_embed.language_direction }}">
 <head>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="script-src 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ media_embed.title ?: media_embed.play_label }}</title>
   <style>

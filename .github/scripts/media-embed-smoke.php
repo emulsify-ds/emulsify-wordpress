@@ -236,6 +236,7 @@ try {
 				emulsify_media_smoke_assert( 1 === $xpath->query( '//a//span[contains(@class, "visually-hidden")]' )->length, 'The complete video title must be visually hidden inside the accessible link label.' );
 				emulsify_media_smoke_assert( get_bloginfo( 'language' ) === $document->documentElement->getAttribute( 'lang' ), 'The poster document must declare the WordPress language.' );
 				emulsify_media_smoke_assert( 0 === $xpath->query( '//iframe | //script | //noscript | //@*[starts-with(name(), "on")]' )->length, 'Posters must contain no nested player, script, or injected event handler.' );
+				emulsify_media_smoke_check( 1 === $xpath->query( '//meta[translate(@http-equiv,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz")="content-security-policy" and @content="script-src \'none\'"]' )->length, 'Parent posters must prohibit scripts with a meta CSP.' );
 				$images = $document->getElementsByTagName( 'img' );
 				emulsify_media_smoke_assert( ( 'provider' === $poster ? 1 : 0 ) === $images->length, 'Only provider posters may request thumbnails.' );
 				if ( 'provider' === $poster ) {
@@ -379,11 +380,29 @@ try {
 			$created_dirs[] = $directory;
 		}
 	}
+	// Numeric references inside a single-quoted child attribute must survive
+	// the outer srcdoc boundary unchanged, including on WordPress 6.8.
+	$roundtrip_title = "Clip' onfocus='alert(document.domain)' autofocus='";
+	$roundtrip_template = '<!doctype html><html lang="en"><head><title>Roundtrip</title></head><body><a title=\'{{ media_embed.title }}\'>\' " A & B &amp; &#39; &#60;b&#62;</a></body></html>';
+	$roundtrip = str_replace( '{{ media_embed.title }}', htmlspecialchars( $roundtrip_title, ENT_QUOTES, 'UTF-8' ), $roundtrip_template );
+	file_put_contents( $override, $roundtrip_template );
+	$options = array( 'click_to_load' => true, 'poster' => 'neutral' );
+	$output = apply_filters( 'embed_oembed_html', emulsify_media_smoke_markup( $fixtures['youtube']['source'], $roundtrip_title ), $fixtures['youtube']['url'], array(), 0 );
+	$actual_roundtrip = emulsify_media_smoke_attribute( $output, 'srcdoc' );
+	emulsify_media_smoke_check( $roundtrip === $actual_roundtrip, 'srcdoc must round-trip every document byte, including numeric character references.' );
+	$roundtrip_dom = emulsify_media_smoke_document( (string) $actual_roundtrip );
+	emulsify_media_smoke_check( 0 === ( new DOMXPath( $roundtrip_dom ) )->query( '//@onfocus|//@autofocus' )->length, 'Single-quoted child attributes must not acquire injected handlers or autofocus.' );
+	$clear_roundtrip = static function ( \Twig\Environment $environment ): \Twig\Environment {
+		$environment->removeCache( '@templates/partials/oembed-poster.twig' );
+		return $environment;
+	};
+	add_filter( 'timber/twig', $clear_roundtrip, 999 );
 	$custom = '<!doctype html><html lang="en"><head><title>Child poster</title></head><body><p data-child-media-poster="true">Child override</p></body></html>';
 	emulsify_media_smoke_assert( false !== file_put_contents( $override, $custom ), 'Unable to write the temporary child poster override.' );
 	$options = array( 'click_to_load' => true, 'poster' => 'neutral' );
 	$output = apply_filters( 'embed_oembed_html', emulsify_media_smoke_markup( $fixtures['youtube']['source'] ), $fixtures['youtube']['url'], array(), 0 );
 	emulsify_media_smoke_assert( $custom === emulsify_media_smoke_attribute( $output, 'srcdoc' ), 'Child @templates poster overrides must replace the parent fallback.' );
+	remove_filter( 'timber/twig', $clear_roundtrip, 999 );
 
 	// Invalidate the already-compiled child template after changing it in this
 	// request. A normal request starts with the project's template already saved.

@@ -159,7 +159,7 @@ final class Embeds {
 			$reader->next_tag();
 			$escapes_entities = '&amp;' === $reader->get_attribute( 'srcdoc' );
 		}
-		return $escapes_entities ? $document : htmlspecialchars( $document, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8', true );
+		return $escapes_entities ? $document : strtr( $document, array( '&' => '&#038;' ) );
 	}
 
 	/**

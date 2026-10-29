@@ -616,7 +616,7 @@ add_filter( 'emulsify_theme_media_embed_options', function ( $options ) {
 } );
 add_action( 'template_redirect', function () {
   if ( is_page( 'media-embeds' ) ) {
-    header( "Content-Security-Policy: frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; img-src 'self' https://i.ytimg.com https://i.vimeocdn.com data:; style-src 'self' 'unsafe-inline'" );
+    header( "Content-Security-Policy: frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; img-src 'self' https://i.ytimg.com https://i.vimeocdn.com data:; style-src 'self' 'unsafe-inline'" );
     header( 'Referrer-Policy: no-referrer' );
   }
 } );
