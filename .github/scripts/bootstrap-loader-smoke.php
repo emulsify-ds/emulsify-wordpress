@@ -74,6 +74,7 @@ $classes   = array(
 	'Emulsify\\Theme\\Cli\\GenerateChildThemeCommand',
 	'Emulsify\\Theme\\Support\\AttributeBag',
 	'Emulsify\\Theme\\Support\\AssetRecord',
+	'Emulsify\\Theme\\Support\\LogoutUrl',
 	'Emulsify\\Theme\\Support\\AssetEnqueuer',
 	'Emulsify\\Theme\\Support\\Diagnostics',
 	'Emulsify\\Theme\\Support\\AssetManifest',

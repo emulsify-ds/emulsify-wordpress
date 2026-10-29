@@ -439,3 +439,11 @@ add_filter(
   }
 );
 ```
+
+The parent computes its native body-class string once when extending context;
+`body_class` and `wp.body_class` remain available. `wp.logout_url` is a lazy,
+serializable string value: Twig prints it normally, and PHP consumers should
+cast it with `(string)` before passing it to a strict string API. JSON
+serialization, including Timber's optional output-cache key, materializes the
+URL so cache keys retain their nonce-sensitive value. Default uncached renders
+that never request it do not create the logout nonce.

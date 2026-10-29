@@ -44,7 +44,7 @@ final class MissingTimber {
 	 * @return void
 	 */
 	public function runtime_error(): void {
-		if ( is_admin() || $this->is_ajax_request() || $this->is_json_request() ) {
+		if ( is_admin() || wp_doing_ajax() || wp_is_json_request() ) {
 			return;
 		}
 
@@ -72,29 +72,5 @@ final class MissingTimber {
 	 */
 	private function message(): string {
 		return __( 'Emulsify requires Timber to render WordPress templates. Install Timber with Composer or activate the Timber plugin.', 'emulsify' );
-	}
-
-	/**
-	 * Checks whether the current request is AJAX.
-	 *
-	 * @return bool TRUE for AJAX requests.
-	 */
-	private function is_ajax_request(): bool {
-		if ( function_exists( 'wp_doing_ajax' ) ) {
-			return wp_doing_ajax();
-		}
-
-		$doing_ajax = defined( 'DOING_AJAX' ) ? constant( 'DOING_AJAX' ) : false;
-
-		return true === $doing_ajax;
-	}
-
-	/**
-	 * Checks whether the current request is JSON.
-	 *
-	 * @return bool TRUE for JSON requests.
-	 */
-	private function is_json_request(): bool {
-		return function_exists( 'wp_is_json_request' ) && wp_is_json_request();
 	}
 }

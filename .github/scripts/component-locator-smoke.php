@@ -383,6 +383,7 @@ try {
 	emulsify_locator_smoke_write( $parent . '/dist/components/parent-native/block.json', '{"name":"emulsify/parent-native"}' );
 
 	require_once $repo_root . '/includes/Support/FileDiscovery.php';
+	require_once $repo_root . '/includes/Support/AssetManifest.php';
 	require_once $repo_root . '/includes/Support/AssetRecord.php';
 	require_once $repo_root . '/includes/Support/Diagnostics.php';
 	require_once $repo_root . '/includes/Blocks/ComponentLocator.php';

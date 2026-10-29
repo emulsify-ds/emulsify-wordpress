@@ -70,7 +70,8 @@ remain project-owned. New generated themes receive the updated defaults.
      is true with `aria-current="page"`; leave ancestors unmarked.
    - Base layout: print Timber's trusted `site.language_attributes` fragment
      as markup so `lang` and `dir` parse correctly, while retaining
-     autoescaping for other values.
+     autoescaping for other values. Keep `get_footer` before the footer block
+     and `wp_footer` afterward when copying the base layout.
    - Argumentless Twig `bem()` and `add_attributes()` now read only inherited
      `attributes`. Pass intended values explicitly if a template relied on
      unrelated Timber context variables becoming attributes or BEM options.
@@ -144,6 +145,12 @@ remain project-owned. New generated themes receive the updated defaults.
    normalizing its `--machine-name` option. Nested pattern JSON is now validated
    and rewritten by both generators; fix malformed or non-object JSON before
    generation. See the [generation contract](docs/generated-child-theme-contract.md).
+
+10. **Cast lazy context URLs in PHP consumers.** `wp.logout_url` remains
+    available to Twig but is now a serializable stringable value to avoid
+    creating an unused nonce. PHP code passing it to strict string APIs should
+    use `(string) $context['wp']['logout_url']`. Output-cache JSON serialization
+    still materializes the URL to preserve the cache key's nonce variation.
 
 Render representative pages as both an administrator and an anonymous visitor,
 check the editor where blocks are used, and inspect `debug.log`. Storybook

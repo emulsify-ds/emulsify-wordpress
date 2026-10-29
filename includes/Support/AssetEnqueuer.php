@@ -72,7 +72,7 @@ final class AssetEnqueuer {
 
 		$handle = self::handle( $prefix, $record );
 
-		if ( self::is_module_script( $record ) && function_exists( 'wp_enqueue_script_module' ) ) {
+		if ( self::is_module_script( $record ) ) {
 			wp_enqueue_script_module(
 				$handle,
 				(string) $record['uri'],

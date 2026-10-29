@@ -191,8 +191,7 @@ final class Assets {
 	 * @return array Built asset records.
 	 */
 	private function scanned_asset_files( string $directory, array $extensions ): array {
-		$assets = array();
-		$seen   = array();
+		$files = array();
 
 		foreach ( $this->raw_asset_file_records( $directory ) as $file ) {
 			if ( ! $this->extension_allowed( $file, $extensions ) ) {
@@ -214,24 +213,10 @@ final class Assets {
 				continue;
 			}
 
-			if ( isset( $seen[ $relative ] ) ) {
-				// Discovery roots are child-first. Once a relative path is seen,
-				// later parent files with the same name are intentional fallbacks
-				// and should not be enqueued twice.
-				continue;
-			}
-
-			$seen[ $relative ] = true;
-			$assets[]          = array(
-				'path'     => $file['path'],
-				'priority' => $file['priority'],
-				'relative' => $relative,
-				'uri'      => $file['root_uri'] . '/' . $relative,
-				'version'  => $this->version( $file['path'] ),
-			);
+			$files[] = $file;
 		}
 
-		return FileDiscovery::sort_by_priority_and_relative( $assets );
+		return AssetRecord::from_discovered_files( $files );
 	}
 
 	/**
@@ -302,8 +287,6 @@ final class Assets {
 	 * @return array Asset root records.
 	 */
 	private function asset_roots( string $directory ): array {
-		$directories = FileDiscovery::theme_roots( $directory, true );
-
 		/**
 		 * Filters built asset directories before files are discovered.
 		 *
@@ -314,18 +297,7 @@ final class Assets {
 		 * @param array  $directories Built asset directory records.
 		 * @param string $directory   Theme-relative asset directory being scanned.
 		 */
-		$filtered = apply_filters( 'emulsify_theme_asset_directories', $directories, $directory );
-
-		if ( is_array( $filtered ) ) {
-			$directories = $filtered;
-		}
-
-		return FileDiscovery::normalize_roots(
-			$directories,
-			array(
-				'require_uri' => true,
-			)
-		);
+		return FileDiscovery::filtered_theme_roots( $directory, 'emulsify_theme_asset_directories' );
 	}
 
 	/**
@@ -469,17 +441,5 @@ final class Assets {
 		$entry = is_array( $entry ) ? $entry : array( 'path' => $entry );
 
 		return AssetRecord::entry_path( $entry );
-	}
-
-	/**
-	 * Gets a filemtime-based asset version.
-	 *
-	 * @param string $path Absolute file path.
-	 * @return string|null Asset version.
-	 */
-	private function version( string $path ): ?string {
-		$modified = filemtime( $path );
-
-		return false === $modified ? null : (string) $modified;
 	}
 }

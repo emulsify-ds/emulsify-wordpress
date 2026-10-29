@@ -36,10 +36,6 @@ final class Patterns {
 	 * @return void
 	 */
 	public function register_patterns(): void {
-		if ( ! function_exists( 'register_block_pattern' ) ) {
-			return;
-		}
-
 		$patterns = $this->pattern_records();
 
 		if ( empty( $patterns ) ) {
@@ -463,7 +459,7 @@ final class Patterns {
 	 * @return void
 	 */
 	private function register_categories( array $categories, array $patterns ): void {
-		if ( empty( $patterns ) || ! function_exists( 'register_block_pattern_category' ) ) {
+		if ( empty( $patterns ) ) {
 			return;
 		}
 
@@ -500,13 +496,7 @@ final class Patterns {
 	 * @return bool TRUE when the pattern is already registered.
 	 */
 	private function pattern_registered( string $name ): bool {
-		if ( ! class_exists( '\WP_Block_Patterns_Registry' ) ) {
-			return false;
-		}
-
-		$registry = \WP_Block_Patterns_Registry::get_instance();
-
-		return method_exists( $registry, 'is_registered' ) && $registry->is_registered( $name );
+		return \WP_Block_Patterns_Registry::get_instance()->is_registered( $name );
 	}
 
 	/**
@@ -516,19 +506,7 @@ final class Patterns {
 	 * @return bool TRUE when the category is already registered.
 	 */
 	private function category_registered( string $name ): bool {
-		foreach ( array( '\WP_Block_Pattern_Categories_Registry', '\WP_Block_Pattern_Category_Registry' ) as $class ) {
-			if ( ! class_exists( $class ) ) {
-				continue;
-			}
-
-			$registry = $class::get_instance();
-
-			if ( method_exists( $registry, 'is_registered' ) && $registry->is_registered( $name ) ) {
-				return true;
-			}
-		}
-
-		return false;
+		return \WP_Block_Pattern_Categories_Registry::get_instance()->is_registered( $name );
 	}
 
 	/**

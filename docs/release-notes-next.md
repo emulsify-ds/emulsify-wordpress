@@ -77,6 +77,10 @@ lineage. See the [release process](release-process.md).
 
 ## Fixed
 
+- Global context reuses its body-class calculation and creates logout URLs
+  only when read or JSON-serialized. Both body-class keys and `wp.logout_url`
+  remain available; PHP context caches can serialize the lazy URL.
+
 - Component templates follow Twig's strict modification-time freshness check,
   including files changed within the compiled template's timestamp.
 

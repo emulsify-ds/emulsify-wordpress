@@ -9,6 +9,7 @@ namespace Emulsify\Theme\Editor;
 
 use Emulsify\Theme\Support\AssetEnqueuer;
 use Emulsify\Theme\Support\AssetManifest;
+use Emulsify\Theme\Support\AssetRecord;
 use Emulsify\Theme\Support\FileDiscovery;
 
 /**
@@ -319,27 +320,7 @@ final class Enhancements {
 	 * @return array Built asset records.
 	 */
 	private function scanned_asset_files( string $directory, array $extensions ): array {
-		$assets = array();
-		$seen   = array();
-
-		foreach ( FileDiscovery::file_records( $this->asset_roots( $directory ), $extensions ) as $file ) {
-			$relative = $file['relative'];
-
-			if ( isset( $seen[ $relative ] ) ) {
-				continue;
-			}
-
-			$seen[ $relative ] = true;
-			$assets[]          = array(
-				'path'     => $file['path'],
-				'priority' => $file['priority'],
-				'relative' => $relative,
-				'uri'      => $file['root_uri'] . '/' . $relative,
-				'version'  => $this->version( $file['path'] ),
-			);
-		}
-
-		return FileDiscovery::sort_by_priority_and_relative( $assets );
+		return AssetRecord::from_discovered_files( FileDiscovery::file_records( $this->asset_roots( $directory ), $extensions ) );
 	}
 
 	/**
@@ -349,8 +330,6 @@ final class Enhancements {
 	 * @return array Asset root records.
 	 */
 	private function asset_roots( string $directory ): array {
-		$directories = FileDiscovery::theme_roots( $directory, true );
-
 		/**
 		 * Filters built editor asset directories before discovery.
 		 *
@@ -361,18 +340,7 @@ final class Enhancements {
 		 * @param array  $directories Built editor asset directory records.
 		 * @param string $directory   Theme-relative asset directory being scanned.
 		 */
-		$filtered = apply_filters( 'emulsify_theme_editor_asset_directories', $directories, $directory );
-
-		if ( is_array( $filtered ) ) {
-			$directories = $filtered;
-		}
-
-		return FileDiscovery::normalize_roots(
-			$directories,
-			array(
-				'require_uri' => true,
-			)
-		);
+		return FileDiscovery::filtered_theme_roots( $directory, 'emulsify_theme_editor_asset_directories' );
 	}
 
 	/**
@@ -499,18 +467,6 @@ final class Enhancements {
 		}
 
 		return array_values( array_unique( $strings ) );
-	}
-
-	/**
-	 * Gets a filemtime-based asset version.
-	 *
-	 * @param string $path Absolute file path.
-	 * @return string|null Asset version.
-	 */
-	private function version( string $path ): ?string {
-		$modified = filemtime( $path );
-
-		return false === $modified ? null : (string) $modified;
 	}
 
 	/**

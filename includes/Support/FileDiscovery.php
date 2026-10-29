@@ -62,6 +62,23 @@ final class FileDiscovery {
 	}
 
 	/**
+	 * Gets filtered child-first roots for publicly served theme assets.
+	 *
+	 * @param string $directory Theme-relative directory.
+	 * @param string $hook      Service-specific roots filter.
+	 * @return array Normalized asset roots.
+	 */
+	public static function filtered_theme_roots( string $directory, string $hook ): array {
+		$roots    = self::theme_roots( $directory, true );
+		$filtered = apply_filters( $hook, $roots, $directory );
+
+		return self::normalize_roots(
+			is_array( $filtered ) ? $filtered : $roots,
+			array( 'require_uri' => true )
+		);
+	}
+
+	/**
 	 * Normalizes root records to readable, unique directories.
 	 *
 	 * @param array $roots   Root records or path strings.

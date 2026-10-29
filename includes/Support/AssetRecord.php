@@ -13,6 +13,36 @@ namespace Emulsify\Theme\Support;
 final class AssetRecord {
 
 	/**
+	 * Converts discovered files to child-first, ordered asset records.
+	 *
+	 * @param array $files Discovered files, with service exclusions already applied.
+	 * @return array Built asset records.
+	 */
+	public static function from_discovered_files( array $files ): array {
+		$assets = array();
+		$seen   = array();
+
+		foreach ( $files as $file ) {
+			$relative = $file['relative'];
+
+			if ( isset( $seen[ $relative ] ) ) {
+				continue;
+			}
+
+			$seen[ $relative ] = true;
+			$assets[]          = array(
+				'path'     => $file['path'],
+				'priority' => $file['priority'],
+				'relative' => $relative,
+				'uri'      => $file['root_uri'] . '/' . $relative,
+				'version'  => self::entry_version( array(), $file['path'] ),
+			);
+		}
+
+		return FileDiscovery::sort_by_priority_and_relative( $assets );
+	}
+
+	/**
 	 * Gets an asset entry path.
 	 *
 	 * @param array $entry Asset entry.

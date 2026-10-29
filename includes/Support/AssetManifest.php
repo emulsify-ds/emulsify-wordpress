@@ -495,23 +495,7 @@ final class AssetManifest {
 	 * @return array Manifest file candidates.
 	 */
 	private function manifest_candidates(): array {
-		$relative_path = self::DEFAULT_PATH;
-
-		/**
-		 * Filters the theme-relative asset manifest path.
-		 *
-		 * Return an empty value to disable manifest loading and always use the
-		 * recursive scanner fallback.
-		 *
-		 * @param string $relative_path Theme-relative manifest path.
-		 */
-		$filtered = apply_filters( 'emulsify_theme_asset_manifest_path', $relative_path );
-
-		if ( ! is_scalar( $filtered ) ) {
-			return array();
-		}
-
-		$relative_path = AssetRecord::normalize_relative_path( (string) $filtered );
+		$relative_path = self::relative_path();
 
 		if ( '' === $relative_path ) {
 			return array();
@@ -540,6 +524,25 @@ final class AssetManifest {
 		}
 
 		return $candidates;
+	}
+
+	/**
+	 * Gets the filtered theme-relative manifest path for assets and cache keys.
+	 *
+	 * @return string Manifest path, or empty string when disabled.
+	 */
+	public static function relative_path(): string {
+		/**
+		 * Filters the theme-relative asset manifest path.
+		 *
+		 * Return an empty value to disable manifest loading and always use the
+		 * recursive scanner fallback.
+		 *
+		 * @param string $relative_path Theme-relative manifest path.
+		 */
+		$filtered = apply_filters( 'emulsify_theme_asset_manifest_path', self::DEFAULT_PATH );
+
+		return is_scalar( $filtered ) ? AssetRecord::normalize_relative_path( (string) $filtered ) : '';
 	}
 
 	/**

@@ -7,6 +7,7 @@
 
 namespace Emulsify\Theme\Blocks;
 
+use Emulsify\Theme\Support\AssetManifest;
 use Emulsify\Theme\Support\AssetRecord;
 use Emulsify\Theme\Support\Diagnostics;
 use Emulsify\Theme\Support\FileDiscovery;
@@ -27,13 +28,6 @@ final class ComponentLocator {
 	 * @var string
 	 */
 	private const COMPONENTS_DIRECTORY = 'dist/components';
-
-	/**
-	 * Theme-relative built asset manifest path.
-	 *
-	 * @var string
-	 */
-	private const DEFAULT_MANIFEST_PATH = 'dist/emulsify-assets.json';
 
 	/**
 	 * Transient key prefix for optional persistent discovery caching.
@@ -711,7 +705,7 @@ final class ComponentLocator {
 	 * @return string Manifest signature.
 	 */
 	private function manifest_file_signature(): string {
-		$relative_path = $this->manifest_relative_path();
+		$relative_path = AssetManifest::relative_path();
 
 		if ( '' === $relative_path ) {
 			return '';
@@ -739,31 +733,6 @@ final class ComponentLocator {
 		}
 
 		return implode( '|', $signatures );
-	}
-
-	/**
-	 * Gets the theme-relative asset manifest path.
-	 *
-	 * @return string Manifest path, or empty string when disabled.
-	 */
-	private function manifest_relative_path(): string {
-		$relative_path = self::DEFAULT_MANIFEST_PATH;
-
-		/**
-		 * Filters the theme-relative asset manifest path.
-		 *
-		 * This mirrors asset loading so changing the manifest path also changes
-		 * the optional component discovery cache key.
-		 *
-		 * @param string $relative_path Theme-relative manifest path.
-		 */
-		$filtered = apply_filters( 'emulsify_theme_asset_manifest_path', $relative_path );
-
-		if ( ! is_scalar( $filtered ) ) {
-			return '';
-		}
-
-		return AssetRecord::normalize_relative_path( (string) $filtered );
 	}
 
 	/**
