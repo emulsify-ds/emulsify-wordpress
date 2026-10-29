@@ -34,7 +34,7 @@ function fixture(t, version = '2.1.0') {
   const repoRoot = path.join(workRoot, 'checkout');
   const remote = path.join(workRoot, 'origin.git');
   fs.mkdirSync(repoRoot);
-  const git = (...args) => execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8', stdio: 'pipe' }).trim();
+  const git = (...args) => execFileSync('git', ['-c', 'commit.gpgsign=false', '-c', 'tag.gpgSign=false', ...args], { cwd: repoRoot, encoding: 'utf8', stdio: 'pipe' }).trim();
   // Keep remote HEAD valid even when the runner defaults to another branch.
   git('-c', 'init.defaultBranch=legacy', 'init', '--bare', '-b', 'main', remote);
   git('init', '-b', 'main');
@@ -107,8 +107,8 @@ test('also refuses local-only stable tags on unmerged branches', (t) => {
 
 function advanceRemoteMain({ repoRoot, remote }) {
   const otherCheckout = path.join(path.dirname(repoRoot), 'main-mover');
-  execFileSync('git', ['clone', '--quiet', remote, otherCheckout], { stdio: 'pipe' });
-  const git = (...args) => execFileSync('git', args, { cwd: otherCheckout, encoding: 'utf8', stdio: 'pipe' }).trim();
+  execFileSync('git', ['-c', 'commit.gpgsign=false', '-c', 'tag.gpgSign=false', 'clone', '--quiet', remote, otherCheckout], { stdio: 'pipe' });
+  const git = (...args) => execFileSync('git', ['-c', 'commit.gpgsign=false', '-c', 'tag.gpgSign=false', ...args], { cwd: otherCheckout, encoding: 'utf8', stdio: 'pipe' }).trim();
   git('-c', 'user.name=Contract Test', '-c', 'user.email=contract@example.invalid', 'commit', '--allow-empty', '-m', 'docs: update contributors');
   git('push', 'origin', 'main');
   return git('rev-parse', 'HEAD');
