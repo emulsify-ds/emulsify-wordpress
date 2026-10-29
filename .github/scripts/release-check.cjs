@@ -670,12 +670,12 @@ function runStaticChecks() {
     ensure(cli.includes("replace_theme_header( $contents, 'Theme Name'"), 'Child theme generator should update Theme Name explicitly.');
     ensure(cli.includes("replace_theme_header( $contents, 'Text Domain'"), 'Child theme generator should update Text Domain explicitly.');
     ensure(cli.includes("replace_theme_header( $contents, 'Template'"), 'Child theme generator should update Template explicitly.');
-    ensure(cli.includes("data['project']['name']"), 'Child theme generator should update project.emulsify.json project.name.');
-    ensure(cli.includes("data['project']['machineName']"), 'Child theme generator should update project.emulsify.json project.machineName.');
-    ensure(cli.includes("data['project']['generatedFrom']"), 'Child theme generator should update project.emulsify.json generatedFrom.');
-    ensure(cli.includes("data['project']['generatedFromVersion']"), 'Child theme generator should update project.emulsify.json generatedFromVersion.');
+    ensure(/\$data->project->name\s*=\s*\$theme_label/.test(cli), 'Child theme generator should update project.emulsify.json project.name.');
+    ensure(/\$data->project->machineName\s*=\s*\$machine_name/.test(cli), 'Child theme generator should update project.emulsify.json project.machineName.');
+    ensure(/\$data->project->generatedFrom\s*=\s*self::GENERATED_FROM/.test(cli), 'Child theme generator should update project.emulsify.json generatedFrom.');
+    ensure(/\$data->project->generatedFromVersion\s*=\s*\$version/.test(cli), 'Child theme generator should update project.emulsify.json generatedFromVersion.');
     ensure(cli.includes("$this->join_path( dirname( $source ), 'style.css' ), 'Version'"), 'Child theme generator should read release lineage from installed WordPress theme metadata.');
-    ensure(cli.includes("data['name'] = $machine_name"), 'Child theme generator should update package.json name.');
+    ensure(/\$data->name\s*=\s*\$machine_name/.test(cli), 'Child theme generator should update package.json name.');
     ensure(cli.includes('collect_pattern_updates'), 'Child theme generator should update starter pattern namespaces.');
     ensure(cli.includes('sanitize_label_for_source'), 'Child theme generator should sanitize human labels before writing source comments.');
     ensure(cli.includes("replace_theme_header( $contents, 'Theme Name', $source_label )"), 'Child theme generator should use a source-safe label in style.css.');
@@ -725,6 +725,7 @@ function runStaticChecks() {
     const locator = readFile('includes/Blocks/ComponentLocator.php');
     const fileDiscovery = readFile('includes/Support/FileDiscovery.php');
     const registry = readFile('includes/Blocks/Registry.php');
+    const bootstrap = readFile('includes/Bootstrap.php');
     const acfBlocks = readFile('includes/Blocks/AcfBlocks.php');
     const nativeBlocks = readFile('includes/Blocks/NativeBlocks.php');
     const smoke = readFile('.github/scripts/component-locator-smoke.php');
@@ -745,7 +746,15 @@ function runStaticChecks() {
     ensure(locator.includes('clear_discovery_cache') && locator.includes('delete_transient'), 'Component locator should provide a clear method for the active discovery cache key.');
     ensure(locator.includes('stylesheet_version') && locator.includes('template_version') && locator.includes('manifest_file_signature'), 'Component locator cache key should include theme versions and manifest filemtime.');
     ensure(locator.includes('wp_get_environment_type') && locator.includes('WP_DEBUG'), 'Component locator should keep active development uncached unless explicitly enabled.');
-    ensure(registry.includes('$components = new ComponentLocator()'), 'Block registry should share one ComponentLocator instance.');
+    ensure(
+      /\$components\s*=\s*new Blocks\\ComponentLocator\(\)/.test(bootstrap)
+      && bootstrap.includes('new Assets( $asset_manifest, $components )')
+      && bootstrap.includes('new Blocks\\Registry( $asset_manifest, $components )')
+      && registry.includes('$this->components = $components ?? new ComponentLocator()')
+      && registry.includes('new AcfBlocks( $this->components, $this->manifest )')
+      && registry.includes('new NativeBlocks( $this->components )'),
+      'Bootstrap should share one ComponentLocator across runtime assets and ACF/Twig/native block registration.'
+    );
     ensure(acfBlocks.includes('$this->components->acf_components()'), 'ACF/Twig block discovery should use ComponentLocator.');
     ensure(!acfBlocks.includes("$args['data']['twig_template'] ="), 'ACF/Twig block registration should not persist template paths in editor block data.');
     ensure(
@@ -866,6 +875,7 @@ function runStaticChecks() {
     ensure(editorPolicySmoke.includes('Editor policy smoke checks passed'), 'Editor policy smoke should have a clear success message.');
     ensure(patternSmoke.includes('Pattern registry smoke checks passed'), 'Pattern registry smoke should have a clear success message.');
     ensure(fileDiscovery.includes('function theme_roots'), 'File discovery helper should create child-first theme roots.');
+    ensure(fileDiscovery.includes('function filtered_theme_roots') && fileDiscovery.includes('self::theme_roots( $directory, true )') && fileDiscovery.includes('apply_filters( $hook, $roots, $directory )'), 'Asset root discovery should preserve child-first roots and service-specific directory filters.');
     ensure(fileDiscovery.includes('function normalize_roots'), 'File discovery helper should normalize readable unique roots.');
     ensure(fileDiscovery.includes('function file_records'), 'File discovery helper should create file records for service-specific filtering.');
     ensure(fileDiscovery.includes('function recursive_files'), 'File discovery helper should support recursive scans.');
@@ -875,10 +885,10 @@ function runStaticChecks() {
     ensure(assetManifest.includes('dist/emulsify-assets.json'), 'Asset manifest helper should default to dist/emulsify-assets.json.');
     ensure(assetManifest.includes('emulsify_theme_asset_manifest_path') && assetManifest.includes('emulsify_theme_asset_manifest_data'), 'Asset manifest helper should expose path and parsed data filters.');
     ensure(assets.includes("'global'") && editorEnhancements.includes("'editor'") && assetManifest.includes("'components'") && assetManifest.includes("'blocks'"), 'Asset manifest support should cover global, editor, component, and block-specific sections.');
-    ensure(assets.includes('FileDiscovery::theme_roots') && assets.includes('FileDiscovery::file_records'), 'Runtime assets should use shared filesystem discovery helpers.');
+    ensure(assets.includes("FileDiscovery::filtered_theme_roots( $directory, 'emulsify_theme_asset_directories' )") && assets.includes('FileDiscovery::file_records') && assets.includes('AssetRecord::from_discovered_files'), 'Runtime assets should use shared root discovery and asset record helpers.');
     ensure(assets.includes('AssetManifest') && assets.includes('manifest_asset_files') && assets.includes("enqueue_scripts( 'emulsify-global', 'dist/global' )"), 'Runtime assets should support manifest-backed global and component assets.');
-    ensure(assets.includes('is_scoped_component_asset') && assets.includes('*.component.json'), 'Runtime assets should skip component files declared as block-scoped metadata.');
-    ensure(editorEnhancements.includes('FileDiscovery::theme_roots') && editorEnhancements.includes('FileDiscovery::file_records'), 'Editor assets should use shared filesystem discovery helpers.');
+    ensure(assets.includes('is_scoped_component_asset') && assets.includes('$this->components->component_metadata_files()') && assets.includes('metadata_asset_paths'), 'Runtime assets should skip component files declared as block-scoped metadata.');
+    ensure(editorEnhancements.includes("FileDiscovery::filtered_theme_roots( $directory, 'emulsify_theme_editor_asset_directories' )") && editorEnhancements.includes('FileDiscovery::file_records') && editorEnhancements.includes('AssetRecord::from_discovered_files'), 'Editor assets should use shared root discovery and asset record helpers.');
     ensure(editorEnhancements.includes('AssetManifest') && editorEnhancements.includes("asset_records( 'editor'"), 'Editor assets should support manifest-backed editor assets.');
     ensure(acfBlocks.includes('scoped_asset_records') && acfBlocks.includes('enqueue_assets') && acfBlocks.includes('emulsify_theme_acf_block_asset_records'), 'ACF/Twig blocks should support metadata-driven scoped assets.');
     ensure(nativeBlocks.includes("register_block_type( (string) $component['path'] )"), 'Native blocks should delegate block.json asset fields to WordPress register_block_type().');
