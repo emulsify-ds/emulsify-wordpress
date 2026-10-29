@@ -16,6 +16,7 @@ if ( PHP_SAPI !== 'cli' || ! is_readable( $autoload ) ) {
 }
 
 require_once $autoload;
+require_once __DIR__ . '/wordpress-attribute-test-adapter.php';
 
 try {
 	$corpus      = json_decode( file_get_contents( __DIR__ . '/../fixtures/twig-helper-contract.json' ), true, 512, JSON_THROW_ON_ERROR );
@@ -37,6 +38,9 @@ try {
 		$values  = $fixture['context'] ?? array();
 		$context = array_merge( $fixture['contextVars'] ?? array(), array( 'attributes' => 'bag' === ( $fixture['contextKind'] ?? '' ) ? new AttributeBag( $values ) : $values ) );
 		$args    = $fixture['args'];
+		if ( 'object' === ( $fixture['argumentKind'] ?? '' ) ) {
+			$args[0] = (object) $args[0];
+		}
 		$html    = array();
 		for ( $index = 0; $index < ( $fixture['repeat'] ?? 1 ); ++$index ) {
 			$bag    = call_user_func_array( $functions[ $fixture['helper'] ]['callable'], array_merge( array( $context ), $args ) );

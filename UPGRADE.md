@@ -128,6 +128,15 @@ remain project-owned. New generated themes receive the updated defaults.
    not substitute `|raw`. See
    [WordPress-formatted text](docs/timber-and-twig-authoring.md#wordpress-formatted-text).
 
+8. **Review values passed to `bem()` and `add_attributes()`.** The PHP bag now
+   rejects `srcdoc`, expression-bearing Alpine/Vue and htmx directives, and
+   leading `:` bindings in addition to native `on*` and `@` handlers. URL
+   attributes use WordPress's allowed protocols; default policy strips
+   `javascript:` and `data:`. Replace data-URI image sources with permitted
+   URLs. Pass attribute maps as arrays, Traversables or `AttributeBag`, rather
+   than arbitrary objects such as `WP_Post`. `CLASS` now merges into `class`.
+   See [attribute rules](docs/timber-and-twig-authoring.md#attribute-helpers).
+
 Render representative pages as both an administrator and an anonymous visitor,
 check the editor where blocks are used, and inspect `debug.log`. Storybook
 alone does not exercise Timber context or WordPress hooks.

@@ -186,6 +186,62 @@
       ]
     },
     {
+      "id": "add-wordpress-url-protocols",
+      "helper": "add_attributes",
+      "args": [{"href":"javascript:alert(1)","SRC":"jav&#x61;script:alert(2)","action":"javascript&#58;alert(3)","formaction":"java\nscript:alert(4)","xlink:href":"javascript:alert(5)","data-ok":"1"}],
+      "php": {"attributes":{"href":"alert(1)","SRC":"alert(2)","action":"alert(3)","formaction":"alert(4)","xlink:href":"alert(5)","data-ok":"1"},"html":"href=\"alert(1)\" SRC=\"alert(2)\" action=\"alert(3)\" formaction=\"alert(4)\" xlink:href=\"alert(5)\" data-ok=\"1\"","contextAfter":{}},
+      "js": {"attributes":{"href":"javascript:alert(1)","SRC":"jav&#x61;script:alert(2)","action":"javascript&#58;alert(3)","formaction":"java\nscript:alert(4)","xlink:href":"javascript:alert(5)","data-ok":"1"},"html":"href=\"javascript:alert(1)\" SRC=\"jav&amp;#x61;script:alert(2)\" action=\"javascript&amp;#58;alert(3)\" formaction=\"java\nscript:alert(4)\" xlink:href=\"javascript:alert(5)\" data-ok=\"1\"","contextAfter":{}},
+      "differences": [
+        {"field":"attributes","reason":"WordPress sanitizes URL-bearing attribute values with its allowed protocol policy, including mixed-case names and obfuscated schemes; Core preserves them."},
+        {"field":"html","reason":"WordPress sanitizes URL-bearing attribute values with its allowed protocol policy, including mixed-case names and obfuscated schemes; Core preserves them."}
+      ]
+    },
+    {
+      "id": "add-data-uri-default-policy",
+      "helper": "add_attributes",
+      "args": [{"src":"data:image/png;base64,AA==","href":"/relative?a=1&b=2","data-label":"safe"}],
+      "php": {"attributes":{"src":"image/png;base64,AA==","href":"/relative?a=1&b=2","data-label":"safe"},"html":"src=\"image/png;base64,AA==\" href=\"/relative?a=1&amp;b=2\" data-label=\"safe\"","contextAfter":{}},
+      "js": {"attributes":{"src":"data:image/png;base64,AA==","href":"/relative?a=1&b=2","data-label":"safe"},"html":"src=\"data:image/png;base64,AA==\" href=\"/relative?a=1&amp;b=2\" data-label=\"safe\"","contextAfter":{}},
+      "differences": [
+        {"field":"attributes","reason":"WordPress excludes data from its default allowed URL protocols; Core preserves the data URI. Relative URLs and data-* attributes remain supported."},
+        {"field":"html","reason":"WordPress excludes data from its default allowed URL protocols; Core preserves the data URI. Relative URLs and data-* attributes remain supported."}
+      ]
+    },
+    {
+      "id": "add-framework-expressions-and-srcdoc",
+      "helper": "add_attributes",
+      "args": [{"srcdoc":"<script>x()</script>","x-on:click":"x()","hx-on:click":"y()","v-on:click":"z()",":href":"url","x-bind:href":"url","v-bind:href":"url","x-data":"x()","x-init":"x()","v-html":"html","hx-vals":"js:x()","hx-vars":"x:x()","hx-headers":"js:x()","hx-request":"js:x()","hx-trigger":"click[x()]","data-hx-on:click":"x()","data-hx-vals":"js:x()","hx-get":"/fragment","aria-label":"Safe","data-ok":"1"}],
+      "php": {"attributes":{"hx-get":"/fragment","aria-label":"Safe","data-ok":"1"},"html":"hx-get=\"/fragment\" aria-label=\"Safe\" data-ok=\"1\"","contextAfter":{}},
+      "js": {"attributes":{"srcdoc":"<script>x()</script>","x-on:click":"x()","hx-on:click":"y()","v-on:click":"z()",":href":"url","x-bind:href":"url","v-bind:href":"url","x-data":"x()","x-init":"x()","v-html":"html","hx-vals":"js:x()","hx-vars":"x:x()","hx-headers":"js:x()","hx-request":"js:x()","hx-trigger":"click[x()]","data-hx-on:click":"x()","data-hx-vals":"js:x()","hx-get":"/fragment","aria-label":"Safe","data-ok":"1"},"html":"srcdoc=\"&lt;script&gt;x()&lt;/script&gt;\" x-on:click=\"x()\" hx-on:click=\"y()\" v-on:click=\"z()\" :href=\"url\" x-bind:href=\"url\" v-bind:href=\"url\" x-data=\"x()\" x-init=\"x()\" v-html=\"html\" hx-vals=\"js:x()\" hx-vars=\"x:x()\" hx-headers=\"js:x()\" hx-request=\"js:x()\" hx-trigger=\"click[x()]\" data-hx-on:click=\"x()\" data-hx-vals=\"js:x()\" hx-get=\"/fragment\" aria-label=\"Safe\" data-ok=\"1\"","contextAfter":{}},
+      "differences": [
+        {"field":"attributes","reason":"WordPress rejects srcdoc, Alpine/Vue directive and shorthand binding names, and htmx handler or evaluation-bearing attributes (including data-hx aliases); Core accepts them. Static htmx, data-* and aria-* attributes remain supported."},
+        {"field":"html","reason":"WordPress rejects srcdoc, Alpine/Vue directive and shorthand binding names, and htmx handler or evaluation-bearing attributes (including data-hx aliases); Core accepts them. Static htmx, data-* and aria-* attributes remain supported."}
+      ]
+    },
+    {
+      "id": "add-case-insensitive-class",
+      "helper": "add_attributes",
+      "args": [{"CLASS":["first.bad"],"class":"second","ClAsS":"third","viewBox":"0 0 10 10"}],
+      "php": {"attributes":{"class":["first-bad","second","third"],"viewBox":"0 0 10 10"},"html":"class=\"first-bad second third\" viewBox=\"0 0 10 10\"","contextAfter":{}},
+      "js": {"attributes":{"CLASS":["first.bad"],"class":["second"],"ClAsS":"third","viewBox":"0 0 10 10"},"html":"CLASS=\"first.bad\" class=\"second\" ClAsS=\"third\" viewBox=\"0 0 10 10\"","contextAfter":{}},
+      "differences": [
+        {"field":"attributes","reason":"WordPress recognizes and merges class case-insensitively while preserving authored case for SVG attributes; Core treats differently cased class names as separate attributes."},
+        {"field":"html","reason":"WordPress recognizes and merges class case-insensitively while preserving authored case for SVG attributes; Core treats differently cased class names as separate attributes."}
+      ]
+    },
+    {
+      "id": "add-plain-object-boundary",
+      "helper": "add_attributes",
+      "argumentKind": "object",
+      "args": [{"post_password":"secret","post_title":"Private"}],
+      "php": {"attributes":{},"html":"","contextAfter":{}},
+      "js": {"attributes":{"post_password":"secret","post_title":"Private"},"html":"post_password=\"secret\" post_title=\"Private\"","contextAfter":{}},
+      "differences": [
+        {"field":"attributes","reason":"WordPress accepts arrays, Traversables and AttributeBag instances as attribute sources, never arbitrary object properties. Core accepts plain JavaScript objects."},
+        {"field":"html","reason":"WordPress accepts arrays, Traversables and AttributeBag instances as attribute sources, never arbitrary object properties. Core accepts plain JavaScript objects."}
+      ]
+    },
+    {
       "id": "add-empty",
       "helper": "add_attributes",
       "args": [{}],

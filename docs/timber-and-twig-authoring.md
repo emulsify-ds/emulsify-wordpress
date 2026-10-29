@@ -304,12 +304,27 @@ Keep that context value for intentional HTML attributes, never raw block data
 or arbitrary user input. Mapped core-block templates receive parsed block data
 in `block_attributes`; see [core-block context](core-block-twig-rendering.md#twig-context).
 
-The PHP attribute bag rejects every attribute name beginning with `on`,
-case-insensitively, including `onclick` and `onMouseOver`. Construction, `set()`,
-`merge()`, and serialization all enforce this rule. This is intentional
-WordPress PHP hardening: Core's JavaScript helpers and Emulsify Drupal still
-accept these names. Attribute-value escaping alone does not make event-handler
-attributes safe.
+The PHP attribute bag rejects `srcdoc`, case-insensitive `on*` event names,
+`@` shorthand, leading `:` bindings, Alpine `x-*`, and Vue `v-*` directives.
+It also rejects htmx `hx-on*`, `hx-vals`, `hx-vars`, `hx-headers`, `hx-request`,
+and `hx-trigger`, including their `data-hx-*` aliases. These attributes can
+interpret expressions or HTML; escaping their values alone is insufficient.
+Static htmx attributes such as `hx-get`, ordinary `data-*` and `aria-*`, and
+SVG names such as `viewBox` remain supported. `CLASS` receives the same class
+cleaning and merging as `class`; other names retain their authored case.
+
+WordPress URI attributes, plus `xlink:href`, pass through
+`wp_kses_bad_protocol()` with `wp_allowed_protocols()`. Relative URLs,
+fragments, `mailto:` and `tel:` remain usable. WordPress's default policy
+strips `javascript:` and `data:`; use a permitted URL for images rather than a
+data URI. Attribute sources must be arrays, Traversables or another
+`AttributeBag`. Arbitrary objects, including `WP_Post`, are ignored so public
+properties cannot accidentally expose private data.
+
+Construction, `set()`, `merge()`, and serialization enforce these rules. They
+are intentional PHP differences: Core's JavaScript helpers and Emulsify Drupal
+still accept these values and directive names. Projects should review shared
+components in both runtimes.
 
 Argumentless Twig calls such as `{{ add_attributes() }}` and `{{ bem() }}` use
 only the context's `attributes`. Other context variables are not attributes or
@@ -362,7 +377,10 @@ Selected differences remain explicit:
 | Numeric `0` as an extra class | `_0` | Omitted |
 | `true` in an `add_attributes()` class list | `_1` | `true` |
 | `true` in a non-class attribute list | `1` | `true` |
-| Attribute names starting with `on`, regardless of case | Dropped | Accepted |
+| Event names, expression directives and `srcdoc` | Dropped | Accepted |
+| Disallowed URI protocols | WordPress protocol filtering | Unchanged |
+| Uppercase `CLASS` | Cleaned and merged as `class` | Separate attribute |
+| Arbitrary object attribute sources | Ignored | Public properties used |
 | Caller attributes supplied as an array or attribute bag | Copied; remain in caller context | Consumed from invocation context |
 
 The fixture cases `bem-boolean-and-numeric-values`,
@@ -372,8 +390,8 @@ The fixture cases `bem-boolean-and-numeric-values`,
 attributes again on a second call, whereas Core has consumed them. WordPress's
 own `AttributeBag` preserves the caller context too; changing from an array to
 that bag does not provide print-once behavior.
-`add-event-handler-names` records the intentional attribute-name hardening
-difference in both the returned map and serialized HTML.
+The event, framework, URL, uppercase-class and object-source cases record
+intentional hardening differences in both the returned map and serialized HTML.
 
 Both implementations currently treat boolean ARIA values like HTML booleans:
 `true` can produce a bare attribute, and `false` can be omitted rather than

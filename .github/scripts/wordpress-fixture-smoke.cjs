@@ -1457,6 +1457,7 @@ async function main() {
   runAcfDiscoveryWithStub(wpPath);
   wp(wpPath, ['eval-file', path.join(repoRoot, '.github/scripts/media-embed-smoke.php')]);
   wp(wpPath, ['eval-file', path.join(repoRoot, '.github/scripts/core-block-context-smoke.php')]);
+  wp(wpPath, ['eval-file', path.join(repoRoot, '.github/scripts/attribute-hardening-wordpress-smoke.php')]);
   wp(wpPath, [
     'eval',
     'if ( ! class_exists( "\\\\Timber\\\\Timber" ) ) { fwrite( STDERR, "Timber is not loaded.\\n" ); exit( 1 ); }',

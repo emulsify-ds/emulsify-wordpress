@@ -5,6 +5,7 @@
  * @package Emulsify
  */
 
+require_once __DIR__ . '/wordpress-attribute-test-adapter.php';
 require_once __DIR__ . '/../../includes/Support/AttributeBag.php';
 require_once __DIR__ . '/../../includes/Support/FileDiscovery.php';
 require_once __DIR__ . '/../../includes/Runtime/Twig.php';
@@ -144,7 +145,28 @@ function emulsify_attribute_helper_parse_parent_templates( Twig $helpers, string
 	return $checked;
 }
 
+require_once __DIR__ . '/attribute-hardening-test-cases.php';
+
+$hardening_failures = array();
+foreach ( emulsify_attribute_hardening_cases() as $label => list( $expected, $actual ) ) {
+	if ( $expected !== $actual ) {
+		$hardening_failures[] = $label . ': expected ' . var_export( $expected, true ) . ', got ' . var_export( $actual, true );
+	}
+}
+if ( $hardening_failures ) {
+	fwrite( STDERR, implode( "\n", $hardening_failures ) . "\n" );
+	exit( 1 );
+}
+
 $helpers = new Twig();
+$private_post = (object) array( 'post_password' => 'secret' );
+foreach ( array( $helpers->add_attributes( $private_post ), $helpers->add_attributes( array( 'attributes' => $private_post ), array( 'data-ok' => '1' ) ), $helpers->bem( array( 'attributes' => $private_post ), 'card' ), $helpers->bem( (object) array( 'block' => 'card', 'attributes' => $private_post ) ) ) as $bag ) {
+	if ( array_key_exists( 'post_password', $bag->toArray() ) ) {
+		fwrite( STDERR, "Helper must not turn a post-like object's public properties into HTML attributes.\n" );
+		exit( 1 );
+	}
+}
+
 
 $event_attributes = array(
 	'onclick'     => 'x()',

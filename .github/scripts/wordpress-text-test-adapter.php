@@ -10,6 +10,8 @@
  * @package Emulsify
  */
 
+require_once __DIR__ . '/wordpress-attribute-test-adapter.php';
+
 if ( ! function_exists( 'apply_filters' ) ) {
 	function apply_filters( string $hook, $value, ...$arguments ) {
 		return $value;

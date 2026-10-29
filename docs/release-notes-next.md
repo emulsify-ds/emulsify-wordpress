@@ -77,6 +77,10 @@ lineage. See the [release process](release-process.md).
 
 ## Fixed
 
+- PHP attribute helpers reject script-bearing URLs, `srcdoc`, framework event
+  and expression directives, and arbitrary object attribute sources. Class
+  names are handled case-insensitively while SVG name case is preserved.
+
 - Mapped group and quote blocks retain children in `inner_content` without
   rendering them again. Mapped blocks reuse global context, select their own
   post without resetting Query Loop globals, reject directory templates, and
