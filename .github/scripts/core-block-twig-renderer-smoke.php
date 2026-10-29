@@ -23,6 +23,11 @@ namespace Timber {
 		 * @var array
 		 */
 		public static $compiled = array();
+		public static $context_calls = 0;
+		public static $global_context_calls = 0;
+		public static $post_queries = array();
+		public static $recursive_calls = 0;
+		public static $recursive_renderer;
 
 		/**
 		 * Gets Timber context.
@@ -30,7 +35,23 @@ namespace Timber {
 		 * @return array Context.
 		 */
 		public static function context(): array {
+			++self::$context_calls;
+			if ( ! empty( $GLOBALS['emulsify_core_block_reset_post'] ) ) {
+				$GLOBALS['post'] = $GLOBALS['emulsify_core_block_queried_post'];
+			}
 			return self::$context;
+		}
+
+		public static function context_global(): array {
+			++self::$global_context_calls;
+			return self::$context;
+		}
+
+		public static function get_post( $query = false ) {
+			self::$post_queries[] = $query;
+			$query = false === $query ? ( $GLOBALS['emulsify_core_block_queried_post'] ?? null ) : $query;
+			$id = is_object( $query ) ? $query->ID : $query;
+			return $id ? (object) array( 'ID' => (int) $id ) : null;
 		}
 
 		/**
@@ -42,6 +63,19 @@ namespace Timber {
 		 */
 		public static function compile( string $template, array $context ): string {
 			self::$compiled[] = compact( 'template', 'context' );
+			if ( false !== strpos( $template, 'recursive.twig' ) ) {
+				if ( ++self::$recursive_calls > 4 ) {
+					throw new \RuntimeException( 'Unbounded mapped post.content recursion.' );
+				}
+				return '<section>' . self::$recursive_renderer->render_block( $context['content'], $context['block'], $context['wp_block'] ) . '</section>';
+			}
+
+			if ( false !== strpos( $template, 'inner.twig' ) ) {
+				return $context['inner_content'];
+			}
+			if ( false !== strpos( $template, 'content.twig' ) ) {
+				return $context['content'];
+			}
 
 			if ( false !== strpos( $template, 'throws.twig' ) ) {
 				throw new \RuntimeException( 'Template failed.' );
@@ -51,7 +85,7 @@ namespace Timber {
 				'<p class="wp-block wp-block-paragraph mapped">%s:%s:%s</p>',
 				$template,
 				$context['block_name'] ?? '',
-				$context['attributes']['className'] ?? ''
+				$context['block_attributes']['className'] ?? ''
 			);
 		}
 	}
@@ -179,6 +213,16 @@ namespace {
 		}
 	}
 
+	function remove_filter( string $hook, callable $callback, int $priority = 10 ): bool {
+		foreach ( $GLOBALS['emulsify_core_block_twig_smoke_filters'][ $hook ][ $priority ] ?? array() as $index => $entry ) {
+			if ( $entry['callback'] === $callback ) {
+				unset( $GLOBALS['emulsify_core_block_twig_smoke_filters'][ $hook ][ $priority ][ $index ] );
+				return true;
+			}
+		}
+		return false;
+	}
+
 	if ( ! function_exists( 'get_stylesheet_directory' ) ) {
 		function get_stylesheet_directory(): string {
 			return $GLOBALS['emulsify_core_block_twig_smoke_child'];
@@ -242,6 +286,11 @@ namespace {
 		if ( ! $condition ) {
 			throw new \RuntimeException( $message );
 		}
+	}
+
+	function render_block( array $block ): string {
+		++$GLOBALS['emulsify_core_block_rerenders'];
+		return 'Unexpected second render';
 	}
 
 	/**
@@ -310,6 +359,8 @@ namespace {
 			'blockName'    => 'core/paragraph',
 			'attrs'        => array(
 				'className' => 'intro',
+				'level'     => 2,
+				'anchor'    => 'saved-anchor',
 			),
 			'innerContent' => array( 'Original' ),
 			'innerBlocks'  => array(),
@@ -342,13 +393,15 @@ namespace {
 			'emulsify_theme_core_block_twig_context',
 			static function ( array $context ): array {
 				$context['smoke_context'] = true;
+				$context['legacy_level']  = $context['attributes']['level'] ?? 'empty';
 
 				return $context;
 			}
 		);
 
 		\Timber\Timber::$context = array(
-			'site' => 'Smoke Site',
+			'site'       => 'Smoke Site',
+			'attributes' => array( 'data-global' => 'must not leak' ),
 		);
 
 		$enabled = new \Emulsify\Theme\Blocks\CoreBlockTwigRenderer();
@@ -362,8 +415,23 @@ namespace {
 		$mapped = apply_filters( 'render_block', $original, $block, null );
 
 		emulsify_core_block_twig_smoke_assert(
+			array() === \Timber\Timber::$compiled[0]['context']['attributes'],
+			'Mapped blocks must start with an empty HTML attributes array.'
+		);
+		foreach ( array( 'block_attributes', 'block', 'block_metadata' ) as $key ) {
+			$actual = \Timber\Timber::$compiled[0]['context'][ $key ];
+			emulsify_core_block_twig_smoke_assert(
+				$block['attrs'] === ( 'block_attributes' === $key ? $actual : $actual['attrs'] ),
+				'Mapped block data must remain available through ' . $key . '.'
+			);
+		}
+		emulsify_core_block_twig_smoke_assert(
+			'empty' === \Timber\Timber::$compiled[0]['context']['legacy_level'],
+			'Legacy array reads must be empty without throwing or falling back to core markup.'
+		);
+		emulsify_core_block_twig_smoke_assert(
 			false !== strpos( $mapped, 'dist/components/paragraph/paragraph.twig:core/paragraph:intro' ),
-			'Mapped block should render through Timber compile with attributes.'
+			'Mapped block should render through Timber compile with block_attributes.'
 		);
 		emulsify_core_block_twig_smoke_assert(
 			true === \Timber\Timber::$compiled[0]['context']['smoke_context'],
@@ -442,6 +510,128 @@ namespace {
 			false === strpos( $cleaned, 'wp-block' ) && false !== strpos( $cleaned, 'mapped' ),
 			'Class cleanup should remove base wp-block classes only when enabled.'
 		);
+
+		unset( $GLOBALS['emulsify_core_block_twig_smoke_filters']['emulsify_theme_core_block_twig_cleanup_classes_enabled'] );
+		$GLOBALS['emulsify_core_block_rerenders'] = 0;
+		emulsify_core_block_twig_smoke_write( $child . '/dist/components/inner.twig', '{{ inner_content|raw }}' );
+		emulsify_core_block_twig_smoke_write( $child . '/dist/components/content.twig', '{{ content|raw }}' );
+		add_filter(
+			'emulsify_theme_core_block_twig_template_map',
+			static function ( array $map ): array {
+				$map['core/group']   = 'dist/components/inner.twig';
+				$map['core/quote']   = 'dist/components/inner.twig';
+				$map['core/details'] = 'dist/components/content.twig';
+				return $map;
+			}
+		);
+		$composite_errors = array();
+		foreach ( array( 'core/group', 'core/quote' ) as $name ) {
+			$wrapper = 'core/group' === $name ? 'div' : 'blockquote';
+			$before  = '<' . $wrapper . ' class="saved-wrapper">';
+			$after   = '</' . $wrapper . '>';
+			$first   = '<p>First rendered child</p><!-- named child filter -->';
+			$second  = '<aside>Short-circuited child</aside>';
+			$html    = $before . $first . '\n' . $second . $after;
+			$parsed  = array(
+				'blockName'    => $name,
+				'attrs'        => array(),
+				'innerContent' => array( $before, null, '\n', null, $after ),
+				'innerBlocks'  => array( array( 'blockName' => 'core/paragraph' ), array( 'blockName' => 'core/html' ) ),
+			);
+			$actual  = $enabled->render_block( $html, $parsed );
+			if ( $actual !== $html || 1 !== substr_count( $actual, $first ) || 1 !== substr_count( $actual, $second ) ) {
+				$composite_errors[] = $name . ' must preserve already rendered children, their filters and the original wrapper exactly once.';
+			}
+			$parsed['blockName'] = 'core/details';
+			emulsify_core_block_twig_smoke_assert( $html === $enabled->render_block( $html, $parsed ), 'Mapped templates using content must keep every original byte.' );
+		}
+		emulsify_core_block_twig_smoke_assert( 0 === $GLOBALS['emulsify_core_block_rerenders'], 'Inner content must never render a child for a second time.' );
+		emulsify_core_block_twig_smoke_assert( array() === $composite_errors, implode( "\n", $composite_errors ) );
+
+		// Mirror Timber::context()'s queried-post setup and count the cheaper
+		// global-context entry point independently.
+		$GLOBALS['emulsify_core_block_twig_smoke_caps'] = array();
+		$GLOBALS['post'] = (object) array( 'ID' => 77 );
+		$GLOBALS['emulsify_core_block_queried_post'] = (object) array( 'ID' => 999 );
+		$GLOBALS['emulsify_core_block_reset_post'] = true;
+		\Timber\Timber::$context = array( 'site' => 'Global site', 'post' => (object) array( 'ID' => 999 ) );
+		\Timber\Timber::$context_calls = 0;
+		\Timber\Timber::$global_context_calls = 0;
+		\Timber\Timber::$compiled = array();
+		$performance = new \Emulsify\Theme\Blocks\CoreBlockTwigRenderer();
+		$performance_errors = array();
+		$posts = array();
+		for ( $index = 0; $index < 20; ++$index ) {
+			$instance = (object) array( 'context' => array( 'postId' => 41 + $index % 2 ) );
+			$performance->render_block( $original, $block, $instance );
+			$latest = end( \Timber\Timber::$compiled );
+			$posts[] = ( $latest['context']['post']->ID ?? null ) === $instance->context['postId'];
+		}
+		if ( 1 !== \Timber\Timber::$global_context_calls || 0 !== \Timber\Timber::$context_calls ) {
+			$performance_errors[] = 'Many mapped blocks must build the base global Timber context once without calling context().';
+		}
+		if ( in_array( false, $posts, true ) || 77 !== $GLOBALS['post']->ID ) {
+			$performance_errors[] = 'Block postId values must select each block post without changing the WordPress global post.';
+		}
+		$GLOBALS['post'] = (object) array( 'ID' => 77 );
+		$performance->render_block( $original, $block );
+		$latest = end( \Timber\Timber::$compiled );
+		if ( 77 !== ( $latest['context']['post']->ID ?? null ) ) {
+			$performance_errors[] = 'A block without explicit post context must use the current global post rather than the cached base post.';
+		}
+		$performance->render_block( $original, $block, (object) array( 'context' => array( 'postId' => null ) ) );
+		$latest = end( \Timber\Timber::$compiled );
+		if ( null !== $latest['context']['post'] ) {
+			$performance_errors[] = 'An explicit missing postId must not reuse another block post.';
+		}
+
+		$late_filter = static function ( array $map ): array {
+			$map['core/heading'] = 'dist/components/inner.twig';
+			$map['core/table'] = 'dist/components';
+			$map['core/recursive'] = 'dist/components/recursive.twig';
+			return $map;
+		};
+		add_filter( 'emulsify_theme_core_block_twig_template_map', $late_filter );
+		$heading = array( 'blockName' => 'core/heading', 'innerContent' => array( 'Late mapping' ) );
+		if ( 'Late mapping' !== $performance->render_block( '<h2>Late mapping</h2>', $heading ) ) {
+			$performance_errors[] = 'A template-map filter registered after the first render must take effect.';
+		}
+		$count = count( \Timber\Timber::$compiled );
+		if ( '<table>Original</table>' !== $performance->render_block( '<table>Original</table>', array( 'blockName' => 'core/table' ) ) || $count !== count( \Timber\Timber::$compiled ) ) {
+			$performance_errors[] = 'A readable directory must not count as a mapped Twig file.';
+		}
+
+		emulsify_core_block_twig_smoke_write( $child . '/dist/components/recursive.twig', '{{ post.content|raw }}' );
+		\Timber\Timber::$recursive_renderer = $performance;
+		$recursive = $performance->render_block( '<p>Core fallback</p>', array( 'blockName' => 'core/recursive' ) );
+		if ( '<section><p>Core fallback</p></section>' !== $recursive || 1 !== \Timber\Timber::$recursive_calls ) {
+			$performance_errors[] = 'Recursive mapped rendering must immediately use WordPress markup without compiling again.';
+		}
+		remove_filter( 'emulsify_theme_core_block_twig_template_map', $late_filter );
+		if ( '<h2>Late mapping</h2>' !== $performance->render_block( '<h2>Late mapping</h2>', $heading ) ) {
+			$performance_errors[] = 'Removing a template-map filter must invalidate its mapping.';
+		}
+		$dynamic_template = 'dist/components/inner.twig';
+		add_filter(
+			'emulsify_theme_core_block_twig_template_map',
+			static function ( array $map ) use ( &$dynamic_template ): array {
+				$map['core/list'] =& $dynamic_template;
+				return $map;
+			}
+		);
+		$list = array( 'blockName' => 'core/list', 'innerContent' => array( 'Dynamic' ) );
+		$first = $performance->render_block( '<ul>Dynamic</ul>', $list );
+		$dynamic_template = 'dist/components/content.twig';
+		$second = $performance->render_block( '<ul>Dynamic</ul>', $list );
+		if ( 'Dynamic' !== $first || '<ul>Dynamic</ul>' !== $second ) {
+			$performance_errors[] = 'A dynamic map callback must be evaluated again even when its registration is unchanged.';
+		}
+		$performance->render_block( '<pre>Error fallback</pre>', array( 'blockName' => 'core/code' ) );
+		$recovered = $performance->render_block( $original, $block );
+		if ( false === strpos( $recovered, 'mapped' ) ) {
+			$performance_errors[] = 'Exceptions must unwind the recursion guard so later mapped blocks still render.';
+		}
+		emulsify_core_block_twig_smoke_assert( array() === $performance_errors, implode( "\n", $performance_errors ) );
 
 		echo "Core block Twig renderer smoke checks passed.\n";
 	} finally {

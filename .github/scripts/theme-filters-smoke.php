@@ -140,6 +140,7 @@ if ( ! function_exists( 'wp_get_theme' ) ) {
 
 if ( ! function_exists( 'get_body_class' ) ) {
 	function get_body_class(): array {
+		$GLOBALS['emulsify_filter_body_calls'] = ( $GLOBALS['emulsify_filter_body_calls'] ?? 0 ) + 1;
 		return array( 'filter-smoke' );
 	}
 }
@@ -176,6 +177,7 @@ if ( ! function_exists( 'wp_login_url' ) ) {
 
 if ( ! function_exists( 'wp_logout_url' ) ) {
 	function wp_logout_url(): string {
+		$GLOBALS['emulsify_filter_logout_calls'] = ( $GLOBALS['emulsify_filter_logout_calls'] ?? 0 ) + 1;
 		return 'https://example.test/wp-login.php?action=logout';
 	}
 }
@@ -313,6 +315,7 @@ try {
 	require_once $repo_root . '/includes/Support/AssetManifest.php';
 	require_once $repo_root . '/includes/Support/ProjectConfig.php';
 	require_once $repo_root . '/includes/Runtime/Assets.php';
+	require_once $repo_root . '/includes/Support/LogoutUrl.php';
 	require_once $repo_root . '/includes/Runtime/Context.php';
 	require_once $repo_root . '/includes/Runtime/Setup.php';
 	require_once $repo_root . '/includes/Runtime/Twig.php';
@@ -479,7 +482,24 @@ try {
 		'Twig namespace filter should add a project namespace.'
 	);
 
+	$GLOBALS['emulsify_filter_body_calls']   = 0;
+	$GLOBALS['emulsify_filter_logout_calls'] = 0;
 	$context = ( new Emulsify\Theme\Runtime\Context() )->add( array() );
+
+	emulsify_filter_smoke_assert( 1 === $GLOBALS['emulsify_filter_body_calls'], 'Global context must compute body classes only once.' );
+	emulsify_filter_smoke_assert( 0 === $GLOBALS['emulsify_filter_logout_calls'], 'Unused logout URLs must not create a nonce.' );
+	emulsify_filter_smoke_assert( 'filter-smoke' === $context['body_class'] && 'filter-smoke' === $context['wp']['body_class'], 'Both body-class context keys must remain available.' );
+	$restored_url = unserialize( serialize( $context['wp']['logout_url'] ) );
+	emulsify_filter_smoke_assert( 0 === $GLOBALS['emulsify_filter_logout_calls'], 'Serializing unused context must not force nonce creation.' );
+	emulsify_filter_smoke_assert( 'https://example.test/wp-login.php?action=logout' === (string) $restored_url, 'PHP context caches must retain a usable logout URL.' );
+	$GLOBALS['emulsify_filter_logout_calls'] = 0;
+	$custom_context = ( new Emulsify\Theme\Runtime\Context() )->add( array( 'body_class' => 'project-body' ) );
+	emulsify_filter_smoke_assert( 'project-body' === $custom_context['body_class'] && 'filter-smoke' === $custom_context['wp']['body_class'], 'An inherited body class must not replace the native WordPress helper value.' );
+	require_once $repo_root . '/vendor/autoload.php';
+	$twig = new \Twig\Environment( new \Twig\Loader\ArrayLoader( array( 'logout' => '{{ wp.logout_url }}|{{ wp.logout_url }}' ) ), array( 'autoescape' => 'html' ) );
+	emulsify_filter_smoke_assert( 'https://example.test/wp-login.php?action=logout|https://example.test/wp-login.php?action=logout' === $twig->render( 'logout', $context ), 'Twig must render the lazy logout URL as text.' );
+	emulsify_filter_smoke_assert( 1 === $GLOBALS['emulsify_filter_logout_calls'], 'Repeated logout URL reads must compute its nonce only once.' );
+	emulsify_filter_smoke_assert( 'https://example.test/wp-login.php?action=logout' === json_decode( json_encode( $context['wp']['logout_url'] ), true ), 'JSON consumers must receive the logout URL text.' );
 
 	emulsify_filter_smoke_assert(
 		true === $context['project_flag'],

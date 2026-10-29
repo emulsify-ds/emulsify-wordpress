@@ -89,7 +89,7 @@ final class AttributeBag implements \Stringable {
 			return $this;
 		}
 
-		if ( 'class' === $attribute_name ) {
+		if ( 'class' === strtolower( $attribute_name ) ) {
 			$class_string = is_string( $value ) ? self::parseClassAttributeString( $value ) : null;
 			// Support legacy helper calls that pass class="foo bar" while storing
 			// classes internally as tokens for safe merging and deduplication.
@@ -101,6 +101,12 @@ final class AttributeBag implements \Stringable {
 
 		if ( null === $normalized_value ) {
 			return $this;
+		}
+
+		// Use WordPress's URI attribute policy, also covering SVG links.
+		if ( true !== $normalized_value && in_array( strtolower( $attribute_name ), array_merge( wp_kses_uri_attributes(), array( 'xlink:href' ) ), true ) ) {
+			$url              = is_array( $normalized_value ) ? implode( ' ', $normalized_value ) : $normalized_value;
+			$normalized_value = wp_kses_bad_protocol( $url, wp_allowed_protocols() );
 		}
 
 		$this->attributes[ $attribute_name ] = $normalized_value;
@@ -125,10 +131,6 @@ final class AttributeBag implements \Stringable {
 
 		if ( $value instanceof \Traversable ) {
 			$value = iterator_to_array( $value );
-		}
-
-		if ( is_object( $value ) ) {
-			$value = get_object_vars( $value );
 		}
 
 		if ( ! is_array( $value ) ) {
@@ -355,7 +357,7 @@ final class AttributeBag implements \Stringable {
 	 * @return string|null Class value when the string is class-only.
 	 */
 	private static function parseClassAttributeString( string $value ): ?string {
-		if ( preg_match( '/^class=(["\'])(.*?)\1$/', $value, $matches ) ) {
+		if ( preg_match( '/^class=(["\'])(.*?)\1$/i', $value, $matches ) ) {
 			return $matches[2];
 		}
 
@@ -369,7 +371,14 @@ final class AttributeBag implements \Stringable {
 	 * @return bool TRUE when safe.
 	 */
 	private static function isSafeAttributeName( string $name ): bool {
-		return 1 === preg_match( '/^[A-Za-z_:][A-Za-z0-9:_.-]*$/', $name );
+		$name = strtolower( $name );
+
+		// Framework directives can evaluate expressions just like native handlers.
+		// Keep static htmx attributes, but reject its evaluation-bearing families.
+		return 'srcdoc' !== $name
+			&& 0 !== strpos( $name, 'on' )
+			&& 1 !== preg_match( '/^(?:x-|v-|:|(?:data-)?hx-(?:on|vals$|vars$|headers$|request$|trigger$))/', $name )
+			&& 1 === preg_match( '/^[A-Za-z_][A-Za-z0-9:_.-]*$/', $name );
 	}
 
 	/**

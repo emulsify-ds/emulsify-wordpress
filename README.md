@@ -1,8 +1,8 @@
-![Emulsify Design System](https://github.com/emulsify-ds/.github/blob/6bd435be881bd820bddfa05d88905efe29176a0a/assets/images/header.png)
+![Emulsify Design System](https://raw.githubusercontent.com/emulsify-ds/.github/6bd435be881bd820bddfa05d88905efe29176a0a/assets/images/header.png)
 
 # Emulsify WordPress
 
-Emulsify WordPress 2.0.0 is a Timber-first WordPress parent theme for teams building component-driven sites with Emulsify Core 4, Vite, Storybook, and Twig.
+Emulsify WordPress is a Timber-first WordPress parent theme for teams building component-driven sites with Emulsify Core 4, Vite, Storybook, and Twig.
 
 The parent theme provides the WordPress runtime: theme setup, Timber bootstrapping, Twig namespaces and helpers, template fallbacks, asset loading, and optional block registration. Generated child themes provide the project layer: components, templates, source Sass and JavaScript, compiled assets, and site-specific overrides.
 
@@ -31,10 +31,10 @@ Use the named `emulsify.zip` asset, not GitHub's automatically generated **Sourc
 
 ## Requirements
 
-- WordPress 6.7 or newer.
+- WordPress 6.8 or newer.
 - PHP 8.3 or newer.
 - Composer 2 for Composer-based installation and parent-theme maintenance.
-- Node.js 24. Root release tooling expects `>=24.10`; generated child themes expect `>=24`.
+- Node.js 24.13.0 or newer for generated child themes: their `package.json` advertises `>=24`, but Emulsify Core 4.5.0 requires `>=24.13.0`. Root release tooling separately requires `>=24.10`. Both `.nvmrc` files select the Node 24 line without pinning a minor version.
 - Timber 2, installed by the site project or bundled in the manual release ZIP.
 - WP-CLI when generating child themes or running the full WordPress fixture smoke test.
 
@@ -89,7 +89,7 @@ npm install
 | `npm run audit:twig-stories` | Check Twig story compatibility. |
 | `npm run inspect:components` | Discover components and report metadata, dependencies, configuration issues, and orphaned files. |
 | `npm run a11y` | Build Storybook and run the Core accessibility check. |
-| `npm run test` | Run Jest with `--passWithNoTests` for starter projects. |
+| `npm run test` | Run project Jest tests with coverage; fails when no tests exist. |
 
 The component inspector comes from the installed `@emulsify/core` package and
 runs from the generated child theme root without requiring WordPress to be
@@ -115,7 +115,7 @@ The generated `whisk` child theme owns project implementation:
 - `whisk/src/components` is an empty placeholder until a project installs the component system it wants to use.
 - Source Sass, JavaScript, stories, data fixtures, and component metadata are defined by the selected Emulsify component system, not by this parent theme starter.
 - `whisk/assets/images` and `whisk/assets/icons` are empty placeholders for project-owned theme media and icon files.
-- `whisk/templates/page.twig` is a small example override.
+- New generated themes contain no Twig overrides or `templates/` directory. Add project templates only when needed; use the documented [Twig extension points](docs/template-extension.md).
 - `whisk/dist/global` and `whisk/dist/components` are runtime build output conventions when a component system emits them.
 - `whisk/project.emulsify.json` uses `"platform": "wordpress"` so Core and CLI tooling can load the WordPress platform adapter. It also records `generatedFrom` and `generatedFromVersion` so future upgrades and support diagnostics can identify Emulsify-generated WordPress child themes. Projects can also use Core-supported metadata such as `variant.structureImplementations` there when a selected component system needs legacy Twig namespaces.
 
@@ -147,7 +147,10 @@ npm run lint:php
 
 `lint:php` runs PHPCS with `phpcs.xml.dist`, followed by PHPStan with `phpstan.neon.dist`. Both configurations cover `includes/` and the parent theme's root PHP entry points, including `functions.php`. Use `npm run lint:php:fix` to apply safe PHPCBF coding-standard fixes, then rerun `npm run lint:php` to confirm PHPStan and the remaining PHPCS checks.
 
-The `.husky/pre-commit` hook already runs `npm run lint`, which delegates to this PHP check.
+The `.husky/pre-commit` hook runs `npm run lint`, which delegates to this PHP
+check. A normal `npm install` installs Husky 9 hooks in clones and worktrees.
+After installing with `npm ci --ignore-scripts`, enable local hooks with
+`npx --no-install husky`.
 
 | Command | Purpose |
 | --- | --- |
@@ -155,9 +158,16 @@ The `.husky/pre-commit` hook already runs `npm run lint`, which delegates to thi
 | `npm run pr:check` | Run the practical, stubbed pull request validation suite. |
 | `npm run release:check` | Run release-readiness checks. |
 | `npm run build:dist` | Build the installable `dist-artifact/emulsify.zip` release archive. |
-| `npm run publish-test -- --no-ci` | Run a local semantic-release dry run. |
+| `npm run publish-test -- --no-ci` | Run a local release dry run after meeting the [prerequisites](docs/release-process.md#local-release-dry-runs). |
 
-Every pull request to the configured branches runs two visible fast readiness jobs: practical smoke checks and dedicated PHPCS/PHPStan analysis. Pull requests targeting `main` or `release-2.x` additionally run the MySQL-backed WordPress fixture and Whisk Storybook accessibility audit. The WordPress job builds and extracts `emulsify.zip`, confirms its packaged generator and Whisk source, and sets `WP_SMOKE_REQUIRED=1`, so missing WP-CLI/MySQL prerequisites or route render failures fail the job instead of producing a skip. The Whisk job installs Chrome explicitly, copies an accessible CI-only story and Vite entry into the otherwise component-agnostic starter, and then builds Storybook and runs axe.
+Every pull request to the configured branches runs two visible fast readiness jobs: practical smoke checks and dedicated PHPCS/PHPStan analysis. Pull requests targeting `main` or `release-2.x` additionally run the MySQL-backed WordPress fixture and Whisk Storybook accessibility audit. The PHP 8.3 practical lane builds `emulsify.zip`; the WordPress jobs verify and extract that same archive, confirm its packaged generator and Whisk source, and set `WP_SMOKE_REQUIRED=1`, so missing WP-CLI/MySQL prerequisites or route render failures fail the job instead of producing a skip. They also audit seven actual WordPress routes, including YouTube and Vimeo posters, with explicit WCAG 2.2 AA axe tags and save rendered HTML, results, and navigation evidence. The sole `target-size` exclusion reflects the unstyled parent; projects own target sizing and focus/helper styles. See [accessibility checks](docs/accessibility.md).
+
+Practical checks block on PHP 8.3, 8.4, and 8.5. The WordPress fixture blocks on
+the minimum 6.8 and on `latest`, resolved at run time with the downloaded
+version logged; nightly coverage is advisory. The theme is tested through
+WordPress 7.1 (the current stable fixture resolved to 7.1.3 on October 23, 2026).
+
+The Whisk job selects and verifies the runner-installed Chrome with its sandbox enabled, copies an accessible CI-only story and Vite entry into the otherwise component-agnostic starter, runs seeded project tests, and then builds Storybook and runs axe. Storybook coverage supplements the actual WordPress route audit.
 
 Weekly scheduled runs repeat the WordPress fixture and Whisk accessibility audit. Manual GitHub Actions > `WordPress Theme Readiness` runs can select either extended fixture with the `wordpress_fixture` and `extended_checks` inputs. Local `release:check` still skips the database fixture when prerequisites are unavailable unless `WP_SMOKE_REQUIRED=1` is set. Release publishing also requires the full WordPress fixture path before semantic-release can publish.
 
@@ -183,6 +193,12 @@ For Emulsify CLI integration, the standalone starter repository is `https://gith
 
 ## Documentation
 
+This README, [UPGRADE.md](UPGRADE.md), and the guides in this repository are
+authoritative for the WordPress 2.x workflow. The
+[Emulsify documentation site](https://emulsify.info/docs) also covers older
+tooling and other platforms; check a guide's platform and version before using
+its commands.
+
 - [Documentation index](docs/README.md)
 - [Generated-theme upgrade guide](UPGRADE.md)
 - [Upgrading from 1.x to 2.x](docs/upgrading-1x-to-2x.md)
@@ -190,6 +206,8 @@ For Emulsify CLI integration, the standalone starter repository is `https://gith
 - [Generated child theme contract](docs/generated-child-theme-contract.md)
 - [Parent and child theme architecture](docs/parent-child-architecture.md)
 - [Timber and Twig authoring](docs/timber-and-twig-authoring.md)
+- [Accessibility checks and project responsibilities](docs/accessibility.md)
+- [Privacy and click-to-load media embeds](docs/media-embeds.md)
 - [Emulsify Core 4 and Vite workflow](docs/core-4-vite-workflow.md)
 - [Design token integration](docs/design-token-integration.md)
 - [Component recipes](docs/component-recipes.md)
@@ -212,6 +230,9 @@ Emulsify WordPress is licensed under GPL-2.0-only. See [LICENSE](LICENSE).
 
 ## Contributing
 
+Read the [contributor guidance](AGENTS.md) for repository ownership, both child
+generators, validation commands, and release rules.
+
 ### Code of conduct
 
 Read the [Code of Conduct](https://github.com/emulsify-ds/emulsify-wordpress/blob/main/CODE_OF_CONDUCT.md) before contributing. File bugs and feature requests at [emulsify-ds/emulsify-wordpress](https://github.com/emulsify-ds/emulsify-wordpress/issues).
@@ -225,7 +246,9 @@ This repository uses [Conventional Commits](https://www.conventionalcommits.org/
 - `feat!:` or a `BREAKING CHANGE:` footer produces a major release.
 - `docs:`, `test:`, `ci:`, and `chore:` produce no release.
 
-A commit-msg hook validates the format with commitlint. See [docs/release-process.md](docs/release-process.md) for the full version strategy.
+The `.husky/commit-msg` hook validates the format with commitlint after local
+hooks are installed. See [docs/release-process.md](docs/release-process.md) for
+the full version strategy.
 
 ### Release readiness
 

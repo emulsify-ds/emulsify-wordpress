@@ -279,7 +279,6 @@ try {
 	$style       = file_get_contents( $destination . '/style.css' );
 	$package     = emulsify_cli_smoke_json( $destination . '/package.json' );
 	$project     = emulsify_cli_smoke_json( $destination . '/project.emulsify.json' );
-	$page        = file_get_contents( $destination . '/templates/page.twig' );
 	$functions   = file_get_contents( $destination . '/functions.php' );
 	$smoke_pattern = emulsify_cli_smoke_json( $destination . '/patterns/smoke-pattern.json' );
 
@@ -297,8 +296,7 @@ try {
 	emulsify_cli_smoke_assert( 'acme-child' === $project['project']['machineName'], 'project.emulsify.json should update machineName.' );
 	emulsify_cli_smoke_assert( 'emulsify-wordpress' === $project['project']['generatedFrom'], 'project.emulsify.json should identify the generated child theme source.' );
 	emulsify_cli_smoke_assert( emulsify_cli_smoke_expected_version() === $project['project']['generatedFromVersion'], 'project.emulsify.json should record the generated child theme source version.' );
-	emulsify_cli_smoke_assert( false !== strpos( $page, 'acme-child-page' ), 'Example template should update slug class.' );
-	emulsify_cli_smoke_assert( false === strpos( $page, 'whisk-page' ), 'Example template should not keep the whisk slug class.' );
+	emulsify_cli_smoke_assert( ! file_exists( $destination . '/templates' ), 'Fresh generated child themes should inherit parent templates without a local templates directory.' );
 	emulsify_cli_smoke_assert( false !== strpos( $functions, 'Acme Theme child theme hooks.' ), 'functions.php should update visible Whisk label.' );
 	emulsify_cli_smoke_assert( is_file( $destination . '/src/components/.gitkeep' ), 'Generated child theme should keep the empty component source placeholder.' );
 	emulsify_cli_smoke_assert( is_file( $destination . '/patterns/.gitkeep' ), 'Generated child theme should keep the empty pattern placeholder.' );
@@ -515,7 +513,7 @@ try {
 
 	$GLOBALS['emulsify_mkdir_failure'] = static function ( string $target ): bool {
 		$normalized = str_replace( '\\', '/', $target );
-		return false !== strpos( $normalized, '/rollback-child.tmp-' ) && str_ends_with( $normalized, '/templates' );
+		return false !== strpos( $normalized, '/rollback-child.tmp-' ) && str_ends_with( $normalized, '/config' );
 	};
 
 	try {
@@ -575,6 +573,18 @@ try {
 	$cli( array( 'Active Theme' ), array( 'machine-name' => 'active-child', 'activate' => true ) );
 
 	emulsify_cli_smoke_assert( 'active-child' === $GLOBALS['emulsify_activated_theme'], '--activate should call switch_theme() with the child slug.' );
+
+	$external_directory = $work_root . '/external-starter-directory';
+	mkdir( $external_directory );
+	file_put_contents( $external_directory . '/secret.txt', 'outside starter' );
+	symlink( $external_directory, $parent_root . '/whisk/linked-directory' );
+	symlink( $external_directory . '/secret.txt', $parent_root . '/whisk/linked-file.txt' );
+	WP_CLI::$messages = array();
+	$cli( array( 'Symlink Theme' ), array( 'machine-name' => 'symlink-child' ) );
+	emulsify_cli_smoke_assert( ! file_exists( $theme_root . '/symlink-child/linked-directory' ), 'A symlinked starter directory must be skipped rather than copied as an empty directory.' );
+	emulsify_cli_smoke_assert( ! file_exists( $theme_root . '/symlink-child/linked-file.txt' ), 'A symlinked starter file must not copy an external file.' );
+	$symlink_warnings = array_filter( WP_CLI::$messages, static fn( array $message ): bool => 'warning' === $message['type'] && str_contains( $message['message'], 'Skipping symlink' ) );
+	emulsify_cli_smoke_assert( 2 === count( $symlink_warnings ), 'Each skipped starter symlink must report a warning.' );
 
 	echo "Child theme generator smoke checks passed.\n";
 } catch ( Throwable $throwable ) {

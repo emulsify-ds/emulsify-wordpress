@@ -37,7 +37,10 @@ The bundled Whisk starter is an example child theme. Real projects can generate 
 
 ## Template fallback model
 
-The parent `templates/` directory contains complete minimal fallbacks. The generated child theme only ships a small example override at `whisk/templates/page.twig`.
+The parent `templates/` directory contains complete minimal fallbacks. Generated
+child themes ship no Twig templates or `templates/` directory. Pages render
+through the parent's `page.php` and Twig fallback until the project creates an
+intentional override. See the [public Twig extension points](template-extension.md).
 
 Timber resolves the `@templates` namespace child-first:
 
@@ -51,6 +54,10 @@ The parent-only `@emulsify-tpl` namespace points at parent templates. Use it whe
 Built child theme components are discovered before built parent theme components. When a child and parent component use the same relative path under `dist/components`, the child component wins for both ACF/Twig `*.component.json` metadata and native `block.json` metadata.
 
 Discovery is memoized for the current PHP request. ACF/Twig and native block registration share one filesystem scan by default.
+
+Recursive discovery skips unreadable or disappearing directories so one broken
+component folder cannot interrupt the request. With `WP_DEBUG` enabled, the
+runtime reports skipped unreadable roots and traversal failures for diagnosis.
 
 ## Asset resolution priority
 
@@ -66,9 +73,33 @@ Persistent component discovery caching is enabled by default in production and s
 add_filter( 'emulsify_theme_component_discovery_cache_enabled', '__return_false' );
 ```
 
-The transient cache key includes the active stylesheet, parent template, child theme version, parent theme version, WordPress environment type, and `dist/emulsify-assets.json` filemtime when that manifest exists. The runtime also calls `clear_discovery_cache` on WordPress' `switch_theme` hook so changing themes invalidates the active cache key.
+The transient cache key includes the active stylesheet, parent template, both
+theme versions and directories, the WordPress environment type, the effective
+component roots and their filesystem state, and `dist/emulsify-assets.json`
+filemtime when that manifest exists. Directory identity and timestamps invalidate
+the index after a release-directory deploy or a standard Emulsify Core build,
+which empties the output tree before writing it. The runtime also calls
+`clear_discovery_cache` on WordPress' `switch_theme` hook.
 
-Projects that customize component roots dynamically can add their own invalidation token with `emulsify_theme_component_discovery_cache_key_parts`. The default cache lifetime can be adjusted with `emulsify_theme_component_discovery_cache_ttl`.
+Only JSON metadata is indexed; ACF/Twig template candidates are checked directly
+when building component records. Cached file paths are relative to their
+component root and resolved against the current roots. Before reusing an index,
+the runtime checks that every cached file
+is still readable and inside its root. If any record is stale or invalid, it
+discards the index and scans again. A warm cache performs filesystem checks but
+does not recursively scan the component tree. A scan that skips an unreadable or
+disappearing directory is not persisted, so the next request can discover the
+recovered branch.
+
+Projects that customize component roots dynamically can add their own
+invalidation token with
+`emulsify_theme_component_discovery_cache_key_parts`. Preserve the existing key
+parts when adding a token. Custom builds that update nested directories in place
+must change a build token or clear the discovery cache: a nested addition need
+not change the component root's timestamp. This also applies when forcing
+persistent caching on during Core's watch builds, which preserve the output tree
+after their first cycle. The default cache lifetime can be adjusted with
+`emulsify_theme_component_discovery_cache_ttl`.
 
 To clear the current cache key from project code, a maintenance command, or custom deployment logic, call:
 

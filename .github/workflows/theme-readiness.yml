@@ -6,6 +6,12 @@ name: WordPress Theme Readiness
 # exercise the same extended coverage, while manual inputs select either
 # expensive fixture independently.
 on:
+  workflow_call:
+    inputs:
+      release:
+        description: Require the full release readiness gates.
+        type: boolean
+        default: false
   pull_request:
     branches:
       - main
@@ -24,7 +30,7 @@ on:
         type: boolean
         default: true
       extended_checks:
-        description: Run the CI-seeded Whisk Storybook build and accessibility audit.
+        description: Run CI-seeded Whisk tests, Storybook build, and accessibility audit.
         required: false
         type: boolean
         default: false
@@ -35,38 +41,42 @@ permissions:
   contents: read
 
 concurrency:
-  group: theme-readiness-${{ github.event.pull_request.number || github.ref }}
+  group: theme-readiness-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   practical:
     name: Practical theme readiness (PHP ${{ matrix.php-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        # 8.3 is the supported baseline. 8.4 proves the runtime stays clean on
-        # the current release, and 8.5 is an advisory forward-compatibility lane.
+        # The supported baseline and both newer PHP releases are blocking;
+        # PHP 8.5 passed the Composer, PHP analysis, and practical checks.
         include:
           - php-version: '8.3'
             experimental: false
           - php-version: '8.4'
             experimental: false
           - php-version: '8.5'
-            experimental: true
+            experimental: false
     continue-on-error: ${{ matrix.experimental }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
         with:
           php-version: ${{ matrix.php-version }}
           tools: composer:v2
@@ -79,7 +89,10 @@ jobs:
         run: composer validate --no-check-publish --strict
 
       - name: Install Composer dependencies for runtime smoke coverage
-        run: composer install --no-interaction --no-progress --prefer-dist ${{ matrix.experimental && '--ignore-platform-req=php+' || '' }}
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Audit shipped Composer dependencies
+        run: composer audit --locked --no-dev
 
       - name: Run runtime npm audit
         run: npm audit --omit=dev
@@ -106,9 +119,26 @@ jobs:
         if: matrix.php-version == '8.3'
         run: npm run build:dist
 
+      - name: Checksum installable theme archive
+        if: matrix.php-version == '8.3'
+        working-directory: dist-artifact
+        run: sha256sum emulsify.zip > emulsify.zip.sha256
+
+      - name: Upload tested release bundle
+        if: matrix.php-version == '8.3'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: emulsify-tested-${{ github.sha }}
+          path: |
+            dist-artifact/emulsify.zip
+            dist-artifact/emulsify.zip.sha256
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload installable theme archive
         if: matrix.php-version == '8.3'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           path: dist-artifact/emulsify.zip
           archive: false
@@ -118,7 +148,7 @@ jobs:
 
       - name: Upload failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: practical-readiness-php-${{ matrix.php-version }}
           path: |
@@ -133,16 +163,18 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
         with:
           php-version: '8.3'
           tools: composer:v2
@@ -157,22 +189,25 @@ jobs:
   wordpress-fixture:
     name: WordPress fixture smoke (WordPress ${{ matrix.wordpress-version }})
     if: >-
+      inputs.release ||
       (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'release-2.x')) ||
       github.event_name == 'push' ||
       github.event_name == 'schedule' ||
       (github.event_name == 'workflow_dispatch' && inputs.wordpress_fixture)
+    needs: practical
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        # 6.7 is the declared baseline in style.css. `latest` is an advisory
-        # forward-compatibility lane so a WordPress release cannot break the
-        # theme silently between scheduled runs.
+        # The declared minimum and dynamically resolved current stable release
+        # are blocking. Nightly tracks the next release without blocking merges.
         include:
-          - wordpress-version: '6.7'
+          - wordpress-version: '6.8'
             experimental: false
           - wordpress-version: latest
+            experimental: false
+          - wordpress-version: nightly
             experimental: true
     continue-on-error: ${{ matrix.experimental }}
     services:
@@ -190,16 +225,29 @@ jobs:
           --health-retries=10
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: .nvmrc
           cache: npm
 
+      - name: Select and verify runner Chrome
+        timeout-minutes: 1
+        run: |
+          # Ubuntu's AppArmor profile permits the installed Google Chrome.
+          # Verify it launches with its sandbox before Puppeteer runs.
+          chrome_path="$(command -v google-chrome)"
+          "$chrome_path" --version
+          "$chrome_path" --headless --dump-dom about:blank
+          printf 'PUPPETEER_EXECUTABLE_PATH=%s\n' "$chrome_path" >> "$GITHUB_ENV"
+
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
         with:
           php-version: '8.3'
           extensions: mysqli
@@ -212,12 +260,25 @@ jobs:
       - name: Install Composer dependencies
         run: composer install --no-dev --no-interaction --no-progress --prefer-dist
 
-      - name: Build installable theme archive
-        run: npm run build:dist
+      - name: Audit shipped Composer dependencies
+        run: composer audit --locked --no-dev
+
+      - name: Download tested release bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: emulsify-tested-${{ github.sha }}
+          path: dist-artifact
+          digest-mismatch: error
+
+      - name: Verify tested archive checksum
+        working-directory: dist-artifact
+        run: sha256sum --check emulsify.zip.sha256
 
       - name: Run WordPress fixture smoke
         env:
           WP_SMOKE_REQUIRED: '1'
+          WP_SMOKE_A11Y: '1'
+          WP_SMOKE_A11Y_OUTPUT: .artifacts/wordpress-a11y
           WP_SMOKE_THEME_ARCHIVE: dist-artifact/emulsify.zip
           WP_SMOKE_WORDPRESS_VERSION: ${{ matrix.wordpress-version }}
           WP_SMOKE_DB_HOST: 127.0.0.1
@@ -227,13 +288,23 @@ jobs:
           WP_SMOKE_DB_PASSWORD: root
         run: npm run release:check
 
+      - name: Upload rendered WordPress accessibility reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wordpress-rendered-a11y-${{ matrix.wordpress-version }}
+          path: .artifacts/wordpress-a11y/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload fixture diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: wordpress-fixture-${{ matrix.wordpress-version }}
           path: |
-            /tmp/emulsify-wp-smoke*/**/*.log
+            /tmp/emulsify-wordpress-smoke*/**/*.log
             npm-debug.log*
           if-no-files-found: ignore
           retention-days: 7
@@ -241,6 +312,7 @@ jobs:
   extended-whisk:
     name: Extended Whisk Storybook and a11y
     if: >-
+      inputs.release ||
       (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'release-2.x')) ||
       github.event_name == 'push' ||
       github.event_name == 'schedule' ||
@@ -249,37 +321,61 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: .nvmrc
           cache: npm
+
+      - name: Select and verify runner Chrome
+        timeout-minutes: 1
+        run: |
+          # Ubuntu's AppArmor profile permits the installed Google Chrome.
+          # Verify it launches with its sandbox before Puppeteer runs.
+          chrome_path="$(command -v google-chrome)"
+          "$chrome_path" --version
+          "$chrome_path" --headless --dump-dom about:blank
+          printf 'PUPPETEER_EXECUTABLE_PATH=%s\n' "$chrome_path" >> "$GITHUB_ENV"
 
       - name: Clean npm install
         run: npm ci --ignore-scripts
 
       - name: Install Whisk dependencies
-        run: npm run whisk:install
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+        # Keep this job's resolved tree for the informational audit below.
+        run: npm run whisk:install -- --package-lock=true
+
+      - name: Audit Whisk dependencies
+        continue-on-error: true
+        run: npm --prefix whisk audit
 
       - name: Seed CI-only Whisk component
         run: cp -R .github/fixtures/whisk-a11y/. whisk/src/components/
 
-      - name: Setup Chrome
-        id: setup-chrome
-        uses: browser-actions/setup-chrome@v2
-        with:
-          chrome-version: stable
+      - name: Run CI-seeded Whisk frontend tests
+        run: npm --prefix whisk run test -- --runInBand
 
       - name: Build Storybook and run a11y
-        env:
-          PUPPETEER_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
         run: npm --prefix whisk run a11y
+
+      - name: Upload Whisk coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: extended-whisk-coverage
+          path: whisk/.coverage/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload Storybook diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: extended-whisk-storybook
           path: |

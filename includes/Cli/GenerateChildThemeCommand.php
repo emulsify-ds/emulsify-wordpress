@@ -195,6 +195,7 @@ final class GenerateChildThemeCommand {
 				$staged           = $this->apply_metadata_updates( $staging, $metadata_updates );
 			}
 		} catch ( \Throwable $exception ) {
+			$staged = false;
 			\WP_CLI::warning( sprintf( 'Could not finish staging the child theme: %s', $exception->getMessage() ) );
 		}
 
@@ -252,17 +253,17 @@ final class GenerateChildThemeCommand {
 
 			$target = $this->join_path( $destination, $relative );
 
+			if ( $item->isLink() ) {
+				\WP_CLI::warning( sprintf( 'Skipping symlink in starter theme: %s', $path ) );
+				continue;
+			}
+
 			if ( $item->isDir() ) {
 				if ( ! $this->make_directory( $target ) ) {
 					\WP_CLI::warning( sprintf( 'Could not create directory: %s', $target ) );
 					return false;
 				}
 
-				continue;
-			}
-
-			if ( $item->isLink() ) {
-				\WP_CLI::warning( sprintf( 'Skipping symlink in starter theme: %s', $path ) );
 				continue;
 			}
 
@@ -313,9 +314,9 @@ final class GenerateChildThemeCommand {
 			$updates,
 			$root,
 			'package.json',
-			function ( array $data ) use ( $machine_name, $description ): array {
-				$data['name']        = $machine_name;
-				$data['description'] = $this->one_line( $description );
+			function ( \stdClass $data ) use ( $machine_name, $description ): \stdClass {
+				$data->name        = $machine_name;
+				$data->description = $this->one_line( $description );
 				return $data;
 			}
 		);
@@ -324,18 +325,18 @@ final class GenerateChildThemeCommand {
 			$updates,
 			$root,
 			'project.emulsify.json',
-			function ( array $data ) use ( $theme_label, $machine_name, $version, $description ): array {
-				if ( ! isset( $data['project'] ) || ! is_array( $data['project'] ) ) {
-					$data['project'] = array();
+			function ( \stdClass $data ) use ( $theme_label, $machine_name, $version, $description ): \stdClass {
+				if ( ! isset( $data->project ) || ! $data->project instanceof \stdClass ) {
+					$data->project = new \stdClass();
 				}
 
 				// phpcs:ignore WordPress.WP.CapitalPDangit.MisspelledInText -- project.platform is a machine-readable adapter key.
-				$data['project']['platform']             = 'wordpress';
-				$data['project']['name']                 = $theme_label;
-				$data['project']['machineName']          = $machine_name;
-				$data['project']['generatedFrom']        = self::GENERATED_FROM;
-				$data['project']['generatedFromVersion'] = $version;
-				$data['project']['description']          = $this->one_line( $description );
+				$data->project->platform             = 'wordpress';
+				$data->project->name                 = $theme_label;
+				$data->project->machineName          = $machine_name;
+				$data->project->generatedFrom        = self::GENERATED_FROM;
+				$data->project->generatedFromVersion = $version;
+				$data->project->description          = $this->one_line( $description );
 
 				return $data;
 			}
@@ -347,15 +348,6 @@ final class GenerateChildThemeCommand {
 			'functions.php',
 			function ( string $contents ) use ( $source_label ): string {
 				return str_replace( 'Whisk child theme hooks.', $source_label . ' child theme hooks.', $contents );
-			}
-		);
-
-		$this->collect_text_update(
-			$updates,
-			$root,
-			'templates/page.twig',
-			function ( string $contents ) use ( $machine_name ): string {
-				return str_replace( self::STARTER_SLUG . '-page', $machine_name . '-page', $contents );
 			}
 		);
 
@@ -442,24 +434,29 @@ final class GenerateChildThemeCommand {
 			return;
 		}
 
-		$files = glob( $pattern_dir . '/*.json' );
+		$iterator = new \RecursiveIteratorIterator(
+			new \RecursiveDirectoryIterator( $pattern_dir, \RecursiveDirectoryIterator::SKIP_DOTS )
+		);
+		$files    = array();
 
-		if ( ! is_array( $files ) ) {
-			return;
+		foreach ( $iterator as $item ) {
+			if ( ! $item->isLink() && $item->isFile() && 'json' === $item->getExtension() ) {
+				$files[] = $item->getPathname();
+			}
 		}
 
 		sort( $files );
 
 		foreach ( $files as $path ) {
-			$relative = 'patterns/' . basename( $path );
+			$relative = $this->relative_path( $root, $path );
 
 			$this->collect_json_update(
 				$updates,
 				$root,
 				$relative,
-				function ( array $data ) use ( $machine_name ): array {
-					if ( isset( $data['name'] ) && is_string( $data['name'] ) && 0 === strpos( $data['name'], self::STARTER_SLUG . '/' ) ) {
-						$data['name'] = $machine_name . '/' . substr( $data['name'], strlen( self::STARTER_SLUG ) + 1 );
+				function ( \stdClass $data ) use ( $machine_name ): \stdClass {
+					if ( isset( $data->name ) && is_string( $data->name ) && 0 === strpos( $data->name, self::STARTER_SLUG . '/' ) ) {
+						$data->name = $machine_name . '/' . substr( $data->name, strlen( self::STARTER_SLUG ) + 1 );
 					}
 
 					return $data;
@@ -510,6 +507,8 @@ final class GenerateChildThemeCommand {
 	 * @param string   $relative Relative file path.
 	 * @param callable $callback Data updater.
 	 * @return void
+	 *
+	 * @throws \RuntimeException When JSON is invalid or is not an object.
 	 */
 	private function collect_json_update( array &$updates, string $root, string $relative, callable $callback ): void {
 		$path = $this->join_path( $root, $relative );
@@ -526,11 +525,11 @@ final class GenerateChildThemeCommand {
 			return;
 		}
 
-		$data = json_decode( $contents, true );
+		$data = json_decode( $contents );
 
-		if ( ! is_array( $data ) ) {
-			\WP_CLI::warning( sprintf( 'Could not decode starter JSON file: %s', $path ) );
-			return;
+		if ( ! $data instanceof \stdClass ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Internal generator path, not rendered HTML.
+			throw new \RuntimeException( sprintf( 'Starter JSON file must contain a valid JSON object: %s', $relative ) );
 		}
 
 		$updated_data = $callback( $data );
@@ -765,10 +764,10 @@ final class GenerateChildThemeCommand {
 	 * Whisk sources all use two. Re-indenting here keeps generated JSON identical
 	 * no matter which generation path a project used.
 	 *
-	 * @param array $data Data to encode.
+	 * @param \stdClass $data Data to encode.
 	 * @return string|null Encoded JSON, or NULL on failure.
 	 */
-	private function encode_json( array $data ): ?string {
+	private function encode_json( \stdClass $data ): ?string {
 		// JSON_UNESCAPED_UNICODE matches JSON.stringify, which never escapes
 		// non-ASCII. Without it a non-ASCII theme name or description would make
 		// the two generation paths emit different bytes. Do not add

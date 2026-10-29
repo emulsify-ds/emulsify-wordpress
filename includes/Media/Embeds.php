@@ -1,0 +1,427 @@
+<?php
+/**
+ * Adds optional privacy and native click-to-load behavior to video oEmbeds.
+ *
+ * @package Emulsify
+ */
+
+namespace Emulsify\Theme\Media;
+
+/**
+ * Alters recognized players when content is rendered, outside the oEmbed cache.
+ */
+final class Embeds {
+
+	/** Vimeo thumbnail transient prefix. */
+	public const METADATA_PREFIX = 'emulsify_vimeo_poster_';
+
+	/** Vimeo refresh retry marker prefix. */
+	public const BACKOFF_PREFIX = 'emulsify_vimeo_poster_backoff_';
+
+	/**
+	 * Registers rendering and deferred metadata hooks.
+	 *
+	 * @return void
+	 */
+	public function register(): void {
+		add_filter( 'embed_oembed_html', array( $this, 'filter_html' ), 20, 4 );
+		add_filter( 'oembed_dataparse', array( $this, 'cache_oembed_data' ), 20, 3 );
+		add_action( 'emulsify_theme_refresh_vimeo_poster', array( $this, 'refresh_vimeo_poster' ) );
+	}
+
+	/**
+	 * Changes only supported, complete player iframes.
+	 *
+	 * @param mixed $html    Cached provider HTML; non-strings pass through unchanged.
+	 * @param mixed $url     Original embed URL, normalized to a string.
+	 * @param mixed $attr    Embed attributes, normalized to an array.
+	 * @param mixed $post_id Positive post ID or numeric string, otherwise null.
+	 * @return mixed Rendered embed HTML, or the unchanged non-string input.
+	 * @throws \RuntimeException In debug mode when Timber is missing.
+	 * @throws \UnexpectedValueException In debug mode when the poster is empty.
+	 * @throws \Throwable Rethrows other poster failures only in debug mode.
+	 */
+	public function filter_html( $html, $url = '', $attr = array(), $post_id = 0 ) {
+		if ( ! is_string( $html ) ) {
+			return $html;
+		}
+		$url     = is_string( $url ) ? $url : '';
+		$attr    = is_array( $attr ) ? $attr : array();
+		$post_id = $this->normalize_post_id( $post_id );
+		$options = $this->options( $url, $attr, $post_id );
+		if ( ! $options['privacy_mode'] && ! $options['click_to_load'] ) {
+			return $html;
+		}
+
+		$processor = $this->player_iframe( $html );
+		if ( null === $processor ) {
+			return $html;
+		}
+		$source = $processor->get_attribute( 'src' );
+		$player = is_string( $source ) ? $this->player( $source ) : null;
+		if ( null === $player ) {
+			return $html;
+		}
+
+		$player_url = $source;
+		if ( $options['privacy_mode'] ) {
+			$player_url = 'youtube' === $player['provider']
+				? preg_replace( '#^https://[^/?\#]+#i', 'https://www.youtube-nocookie.com', $source )
+				: $this->set_parameter( $source, 'dnt' );
+			$processor->set_attribute( 'src', $player_url );
+		}
+		if ( $options['click_to_load'] ) {
+			$title     = $processor->get_attribute( 'title' );
+			$has_title = is_string( $title ) && '' !== trim( $title );
+			$title     = $has_title ? $title : ( 'youtube' === $player['provider'] ? __( 'YouTube video', 'emulsify' ) : __( 'Vimeo video', 'emulsify' ) );
+			try {
+				if ( ! class_exists( '\Timber\Timber' ) ) {
+					throw new \RuntimeException( 'Timber is required to render click-to-load media embeds.' );
+				}
+				$metadata  = array();
+				$thumbnail = '';
+				if ( 'neutral' !== $options['poster'] ) {
+					if ( 'youtube' === $player['provider'] ) {
+						$thumbnail = 'videoseries' === $player['id'] ? '' : 'https://i.ytimg.com/vi/' . $player['id'] . '/hqdefault.jpg';
+					} else {
+						$metadata  = $this->vimeo_metadata( $source, $player['id'] );
+						$thumbnail = $metadata['thumbnail_url'] ?? '';
+					}
+				}
+				if ( ! $has_title && isset( $metadata['title'] ) && '' !== trim( $metadata['title'] ) ) {
+					$title = $metadata['title'];
+				}
+				$language = get_bloginfo( 'language' );
+				$context  = array(
+					'media_embed' => array(
+						'player_url'         => $this->set_parameter( $player_url, 'autoplay' ),
+						'title'              => $title,
+						'provider'           => 'youtube' === $player['provider'] ? 'YouTube' : 'Vimeo',
+						'thumbnail_url'      => $thumbnail,
+						'language_code'      => '' !== $language ? $language : 'en',
+						'language_direction' => is_rtl() ? 'rtl' : 'ltr',
+						'play_label'         => __( 'Play video', 'emulsify' ),
+					),
+				);
+				$document = \Timber\Timber::compile( '@templates/partials/oembed-poster.twig', $context );
+				if ( ! is_string( $document ) || '' === trim( $document ) ) {
+					throw new \UnexpectedValueException( 'The media embed poster template must render a non-empty HTML document.' );
+				}
+				// Without src, browsers fall back to about:blank even without srcdoc support.
+				$processor->remove_attribute( 'src' );
+				$processor->set_attribute( 'srcdoc', $this->srcdoc_value( $document ) );
+				if ( ! $has_title ) {
+					$processor->set_attribute( 'title', $title );
+				}
+			} catch ( \Throwable $exception ) {
+				_doing_it_wrong( __METHOD__, 'The media embed poster could not render. Check Timber and the child poster template.', '2.1.0' );
+				if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+					throw $exception;
+				}
+				return '<a href="' . esc_url( $url ) . '">' . esc_html( $title ) . '</a>';
+			}
+		}
+		$this->player_permissions( $processor );
+		return $processor->get_updated_html();
+	}
+
+	/**
+	 * Accepts positive integers and digit-only strings within PHP's integer range.
+	 *
+	 * @param mixed $post_id Public filter input.
+	 * @return int|null Positive post ID, otherwise null.
+	 */
+	private function normalize_post_id( $post_id ): ?int {
+		if ( is_string( $post_id ) ) {
+			$post_id = ctype_digit( $post_id ) ? filter_var( ltrim( $post_id, '0' ), FILTER_VALIDATE_INT ) : null;
+		}
+		return is_int( $post_id ) && $post_id > 0 ? $post_id : null;
+	}
+
+	/**
+	 * Resolves options for rendering or a provider metadata response.
+	 *
+	 * @param string   $url     Original embed URL.
+	 * @param array    $attr    Embed attributes.
+	 * @param int|null $post_id Positive post ID, or null outside a post.
+	 * @return array Media options.
+	 */
+	private function options( string $url, array $attr = array(), ?int $post_id = null ): array {
+		$options = array(
+			'privacy_mode'  => false,
+			'click_to_load' => false,
+			'poster'        => 'provider',
+		);
+		/**
+		 * Filters opt-in media embed behavior without changing cached provider HTML.
+		 *
+		 * @param array    $options Media options: privacy_mode, click_to_load, poster.
+		 * @param string   $url     Original embed URL.
+		 * @param array    $attr    Embed attributes.
+		 * @param int|null $post_id Positive post ID, or null outside a post.
+		 */
+		$filtered = apply_filters( 'emulsify_theme_media_embed_options', $options, $url, $attr, $post_id );
+		if ( is_array( $filtered ) ) {
+			$options = array_merge( $options, $filtered );
+		}
+		return $options;
+	}
+
+	/**
+	 * Preserves nested document entities across old and new HTML API escaping.
+	 *
+	 * WordPress 6.8 uses esc_attr(), which avoids double-encoding. Newer releases
+	 * correctly escape every ampersand. Probe once rather than assuming a version
+	 * so backports retain the same safe, exactly-once outer attribute boundary.
+	 *
+	 * @param string $document Twig-rendered HTML document.
+	 * @return string Value for the srcdoc setter.
+	 */
+	private function srcdoc_value( string $document ): string {
+		static $escapes_entities = null;
+		if ( null === $escapes_entities ) {
+			$probe = new \WP_HTML_Tag_Processor( '<iframe></iframe>' );
+			$probe->next_tag();
+			$probe->set_attribute( 'srcdoc', '&amp;' );
+			$reader = new \WP_HTML_Tag_Processor( $probe->get_updated_html() );
+			$reader->next_tag();
+			$escapes_entities = '&amp;' === $reader->get_attribute( 'srcdoc' );
+		}
+		return $escapes_entities ? $document : strtr( $document, array( '&' => '&#038;' ) );
+	}
+
+	/**
+	 * Saves metadata from WordPress' own provider fetch; no extra request is made.
+	 *
+	 * @param mixed $html Provider HTML; non-strings pass through unchanged.
+	 * @param mixed $data Provider oEmbed data.
+	 * @param mixed $url  Original embed URL, normalized to a string.
+	 * @return mixed Unchanged provider HTML for WordPress' cache.
+	 */
+	public function cache_oembed_data( $html, $data, $url ) {
+		if ( ! is_string( $html ) ) {
+			return $html;
+		}
+		$options = $this->options( is_string( $url ) ? $url : '' );
+		if ( ! $options['click_to_load'] || 'provider' !== $options['poster'] ) {
+			return $html;
+		}
+		$processor = $this->player_iframe( $html );
+		$source    = null !== $processor ? $processor->get_attribute( 'src' ) : null;
+		$player    = is_string( $source ) ? $this->player( $source ) : null;
+		if ( null !== $player && 'vimeo' === $player['provider'] && is_object( $data ) ) {
+			$canonical = $this->vimeo_url( $source, $player['id'] );
+			if ( '' !== $canonical ) {
+				$this->save_metadata( $canonical, $data );
+			}
+		}
+		return $html;
+	}
+
+	/**
+	 * Refreshes Vimeo metadata on WP-Cron, never on the content-rendering path.
+	 *
+	 * @param string $url Validated canonical Vimeo URL.
+	 * @return void
+	 */
+	public function refresh_vimeo_poster( string $url ): void {
+		if ( 1 !== preg_match( '#^https://vimeo\.com/[0-9]+(?:/[A-Za-z0-9]+)?$#D', $url ) ) {
+			return;
+		}
+		$key = self::BACKOFF_PREFIX . md5( $url );
+		if ( false !== get_transient( $key ) ) {
+			return;
+		}
+		// Back off failures and overlapping requests without discarding valid data.
+		set_transient( $key, true, HOUR_IN_SECONDS );
+		$data = _wp_oembed_get_object()->get_data( $url, array( 'discover' => false ) );
+		if ( is_object( $data ) ) {
+			$this->save_metadata( $url, $data );
+		}
+	}
+
+	/**
+	 * Parses an entire, empty iframe without repairing malformed/compound HTML.
+	 *
+	 * @param string $html Provider markup.
+	 * @return \WP_HTML_Tag_Processor|null Positioned processor or null.
+	 */
+	private function player_iframe( string $html ): ?\WP_HTML_Tag_Processor {
+		if ( str_contains( $html, "\0" ) ) {
+			return null;
+		}
+		$attribute = '[\t\n\f\r ]+([A-Za-z_:][A-Za-z0-9_.:-]*)(?:[\t\n\f\r ]*=[\t\n\f\r ]*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?';
+		if ( 1 !== preg_match( '~\A[\t\n\f\r ]*<iframe((?:' . $attribute . ')*)[\t\n\f\r ]*>[\t\n\f\r ]*</iframe[\t\n\f\r ]*>[\t\n\f\r ]*\z~i', $html, $matches ) ) {
+			return null;
+		}
+		preg_match_all( '~' . $attribute . '~', $matches[1], $attributes );
+		$names = array_map( 'strtolower', $attributes[1] );
+		if ( count( $names ) !== count( array_unique( $names ) ) ) {
+			return null;
+		}
+		$processor = new \WP_HTML_Tag_Processor( $html );
+		if ( ! $processor->next_tag( array( 'tag_name' => 'IFRAME' ) )
+			|| null !== $processor->get_attribute( 'srcdoc' ) || null !== $processor->get_attribute( 'sandbox' ) ) {
+			return null;
+		}
+		return $processor;
+	}
+
+	/**
+	 * Recognizes only HTTPS player hosts and provider-specific ID paths.
+	 *
+	 * @param string $source Player URL.
+	 * @return array|null Provider and ID, or null.
+	 */
+	private function player( string $source ): ?array {
+		$parts = $this->https_url( $source );
+		if ( null === $parts || ( isset( $parts['port'] ) && 443 !== $parts['port'] ) ) {
+			return null;
+		}
+		$host = strtolower( $parts['host'] ?? '' );
+		$path = $parts['path'] ?? '';
+		if ( in_array( $host, array( 'www.youtube.com', 'youtube.com', 'www.youtube-nocookie.com' ), true )
+			&& 1 === preg_match( '#^/embed/([A-Za-z0-9_-]+)$#D', $path, $matches ) ) {
+			return array(
+				'provider' => 'youtube',
+				'id'       => $matches[1],
+			);
+		}
+		if ( 'player.vimeo.com' === $host && 1 === preg_match( '#^/video/([0-9]+)$#D', $path, $matches ) ) {
+			return array(
+				'provider' => 'vimeo',
+				'id'       => $matches[1],
+			);
+		}
+		return null;
+	}
+
+	/**
+	 * Validates HTTPS URLs before parsing provider paths or trusting thumbnails.
+	 *
+	 * @param string $url Candidate URL.
+	 * @return array|null Parsed URL, or null for unsafe input.
+	 */
+	private function https_url( string $url ): ?array {
+		$parts = wp_parse_url( $url );
+		if ( ! is_array( $parts ) || 'https' !== strtolower( $parts['scheme'] ?? '' ) || empty( $parts['host'] )
+			|| isset( $parts['user'] ) || isset( $parts['pass'] ) || preg_match( '/[\x00-\x20\x7f\\\\]/', $url ) ) {
+			return null;
+		}
+		return $parts;
+	}
+
+	/**
+	 * Replaces one query key while preserving unrelated query bytes and fragments.
+	 *
+	 * @param string $url  Player URL.
+	 * @param string $name Parameter name.
+	 * @return string URL with the named parameter set to 1.
+	 */
+	private function set_parameter( string $url, string $name ): string {
+		$fragment = explode( '#', $url, 2 );
+		$query    = explode( '?', $fragment[0], 2 );
+		$pairs    = isset( $query[1] ) && '' !== $query[1] ? explode( '&', $query[1] ) : array();
+		$replaced = false;
+		foreach ( $pairs as &$pair ) {
+			if ( rawurldecode( explode( '=', $pair, 2 )[0] ) === $name ) {
+				$pair     = $name . '=1';
+				$replaced = true;
+			}
+		}
+		unset( $pair );
+		if ( ! $replaced ) {
+			$pairs[] = $name . '=1';
+		}
+		return $query[0] . '?' . implode( '&', $pairs ) . ( isset( $fragment[1] ) ? '#' . $fragment[1] : '' );
+	}
+
+	/**
+	 * Delegates player permissions after the srcdoc frame navigates cross-origin.
+	 *
+	 * @param \WP_HTML_Tag_Processor $processor Positioned iframe processor.
+	 * @return void
+	 */
+	private function player_permissions( \WP_HTML_Tag_Processor $processor ): void {
+		$permissions = array( 'autoplay', 'fullscreen', 'picture-in-picture', 'encrypted-media' );
+		$existing    = $processor->get_attribute( 'allow' );
+		$directives  = array();
+		$origins     = "'src' https://www.youtube.com https://youtube.com https://www.youtube-nocookie.com https://player.vimeo.com";
+		foreach ( explode( ';', is_string( $existing ) ? $existing : '' ) as $directive ) {
+			$directive = trim( $directive );
+			if ( '' !== $directive && ! in_array( preg_split( '/\s+/', $directive )[0], $permissions, true ) ) {
+				$directives[] = 1 === count( preg_split( '/\s+/', $directive ) ) ? $directive . ' ' . $origins : $directive;
+			}
+		}
+		foreach ( $permissions as $permission ) {
+			$directives[] = $permission . ' ' . $origins;
+		}
+		$processor->set_attribute( 'allow', implode( '; ', $directives ) );
+		$processor->set_attribute( 'allowfullscreen', true );
+	}
+
+	/**
+	 * Derives a safe metadata URL, retaining an unlisted video's access hash.
+	 *
+	 * @param string $source Player URL.
+	 * @param string $id     Numeric video ID.
+	 * @return string Canonical Vimeo URL, or empty for an unsupported hash.
+	 */
+	private function vimeo_url( string $source, string $id ): string {
+		$url   = 'https://vimeo.com/' . $id;
+		$query = wp_parse_url( $source, PHP_URL_QUERY );
+		foreach ( explode( '&', is_string( $query ) ? $query : '' ) as $pair ) {
+			$parts = explode( '=', $pair, 2 );
+			if ( 'h' === rawurldecode( $parts[0] ) ) {
+				$hash = rawurldecode( $parts[1] ?? '' );
+				return 1 === preg_match( '/^[A-Za-z0-9]+$/D', $hash ) ? $url . '/' . $hash : '';
+			}
+		}
+		return $url;
+	}
+
+	/**
+	 * Reads cached metadata, scheduling a refresh and returning immediately on miss.
+	 *
+	 * @param string $source Player URL.
+	 * @param string $id     Numeric video ID.
+	 * @return array Cached metadata or an empty array for a neutral poster.
+	 */
+	private function vimeo_metadata( string $source, string $id ): array {
+		$url = $this->vimeo_url( $source, $id );
+		if ( '' === $url ) {
+			return array();
+		}
+		$metadata = get_transient( self::METADATA_PREFIX . md5( $url ) );
+		if ( is_array( $metadata ) ) {
+			return $metadata;
+		}
+		if ( false !== get_transient( self::BACKOFF_PREFIX . md5( $url ) ) ) {
+			return array();
+		}
+		if ( ! wp_next_scheduled( 'emulsify_theme_refresh_vimeo_poster', array( $url ) ) ) {
+			wp_schedule_single_event( time(), 'emulsify_theme_refresh_vimeo_poster', array( $url ) );
+		}
+		return array();
+	}
+
+	/**
+	 * Replaces cached provider metadata only after receiving a safe thumbnail.
+	 *
+	 * @param string $url  Canonical Vimeo URL.
+	 * @param object $data Provider data.
+	 * @return void
+	 */
+	private function save_metadata( string $url, object $data ): void {
+		$candidate = isset( $data->thumbnail_url ) && is_string( $data->thumbnail_url ) ? $data->thumbnail_url : '';
+		if ( null === $this->https_url( $candidate ) ) {
+			return;
+		}
+		$metadata = array(
+			'thumbnail_url' => $candidate,
+			'title'         => isset( $data->title ) && is_string( $data->title ) ? $data->title : '',
+		);
+		set_transient( self::METADATA_PREFIX . md5( $url ), $metadata, DAY_IN_SECONDS );
+		delete_transient( self::BACKOFF_PREFIX . md5( $url ) );
+	}
+}

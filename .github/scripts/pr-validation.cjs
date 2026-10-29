@@ -24,6 +24,8 @@ function run(label, command, args) {
 
 run('Validate Composer metadata', 'composer', ['validate', '--no-check-publish', '--strict']);
 run('Validate documented npm commands', 'npm', ['run', 'docs:check-commands']);
+run('Protect blocking readiness coverage', 'node', ['--test', '.github/scripts/readiness-matrix-contract.test.cjs']);
+run('Protect committed release inputs and reject symlinks', 'node', ['--test', '.github/scripts/build-dist.test.cjs']);
 run('Install Composer dependencies for Twig smoke coverage', 'composer', [
   'install',
   '--no-interaction',
@@ -31,19 +33,29 @@ run('Install Composer dependencies for Twig smoke coverage', 'composer', [
   '--prefer-dist',
 ]);
 run('Run Bootstrap loader smoke test', 'npm', ['run', 'smoke:bootstrap-loader']);
+run('Run missing Timber native-route smoke test', 'npm', ['run', 'smoke:missing-timber']);
 run('Run ACF Local JSON smoke test', 'npm', ['run', 'smoke:acf-json']);
 run('Run asset manifest smoke test', 'npm', ['run', 'smoke:asset-manifest']);
 run('Run Twig attribute helper smoke test', 'npm', ['run', 'smoke:attributes']);
 run('Run block scoped asset smoke test', 'npm', ['run', 'smoke:block-assets']);
 run('Run child theme generator smoke test', 'npm', ['run', 'smoke:child-theme-generator']);
 run('Run component locator smoke test', 'npm', ['run', 'smoke:component-locator']);
+run('Run filesystem discovery failure smoke test', 'npm', ['run', 'smoke:file-discovery']);
 run('Run core block Twig renderer smoke test', 'npm', ['run', 'smoke:core-block-twig']);
 run('Run editor enhancements smoke test', 'npm', ['run', 'smoke:editor-enhancements']);
 run('Run editor policy smoke test', 'npm', ['run', 'smoke:editor-policy']);
 run('Run pattern registry smoke test', 'npm', ['run', 'smoke:patterns']);
 run('Run parent theme filter smoke test', 'npm', ['run', 'smoke:theme-filters']);
 run('Run Twig autoescape smoke test', 'npm', ['run', 'smoke:twig-autoescape']);
+run('Run parent template extension smoke test', 'npm', ['run', 'smoke:template-extension']);
+run('Run fallback navigation smoke test', 'npm', ['run', 'smoke:navigation']);
 run('Run Twig switch smoke test', 'npm', ['run', 'smoke:twig-switch']);
 run('Run Twig project namespace smoke test', 'npm', ['run', 'smoke:twig-project-namespace']);
 run('Install Whisk dependencies', 'npm', ['run', 'whisk:install']);
+run('Compare PHP and JavaScript Twig helper contracts', 'npm', ['run', 'test:twig-helpers']);
+run('Compare component resolution with Emulsify Core', 'npm', ['run', 'test:component-resolution']);
+run('Count request-wide component discovery and verify cache lifecycle', 'npm', ['run', 'smoke:component-request-cache']);
+run('Verify lint and format failure propagation', 'npm', ['run', 'test:lint-wrappers']);
+run('Run generated project Jest smoke test', 'npm', ['run', 'smoke:jest-project']);
+run('Run accessibility runner tests', 'npm', ['run', 'test:a11y-runner']);
 run('Run WordPress starter init smoke test', 'npm', ['run', 'smoke:starter-init']);

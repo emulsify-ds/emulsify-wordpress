@@ -122,8 +122,10 @@ The hook deliberately mirrors the parent WP-CLI generator's targeted updates:
 - `package.json` name and generated package lockfile root name.
 - `project.emulsify.json` project name, machine name, generated source metadata, and `"platform": "wordpress"`.
 - Visible Whisk labels in known starter files.
-- `templates/page.twig` class from `whisk-page` to the generated machine-name class.
 - JSON pattern names from the `whisk/*` namespace to the generated machine-name namespace.
+
+No Twig templates or `templates/` directory are generated. Create project
+overrides only as needed, using the [template extension contract](template-extension.md).
 
 The generated child theme must keep `Template: emulsify`; the parent theme remains installed separately as `emulsify`.
 

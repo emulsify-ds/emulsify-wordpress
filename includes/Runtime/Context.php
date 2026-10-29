@@ -7,18 +7,36 @@
 
 namespace Emulsify\Theme\Runtime;
 
+use Emulsify\Theme\Support\LogoutUrl;
+
 /**
  * Timber context integration.
  */
 final class Context {
 
 	/**
-	 * Registers context filters.
+	 * Registers context and protected-content filters.
 	 *
 	 * @return void
 	 */
 	public function register(): void {
 		add_filter( 'timber/context', array( $this, 'add' ) );
+		// Timber otherwise returns protected content instead of WordPress's form.
+		add_filter( 'timber/post/content/show_password_form_for_protected', '__return_true' );
+		add_filter( 'timber/post/content/password_form', array( $this, 'protect_password_form' ), PHP_INT_MAX );
+	}
+
+	/**
+	 * Keeps hidden password forms from exposing content through Timber.
+	 *
+	 * Timber treats an empty form as permission to continue to post content.
+	 * A non-empty space preserves a plugin's hidden form without that fallback.
+	 *
+	 * @param mixed $form Filtered WordPress password form.
+	 * @return string Form markup or an invisible, non-empty placeholder.
+	 */
+	public function protect_password_form( $form ): string {
+		return is_string( $form ) && $form ? $form : ' ';
 	}
 
 	/**
@@ -34,11 +52,13 @@ final class Context {
 			$context['site'] = new \Timber\Site();
 		}
 
+		$body_class = implode( ' ', get_body_class() );
+
 		$context['theme']      = $this->theme();
 		$context['menu']       = $this->menu();
 		$context['post']       = $context['post'] ?? $this->post();
-		$context['wp']         = $this->wordpress_helpers();
-		$context['body_class'] = $context['body_class'] ?? implode( ' ', get_body_class() );
+		$context['wp']         = $this->wordpress_helpers( $body_class );
+		$context['body_class'] = $context['body_class'] ?? $body_class;
 
 		/**
 		 * Filters global Timber context values added by the parent theme.
@@ -118,12 +138,13 @@ final class Context {
 	/**
 	 * Provides common WordPress values to Twig templates.
 	 *
+	 * @param string $body_class Native WordPress body classes.
 	 * @return array WordPress helper values.
 	 */
-	private function wordpress_helpers(): array {
+	private function wordpress_helpers( string $body_class ): array {
 		return array(
 			'ajax_url'                 => admin_url( 'admin-ajax.php' ),
-			'body_class'               => implode( ' ', get_body_class() ),
+			'body_class'               => $body_class,
 			'home_url'                 => home_url( '/' ),
 			'is_404'                   => is_404(),
 			'is_archive'               => is_archive(),
@@ -135,8 +156,8 @@ final class Context {
 			'is_singular'              => is_singular(),
 			'is_user_logged_in'        => is_user_logged_in(),
 			'login_url'                => wp_login_url(),
-			'logout_url'               => wp_logout_url(),
-			'rest_url'                 => function_exists( 'rest_url' ) ? rest_url() : '',
+			'logout_url'               => new LogoutUrl(),
+			'rest_url'                 => rest_url(),
 			'search_query'             => get_search_query(),
 			'site_url'                 => site_url( '/' ),
 			'stylesheet_directory_uri' => get_stylesheet_directory_uri(),

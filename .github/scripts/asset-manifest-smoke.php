@@ -216,6 +216,8 @@ try {
 	require_once $repo_root . '/includes/Support/AssetRecord.php';
 	require_once $repo_root . '/includes/Support/AssetEnqueuer.php';
 	require_once $repo_root . '/includes/Support/AssetManifest.php';
+	require_once $repo_root . '/includes/Support/Diagnostics.php';
+	require_once $repo_root . '/includes/Blocks/ComponentLocator.php';
 	require_once $repo_root . '/includes/Runtime/Assets.php';
 	require_once $repo_root . '/includes/Editor/Enhancements.php';
 

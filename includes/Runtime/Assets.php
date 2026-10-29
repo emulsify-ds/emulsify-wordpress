@@ -7,6 +7,7 @@
 
 namespace Emulsify\Theme\Runtime;
 
+use Emulsify\Theme\Blocks\ComponentLocator;
 use Emulsify\Theme\Support\AssetEnqueuer;
 use Emulsify\Theme\Support\AssetManifest;
 use Emulsify\Theme\Support\AssetRecord;
@@ -25,6 +26,13 @@ final class Assets {
 	private $manifest;
 
 	/**
+	 * Shared component metadata index.
+	 *
+	 * @var ComponentLocator
+	 */
+	private $components;
+
+	/**
 	 * Memoized raw asset file records by theme-relative directory.
 	 *
 	 * @var array
@@ -34,9 +42,9 @@ final class Assets {
 	/**
 	 * Memoized component metadata asset paths.
 	 *
-	 * @var array
+	 * @var array|null
 	 */
-	private $component_asset_paths = array();
+	private $component_asset_paths;
 
 	/**
 	 * Memoized manifest-scoped component asset paths.
@@ -48,10 +56,12 @@ final class Assets {
 	/**
 	 * Constructor.
 	 *
-	 * @param AssetManifest|null $manifest Asset manifest reader.
+	 * @param AssetManifest|null    $manifest   Asset manifest reader.
+	 * @param ComponentLocator|null $components Shared component metadata index.
 	 */
-	public function __construct( ?AssetManifest $manifest = null ) {
-		$this->manifest = $manifest ?? new AssetManifest();
+	public function __construct( ?AssetManifest $manifest = null, ?ComponentLocator $components = null ) {
+		$this->manifest   = $manifest ?? new AssetManifest();
+		$this->components = $components ?? new ComponentLocator();
 	}
 
 	/**
@@ -181,8 +191,7 @@ final class Assets {
 	 * @return array Built asset records.
 	 */
 	private function scanned_asset_files( string $directory, array $extensions ): array {
-		$assets = array();
-		$seen   = array();
+		$files = array();
 
 		foreach ( $this->raw_asset_file_records( $directory ) as $file ) {
 			if ( ! $this->extension_allowed( $file, $extensions ) ) {
@@ -204,24 +213,10 @@ final class Assets {
 				continue;
 			}
 
-			if ( isset( $seen[ $relative ] ) ) {
-				// Discovery roots are child-first. Once a relative path is seen,
-				// later parent files with the same name are intentional fallbacks
-				// and should not be enqueued twice.
-				continue;
-			}
-
-			$seen[ $relative ] = true;
-			$assets[]          = array(
-				'path'     => $file['path'],
-				'priority' => $file['priority'],
-				'relative' => $relative,
-				'uri'      => $file['root_uri'] . '/' . $relative,
-				'version'  => $this->version( $file['path'] ),
-			);
+			$files[] = $file;
 		}
 
-		return FileDiscovery::sort_by_priority_and_relative( $assets );
+		return AssetRecord::from_discovered_files( $files );
 	}
 
 	/**
@@ -234,7 +229,9 @@ final class Assets {
 		$key = trim( $directory, '/\\' );
 
 		if ( ! array_key_exists( $key, $this->asset_file_records ) ) {
-			$this->asset_file_records[ $key ] = FileDiscovery::file_records( $this->asset_roots( $directory ), array( 'css', 'js' ) );
+			// Metadata in asset-only filtered roots belongs to this same scan, too.
+			$extensions                       = 'dist/components' === $key ? array( 'css', 'js', 'json' ) : array( 'css', 'js' );
+			$this->asset_file_records[ $key ] = FileDiscovery::file_records( $this->asset_roots( $directory ), $extensions );
 		}
 
 		return $this->asset_file_records[ $key ];
@@ -290,8 +287,6 @@ final class Assets {
 	 * @return array Asset root records.
 	 */
 	private function asset_roots( string $directory ): array {
-		$directories = FileDiscovery::theme_roots( $directory, true );
-
 		/**
 		 * Filters built asset directories before files are discovered.
 		 *
@@ -302,18 +297,7 @@ final class Assets {
 		 * @param array  $directories Built asset directory records.
 		 * @param string $directory   Theme-relative asset directory being scanned.
 		 */
-		$filtered = apply_filters( 'emulsify_theme_asset_directories', $directories, $directory );
-
-		if ( is_array( $filtered ) ) {
-			$directories = $filtered;
-		}
-
-		return FileDiscovery::normalize_roots(
-			$directories,
-			array(
-				'require_uri' => true,
-			)
-		);
+		return FileDiscovery::filtered_theme_roots( $directory, 'emulsify_theme_asset_directories' );
 	}
 
 	/**
@@ -348,11 +332,11 @@ final class Assets {
 			return true;
 		}
 
-		$component_dir = dirname( (string) $file['path'] );
-		$relative      = FileDiscovery::relative_path( $component_dir, (string) $file['path'] );
-		$asset_paths   = $this->component_asset_paths( $component_dir );
+		$asset_paths = $this->component_asset_paths();
+		$path        = (string) $file['path'];
+		$real        = realpath( $path );
 
-		return isset( $asset_paths[ $relative ] );
+		return isset( $asset_paths[ false === $real ? $path : $real ] );
 	}
 
 	/**
@@ -371,25 +355,30 @@ final class Assets {
 	}
 
 	/**
-	 * Gets declared component metadata asset paths for a component directory.
+	 * Gets declared metadata asset paths from the shared component file index.
 	 *
-	 * @param string $component_dir Absolute component directory path.
-	 * @return array Declared asset paths keyed by relative path.
+	 * Metadata-only components are included even when they cannot register a
+	 * Twig block. Their declared editor files must never become global assets.
+	 *
+	 * @return array Declared asset paths keyed by absolute path.
 	 */
-	private function component_asset_paths( string $component_dir ): array {
-		if ( isset( $this->component_asset_paths[ $component_dir ] ) ) {
-			return $this->component_asset_paths[ $component_dir ];
+	private function component_asset_paths(): array {
+		if ( is_array( $this->component_asset_paths ) ) {
+			return $this->component_asset_paths;
 		}
 
 		$paths          = array();
-		$metadata_files = glob( rtrim( $component_dir, '/\\' ) . '/*.component.json' );
+		$metadata_files = $this->components->component_metadata_files();
 
-		if ( ! is_array( $metadata_files ) ) {
-			$this->component_asset_paths[ $component_dir ] = $paths;
-			return $paths;
+		// Preserve metadata scoping for roots added only to the asset directory
+		// filter, without walking those roots a second time.
+		foreach ( $this->raw_asset_file_records( 'dist/components' ) as $file ) {
+			if ( preg_match( '/\.component\.json$/', basename( $file['path'] ) ) ) {
+				$metadata_files[] = $file['path'];
+			}
 		}
 
-		foreach ( $metadata_files as $metadata_file ) {
+		foreach ( array_unique( $metadata_files ) as $metadata_file ) {
 			$contents = is_readable( $metadata_file ) ? file_get_contents( $metadata_file ) : false;
 
 			if ( ! is_string( $contents ) ) {
@@ -403,11 +392,13 @@ final class Assets {
 			}
 
 			foreach ( $this->metadata_asset_paths( $metadata['assets'] ) as $path ) {
-				$paths[ $path ] = true;
+				$absolute = dirname( $metadata_file ) . '/' . $path;
+				$real     = realpath( $absolute );
+				$paths[ false === $real ? $absolute : $real ] = true;
 			}
 		}
 
-		$this->component_asset_paths[ $component_dir ] = $paths;
+		$this->component_asset_paths = $paths;
 
 		return $paths;
 	}
@@ -454,17 +445,5 @@ final class Assets {
 		$entry = is_array( $entry ) ? $entry : array( 'path' => $entry );
 
 		return AssetRecord::entry_path( $entry );
-	}
-
-	/**
-	 * Gets a filemtime-based asset version.
-	 *
-	 * @param string $path Absolute file path.
-	 * @return string|null Asset version.
-	 */
-	private function version( string $path ): ?string {
-		$modified = filemtime( $path );
-
-		return false === $modified ? null : (string) $modified;
 	}
 }

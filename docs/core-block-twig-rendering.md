@@ -26,21 +26,49 @@ add_filter(
 );
 ```
 
-Mapped template paths are child/parent theme relative. The active child theme is checked first, then the parent theme. If a block is not mapped, or the mapped Twig file is not readable, WordPress' original rendered block content is returned unchanged.
+Mapped template paths are child/parent theme relative. The active child theme is checked first, then the parent theme. If a block is not mapped, or the mapped Twig file is not a readable file, WordPress' original rendered block content is returned unchanged.
 
 ## Twig context
 
-Mapped templates receive the normal Timber context plus these values:
+Mapped templates receive Timber's global context plus these values:
 
+- `post`: the Timber post identified by the block context's `postId`, or the
+  current global WordPress post when no `postId` was supplied. An explicitly
+  missing or invalid `postId` produces `null`.
 - `block`: parsed block metadata from `render_block`.
 - `block_metadata`: alias for `block`.
 - `block_name`: block name such as `core/paragraph`.
-- `attributes`: parsed block attributes.
+- `attributes`: an empty array reserved for HTML attributes.
+- `block_attributes`: the parsed block attributes, also available as
+  `block.attrs` and `block_metadata.attrs`.
 - `content`: WordPress' original rendered block content.
-- `inner_content`: rendered inner content fallback for templates.
+- `inner_content`: saved string fragments for a leaf block; the full rendered
+  `content` when fragments contain child placeholders or no usable text.
 - `inner_blocks`: parsed inner block records when available.
 - `wp_block`: the `WP_Block` instance when WordPress passes one.
 - `twig_template`: the mapped Twig template.
+
+`inner_content` includes the saved block's wrapper. For a group, quote or other
+block containing children, it deliberately equals `content`, including every
+child's final rendered output. Children are never rendered again. Capturing
+generic `render_block` output would miss later block-name filters and children
+replaced through `pre_render_block`, so the renderer uses WordPress's assembled
+HTML. Print either `content` or `inner_content` once; printing both duplicates
+the block. Neither value promises wrapper-free children for a replacement
+component wrapper.
+
+The shared renderer builds its global base once during the request with
+`Timber::context_global()`. It creates each block's `post` without calling
+`setup()`, preserving Query Loop globals and avoiding extra `the_post` actions.
+Route-specific values that `Timber::context()` adds, such as `posts`, `term`,
+`author` or `search_query`, are not added automatically; supply them through the
+block context filter when needed.
+
+Keep block data separate from HTML attributes: `bem()` and `add_attributes()`
+merge the context's `attributes` into their output. Never put block data or
+untrusted user input there. The renderer does not copy `anchor` or `className`
+into this array; WordPress' rendered `content` already carries those values,
+and copying an anchor would duplicate its ID.
 
 Use `emulsify_theme_core_block_twig_context` to add project-specific values:
 
@@ -49,7 +77,7 @@ add_filter(
 	'emulsify_theme_core_block_twig_context',
 	function ( array $context, array $block ): array {
 		if ( 'core/heading' === ( $block['blockName'] ?? '' ) ) {
-			$context['heading_level'] = $context['attributes']['level'] ?? 2;
+			$context['heading_level'] = $context['block_attributes']['level'] ?? 2;
 		}
 
 		return $context;
@@ -58,6 +86,11 @@ add_filter(
 	2
 );
 ```
+
+The context and template-selection filters still run for every mapped block.
+The template-map filter also runs for each block, preserving dynamic callbacks
+and filters added or removed after rendering starts. Only normalization of an
+unchanged map result is cached; callback results are not frozen for the request.
 
 ## Optional class cleanup
 
@@ -72,6 +105,12 @@ Cleanup uses `WP_HTML_Tag_Processor` when available and otherwise leaves Twig ou
 ## Error handling
 
 If a mapped template throws an exception or Timber is unavailable, normal frontend visitors receive WordPress' original block output. Diagnostics are only appended for users who can edit posts or edit theme options, and debug logging only runs when `WP_DEBUG` is enabled.
+
+If Twig or a mapping/context filter re-enters mapped block rendering, that
+nested call returns WordPress's original markup. This bounds recursion from a
+template that prints `post.content`. Use `content` for the current block instead.
+Ordinary parsed inner blocks have already rendered before the parent template
+runs and are unaffected by this guard.
 
 ## Filters
 

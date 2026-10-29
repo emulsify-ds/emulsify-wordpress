@@ -16,7 +16,10 @@ Shared tooling comes from Emulsify Core; the project owns its templates and comp
 
 ## Quick start
 
-Use Node.js 24 or newer. If you use nvm, select the recommended version first:
+Use Node.js 24.13.0 or newer for Emulsify Core 4.5.0. This theme advertises
+`>=24`, but Core's `>=24.13.0` requirement sets the effective minimum.
+`.nvmrc` selects the Node 24 line without pinning a minor version. Check the
+resolved Core package's `engines` after dependency updates. If you use nvm:
 
 ```bash
 nvm install
@@ -34,5 +37,20 @@ The generated theme does not include project asset source files or active asset 
 ## Documentation
 
 - [Development guide](./docs/development.md) - Setup, commands, assets, and project ownership.
+- [WordPress integration](./docs/wordpress-integration.md) - Timber template selection, component mapping, and site verification.
 - [Upgrading](./docs/upgrading.md) - Dependency updates and starter-release comparisons.
 - [Troubleshooting and support](./docs/support-information.md) - Common fixes and a sanitized diagnostic checklist.
+
+## Working with AI
+
+[AGENTS.md](AGENTS.md) routes an assistant to this theme's metadata and guides.
+The optional
+[WordPress integration skill](.agents/skills/emulsify-wordpress-integration/SKILL.md)
+supports connecting project components to WordPress. The selected component
+library supplies its own structure, APIs, assets, and token guidance.
+
+Start an AI session from this theme directory for local skill discovery. For a
+session started at the WordPress site root, explicitly read this theme's
+`AGENTS.md` and skill, or reference them in the site's existing agent
+instructions. Generation leaves site-root instructions unchanged and does not
+configure an AI tool. See [the development guide](docs/development.md) for setup.

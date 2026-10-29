@@ -51,9 +51,53 @@ if ( ! function_exists( 'get_theme_root' ) ) {
 	}
 }
 
+// An installed fixture may supply the real formatting.php without booting a
+// database. Standalone CI retains WordPress's text-field sanitization below,
+// including percent-octet removal; trim(strip_tags()) hid generator drift.
+if ( ! function_exists( 'apply_filters' ) ) {
+	function apply_filters( $hook, $value, ...$arguments ) {
+		return $value;
+	}
+}
+if ( ! function_exists( 'is_utf8_charset' ) ) {
+	function is_utf8_charset(): bool {
+		return true;
+	}
+}
+if ( ! function_exists( 'get_option' ) ) {
+	function get_option( string $name ) {
+		return 'blog_charset' === $name ? 'UTF-8' : false;
+	}
+}
+if ( ! function_exists( '_canonical_charset' ) ) {
+	function _canonical_charset( string $charset ): string {
+		return is_utf8_charset() ? 'UTF-8' : $charset;
+	}
+}
+$wordpress_formatting = getenv( 'EMULSIFY_WP_FORMATTING_FILE' );
+if ( is_string( $wordpress_formatting ) && '' !== $wordpress_formatting ) {
+	foreach ( array( 'compat-utf8.php', 'utf8.php', 'kses.php' ) as $dependency ) {
+		$dependency_path = dirname( $wordpress_formatting ) . '/' . $dependency;
+		if ( is_file( $dependency_path ) ) {
+			require_once $dependency_path;
+		}
+	}
+	require_once $wordpress_formatting;
+}
 if ( ! function_exists( 'sanitize_text_field' ) ) {
 	function sanitize_text_field( string $value ): string {
-		return trim( strip_tags( $value ) );
+		$value = preg_replace( '@<(script|style)\b[^>]*?>.*?</\1>@si', '', $value );
+		$value = preg_replace_callback(
+			'%<[^>]*?((?=<)|>|$)%',
+			static fn( array $matches ): string => str_contains( $matches[0], '>' ) ? $matches[0] : htmlspecialchars( $matches[0], ENT_QUOTES, 'UTF-8', false ),
+			$value
+		);
+		$value = str_replace( "<\n", "&lt;\n", strip_tags( $value ) );
+		$value = trim( preg_replace( '/[\r\n\t ]+/', ' ', $value ) );
+		while ( preg_match( '/%[a-f0-9]{2}/i', $value, $match ) ) {
+			$value = trim( preg_replace( '/ +/', ' ', str_replace( $match[0], '', $value ) ) );
+		}
+		return $value;
 	}
 }
 

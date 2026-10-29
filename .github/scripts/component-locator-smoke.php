@@ -13,6 +13,7 @@ if ( PHP_SAPI !== 'cli' ) {
 $GLOBALS['emulsify_locator_smoke_hooks'] = array();
 $GLOBALS['emulsify_locator_transients']  = array();
 $GLOBALS['emulsify_locator_environment'] = 'development';
+$GLOBALS['emulsify_locator_failures']    = array();
 
 if ( ! function_exists( 'add_filter' ) ) {
 	function add_filter( string $hook, callable $callback, int $priority = 10, int $accepted_args = 1 ): bool {
@@ -71,6 +72,18 @@ if ( ! function_exists( 'get_template' ) ) {
 if ( ! function_exists( 'get_template_directory' ) ) {
 	function get_template_directory(): string {
 		return $GLOBALS['emulsify_locator_parent_theme'];
+	}
+}
+
+if ( ! function_exists( 'get_stylesheet_directory_uri' ) ) {
+	function get_stylesheet_directory_uri(): string {
+		return $GLOBALS['emulsify_locator_child_uri'] ?? 'https://example.test/themes/child';
+	}
+}
+
+if ( ! function_exists( 'get_template_directory_uri' ) ) {
+	function get_template_directory_uri(): string {
+		return 'https://example.test/themes/parent';
 	}
 }
 
@@ -185,6 +198,62 @@ function emulsify_locator_smoke_assert( bool $condition, string $message ): void
 	if ( ! $condition ) {
 		throw new RuntimeException( $message );
 	}
+}
+
+/** Records independent deployment regressions so a baseline run reports each. */
+function emulsify_locator_smoke_check( bool $condition, string $message ): void {
+	if ( ! $condition ) {
+		$GLOBALS['emulsify_locator_failures'][] = $message;
+	}
+}
+
+/** Counts real directory opens while delegating to PHP's native file wrapper. */
+final class ComponentDiscoveryFileSpy {
+	public $context;
+	private $stream;
+	private $directory;
+	public static array $directory_opens = array();
+	public static int $stat_calls = 0;
+
+	private static function native( callable $operation ) {
+		stream_wrapper_restore( 'file' );
+		try {
+			return $operation();
+		} finally {
+			stream_wrapper_unregister( 'file' );
+			stream_wrapper_register( 'file', self::class );
+		}
+	}
+	public function url_stat( $path, $flags ) {
+		++self::$stat_calls;
+		$stat = $flags & STREAM_URL_STAT_LINK ? 'lstat' : 'stat';
+		return self::native( static fn() => $flags & STREAM_URL_STAT_QUIET ? @$stat( $path ) : $stat( $path ) );
+	}
+	public function stream_open( $path, $mode, $options, &$opened_path ): bool {
+		$this->stream = self::native( static fn() => fopen( $path, $mode, (bool) ( $options & STREAM_USE_PATH ) ) );
+		return is_resource( $this->stream );
+	}
+	public function stream_read( $length ) { return fread( $this->stream, $length ); }
+	public function stream_eof() { return feof( $this->stream ); }
+	public function stream_stat() { return fstat( $this->stream ); }
+	public function stream_seek( $offset, $whence = SEEK_SET ) { return 0 === fseek( $this->stream, $offset, $whence ); }
+	public function stream_tell() { return ftell( $this->stream ); }
+	public function stream_close(): void { fclose( $this->stream ); }
+	public function stream_set_option( $option, $first, $second ) { return false; }
+	public function dir_opendir( $path, $options ): bool {
+		self::$directory_opens[] = $path;
+		$this->directory = self::native( static fn() => opendir( $path ) );
+		return is_resource( $this->directory );
+	}
+	public function dir_readdir() { return readdir( $this->directory ); }
+	public function dir_rewinddir(): bool { rewinddir( $this->directory ); return true; }
+	public function dir_closedir(): bool { closedir( $this->directory ); return true; }
+}
+
+/** Gets the private persistent key without relying on the transient payload. */
+function emulsify_locator_smoke_cache_key(): string {
+	return ( new ReflectionMethod( Emulsify\Theme\Blocks\ComponentLocator::class, 'component_files_cache_key' ) )
+		->invoke( new Emulsify\Theme\Blocks\ComponentLocator() );
 }
 
 /**
@@ -314,6 +383,7 @@ try {
 	emulsify_locator_smoke_write( $parent . '/dist/components/parent-native/block.json', '{"name":"emulsify/parent-native"}' );
 
 	require_once $repo_root . '/includes/Support/FileDiscovery.php';
+	require_once $repo_root . '/includes/Support/AssetManifest.php';
 	require_once $repo_root . '/includes/Support/AssetRecord.php';
 	require_once $repo_root . '/includes/Support/Diagnostics.php';
 	require_once $repo_root . '/includes/Blocks/ComponentLocator.php';
@@ -493,6 +563,7 @@ try {
 	$GLOBALS['emulsify_locator_transients'] = array();
 	emulsify_locator_smoke_write( $cache_child . '/dist/components/cache-card/cache-card.component.json', '{"title":"Cache Card"}' );
 	emulsify_locator_smoke_write( $cache_child . '/dist/components/cache-card/cache-card.twig', '<article>Cache card</article>' );
+	emulsify_locator_smoke_write( $cache_child . '/dist/components/cache-card/cache-card.js', 'export default {};' );
 
 	$cache_locator = new Emulsify\Theme\Blocks\ComponentLocator();
 
@@ -500,15 +571,69 @@ try {
 		array( 'cache-card' ) === emulsify_locator_smoke_relatives( $cache_locator->acf_components() ),
 		'Missing persistent discovery cache should fall back to filesystem scanning.'
 	);
+	$serialized_cache = serialize( $GLOBALS['emulsify_locator_transients'] );
+	emulsify_locator_smoke_check(
+		! str_contains( $serialized_cache, $work_root ),
+		'Persistent discovery must store root-relative paths, never absolute deployment paths.'
+	);
+	clearstatcache();
+	$warm_key_before = emulsify_locator_smoke_cache_key();
+	stream_wrapper_unregister( 'file' );
+	stream_wrapper_register( 'file', ComponentDiscoveryFileSpy::class );
+	try {
+		$warm_records = ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
+	} finally {
+		stream_wrapper_restore( 'file' );
+	}
+	emulsify_locator_smoke_assert(
+		array( 'cache-card' ) === emulsify_locator_smoke_relatives( $warm_records ) && array() === ComponentDiscoveryFileSpy::$directory_opens,
+		'Enabled persistent discovery cache should be reused across locator instances.'
+	);
+	echo 'Warm discovery cache: ' . count( ComponentDiscoveryFileSpy::$directory_opens ) . ' directory opens; ' . ComponentDiscoveryFileSpy::$stat_calls . " stat calls.\n";
+	for ( $lookup = 0; $lookup < 3; ++$lookup ) {
+		clearstatcache();
+		emulsify_locator_smoke_check(
+			$warm_key_before === emulsify_locator_smoke_cache_key()
+			&& $warm_records === ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components(),
+			'Unchanged warm lookups must preserve the cache key and component records.'
+		);
+	}
+	$asset_key_before = emulsify_locator_smoke_cache_key();
+	unlink( $cache_child . '/dist/components/cache-card/cache-card.js' );
+	clearstatcache();
+	ComponentDiscoveryFileSpy::$directory_opens = array();
+	stream_wrapper_unregister( 'file' );
+	stream_wrapper_register( 'file', ComponentDiscoveryFileSpy::class );
+	try {
+		$without_asset = ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
+	} finally {
+		stream_wrapper_restore( 'file' );
+	}
+	emulsify_locator_smoke_check(
+		$asset_key_before === emulsify_locator_smoke_cache_key()
+		&& $warm_records === $without_asset && array() === ComponentDiscoveryFileSpy::$directory_opens,
+		'Removing an unrelated built asset must preserve the metadata cache without directory scans.'
+	);
+	echo 'Warm metadata cache after removing JS: ' . count( ComponentDiscoveryFileSpy::$directory_opens ) . " directory opens.\n";
+	$GLOBALS['emulsify_locator_child_uri'] = 'https://new.example.test/current-theme';
+	$current_uri_records = ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
+	emulsify_locator_smoke_check(
+		'https://new.example.test/current-theme/dist/components' === $current_uri_records[0]['root_uri'],
+		'Cached files must use the current component root URI.'
+	);
+	unset( $GLOBALS['emulsify_locator_child_uri'] );
+	$build_root_mtime = filemtime( $cache_child . '/dist/components' );
 
 	emulsify_locator_smoke_write( $cache_child . '/dist/components/cache-late/cache-late.component.json', '{"title":"Cache Late"}' );
 	emulsify_locator_smoke_write( $cache_child . '/dist/components/cache-late/cache-late.twig', '<article>Cache late</article>' );
+	touch( $cache_child . '/dist/components', $build_root_mtime + 10 );
+	clearstatcache();
 
 	$cached_locator = new Emulsify\Theme\Blocks\ComponentLocator();
 
-	emulsify_locator_smoke_assert(
-		! in_array( 'cache-late', emulsify_locator_smoke_relatives( $cached_locator->acf_components() ), true ),
-		'Enabled persistent discovery cache should be reused across locator instances.'
+	emulsify_locator_smoke_check(
+		in_array( 'cache-late', emulsify_locator_smoke_relatives( $cached_locator->acf_components() ), true ),
+		'A new component directory must invalidate discovery without a version bump or asset manifest.'
 	);
 	emulsify_locator_smoke_assert(
 		Emulsify\Theme\Blocks\ComponentLocator::clear_discovery_cache(),
@@ -538,16 +663,13 @@ try {
 	( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
 	emulsify_locator_smoke_write( $version_child . '/dist/components/version-late/version-late.component.json', '{"title":"Version Late"}' );
 	emulsify_locator_smoke_write( $version_child . '/dist/components/version-late/version-late.twig', '<article>Version late</article>' );
-
-	emulsify_locator_smoke_assert(
-		! in_array( 'version-late', emulsify_locator_smoke_relatives( ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components() ), true ),
-		'Persistent discovery cache should hold until an invalidating key part changes.'
-	);
+	clearstatcache();
+	$version_key_before = emulsify_locator_smoke_cache_key();
 
 	$GLOBALS['emulsify_locator_theme_versions']['version-child'] = '1.0.1';
 
 	emulsify_locator_smoke_assert(
-		in_array( 'version-late', emulsify_locator_smoke_relatives( ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components() ), true ),
+		$version_key_before !== emulsify_locator_smoke_cache_key() && in_array( 'version-late', emulsify_locator_smoke_relatives( ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components() ), true ),
 		'Changing the child theme version should change the persistent discovery cache key.'
 	);
 
@@ -568,17 +690,13 @@ try {
 	( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
 	emulsify_locator_smoke_write( $mtime_child . '/dist/components/mtime-late/mtime-late.component.json', '{"title":"Mtime Late"}' );
 	emulsify_locator_smoke_write( $mtime_child . '/dist/components/mtime-late/mtime-late.twig', '<article>Mtime late</article>' );
-
-	emulsify_locator_smoke_assert(
-		! in_array( 'mtime-late', emulsify_locator_smoke_relatives( ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components() ), true ),
-		'Persistent discovery cache should include the manifest mtime in its key.'
-	);
+	$manifest_key_before = emulsify_locator_smoke_cache_key();
 
 	touch( $mtime_child . '/dist/emulsify-assets.json', time() + 10 );
 	clearstatcache( true, $mtime_child . '/dist/emulsify-assets.json' );
 
 	emulsify_locator_smoke_assert(
-		in_array( 'mtime-late', emulsify_locator_smoke_relatives( ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components() ), true ),
+		$manifest_key_before !== emulsify_locator_smoke_cache_key() && in_array( 'mtime-late', emulsify_locator_smoke_relatives( ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components() ), true ),
 		'Changing the asset manifest mtime should change the persistent discovery cache key.'
 	);
 
@@ -608,6 +726,217 @@ try {
 		'Invalid persistent discovery cache data should fall back to filesystem scanning.'
 	);
 	unset( $GLOBALS['emulsify_locator_transient_override'] );
+
+	// Release directories may move while slugs, versions and manifests stay fixed.
+	$release_a = $work_root . '/releases/a/child';
+	$release_b = $work_root . '/releases/b/child';
+	foreach ( array( $release_a, $release_b ) as $release ) {
+		emulsify_locator_smoke_write( $release . '/dist/components/deployed/deployed.component.json', '{"title":"Deployed"}' );
+		emulsify_locator_smoke_write( $release . '/dist/components/deployed/deployed.twig', '<article>Deployed</article>' );
+	}
+	$GLOBALS['emulsify_locator_stylesheet'] = 'unchanged-release';
+	$GLOBALS['emulsify_locator_theme_versions']['unchanged-release'] = '1.0.0';
+	$GLOBALS['emulsify_locator_child_theme'] = $release_a;
+	$GLOBALS['emulsify_locator_transients'] = array();
+	( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
+	$GLOBALS['emulsify_locator_child_theme'] = $release_b;
+	$moved = ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
+	emulsify_locator_smoke_check(
+		$release_b . '/dist/components/deployed' === ( $moved[0]['path'] ?? '' ),
+		'A release-directory deploy must use the new theme path with unchanged versions and slugs.'
+	);
+
+	$current = $work_root . '/current';
+	emulsify_locator_smoke_assert( symlink( $release_a, $current ), 'Unable to create the release symlink fixture.' );
+	$GLOBALS['emulsify_locator_child_theme'] = $current;
+	$GLOBALS['emulsify_locator_transients'] = array();
+	( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
+	$symlink_key_before = emulsify_locator_smoke_cache_key();
+	emulsify_locator_smoke_write( $release_b . '/dist/components/native/block.json', '{"name":"fixture/current-release"}' );
+	unlink( $current );
+	emulsify_locator_smoke_assert( symlink( $release_b, $current ), 'Unable to retarget the release symlink fixture.' );
+	clearstatcache( true );
+	$retargeted_locator = new Emulsify\Theme\Blocks\ComponentLocator();
+	$retargeted = $retargeted_locator->acf_components();
+	emulsify_locator_smoke_check(
+		$symlink_key_before !== emulsify_locator_smoke_cache_key()
+		&& realpath( $release_b . '/dist/components/deployed' ) === realpath( $retargeted[0]['path'] ?? '' )
+		&& 'fixture/current-release' === ( $retargeted_locator->native_block_directories()[0]['name'] ?? '' ),
+		'A retargeted theme symlink must resolve cached records against the active release.'
+	);
+
+	// Filtered discovery roots are part of the state, even outside either theme.
+	$original_hooks = $GLOBALS['emulsify_locator_smoke_hooks'];
+	$GLOBALS['emulsify_locator_filtered_root'] = $release_a . '/dist/components';
+	add_filter(
+		'emulsify_theme_component_roots',
+		static fn(): array => array( array( 'path' => $GLOBALS['emulsify_locator_filtered_root'], 'source' => 'filtered', 'priority' => 0 ) )
+	);
+	$GLOBALS['emulsify_locator_transients'] = array();
+	( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
+	$GLOBALS['emulsify_locator_filtered_root'] = $release_b . '/dist/components';
+	$filtered = ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
+	emulsify_locator_smoke_check(
+		$release_b . '/dist/components/deployed' === ( $filtered[0]['path'] ?? '' ),
+		'Changing filtered component roots must invalidate cached absolute paths.'
+	);
+	add_filter(
+		'emulsify_theme_component_discovery_cache_key_parts',
+		static fn(): array => array( 'custom' => 'constant-key' ),
+		100
+	);
+	$GLOBALS['emulsify_locator_filtered_root'] = $release_a . '/dist/components';
+	$GLOBALS['emulsify_locator_transients'] = array();
+	( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
+	$custom_key = emulsify_locator_smoke_cache_key();
+	$GLOBALS['emulsify_locator_filtered_root'] = $release_b . '/dist/components';
+	$custom_key_records = ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
+	emulsify_locator_smoke_check(
+		$custom_key === emulsify_locator_smoke_cache_key()
+		&& $release_b . '/dist/components/deployed' === ( $custom_key_records[0]['path'] ?? '' ),
+		'Root receipts must reject another root even when a filter intentionally replaces every cache key part.'
+	);
+	$GLOBALS['emulsify_locator_smoke_hooks'] = $original_hooks;
+	unset( $GLOBALS['emulsify_locator_filtered_root'] );
+
+	// Force a formerly valid payload to exercise read validation independently of key changes.
+	$GLOBALS['emulsify_locator_child_theme'] = $release_b;
+	$GLOBALS['emulsify_locator_transients'] = array();
+	emulsify_locator_smoke_write( $release_b . '/dist/components/healthy/healthy.component.json', '{"title":"Healthy"}' );
+	emulsify_locator_smoke_write( $release_b . '/dist/components/healthy/healthy.twig', '<article>Healthy</article>' );
+	( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
+	$cached_payload = $GLOBALS['emulsify_locator_transients'][ emulsify_locator_smoke_cache_key() ];
+	emulsify_locator_smoke_remove( $release_b . '/dist/components/deployed' );
+	emulsify_locator_smoke_write( $release_b . '/dist/components/recovered/recovered.component.json', '{"title":"Recovered"}' );
+	emulsify_locator_smoke_write( $release_b . '/dist/components/recovered/recovered.twig', '<article>Recovered</article>' );
+	// Keep the receipt current so this exercises per-file validation, not only
+	// the earlier root-state mismatch check.
+	$cached_payload['roots'] = ( new ReflectionMethod( Emulsify\Theme\Blocks\ComponentLocator::class, 'component_roots_signature' ) )
+		->invoke( new Emulsify\Theme\Blocks\ComponentLocator() );
+	emulsify_locator_smoke_check(
+		null === ( new ReflectionMethod( Emulsify\Theme\Blocks\ComponentLocator::class, 'normalize_cached_component_files' ) )
+			->invoke( new Emulsify\Theme\Blocks\ComponentLocator(), $cached_payload['files'] ),
+		'Per-file cache validation must reject a missing artifact even when its root receipt matches.'
+	);
+	$GLOBALS['emulsify_locator_transient_override'] = $cached_payload;
+	$recovered = ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
+	unset( $GLOBALS['emulsify_locator_transient_override'] );
+	emulsify_locator_smoke_check(
+		array( 'healthy', 'recovered' ) === emulsify_locator_smoke_relatives( $recovered ),
+		'A missing cached file must discard the whole index and rescan, including newly built components.'
+	);
+
+	// Poisoned relative paths must invalidate the complete payload. Each case
+	// uses a current receipt so root validation cannot hide a path-validation bug.
+	$outside_directory = dirname( $release_b ) . '/outside';
+	emulsify_locator_smoke_write( $outside_directory . '/outside.component.json', '{"title":"Outside"}' );
+	emulsify_locator_smoke_write( $outside_directory . '/outside.twig', '<article>Outside</article>' );
+	emulsify_locator_smoke_assert(
+		symlink( $outside_directory, $release_b . '/dist/components/escaping' ),
+		'Unable to create the cache-containment symlink fixture.'
+	);
+	$attack_payload = $GLOBALS['emulsify_locator_transients'][ emulsify_locator_smoke_cache_key() ] ?? $cached_payload;
+	$attack_payload['roots'] = ( new ReflectionMethod( Emulsify\Theme\Blocks\ComponentLocator::class, 'component_roots_signature' ) )
+		->invoke( new Emulsify\Theme\Blocks\ComponentLocator() );
+	$poisoned_files = array(
+		'traversal'      => array( 'root' => 0, 'relative' => '../../../outside/outside.component.json' ),
+		'absolute'       => array( 'root' => 0, 'relative' => $outside_directory . '/outside.component.json' ),
+		'dot traversal'  => array( 'root' => 0, 'relative' => 'healthy/../healthy/healthy.component.json' ),
+		'symlink escape' => array( 'root' => 0, 'relative' => 'escaping/outside.component.json' ),
+		'root index'     => array( 'root' => '0', 'relative' => 'healthy/healthy.component.json' ),
+	);
+	foreach ( $poisoned_files as $label => $poisoned_file ) {
+		$attack_payload['files'] = array( $poisoned_file );
+		$GLOBALS['emulsify_locator_transient_override'] = $attack_payload;
+		$unpoisoned = ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
+		unset( $GLOBALS['emulsify_locator_transient_override'] );
+		emulsify_locator_smoke_check(
+			array( 'healthy', 'recovered' ) === emulsify_locator_smoke_relatives( $unpoisoned ),
+			'Unsafe cached ' . $label . ' must invalidate the whole index and rescan contained components.'
+		);
+	}
+
+	// A temporarily inaccessible subtree must not become a complete warm index.
+	$partial_child = $work_root . '/partial-build-child';
+	foreach ( array( 'healthy', 'temporarily-unreadable' ) as $name ) {
+		emulsify_locator_smoke_write( $partial_child . '/dist/components/' . $name . '/' . $name . '.component.json', '{"title":"Partial build"}' );
+		emulsify_locator_smoke_write( $partial_child . '/dist/components/' . $name . '/' . $name . '.twig', '<article>Partial build</article>' );
+	}
+	$GLOBALS['emulsify_locator_child_theme'] = $partial_child;
+	$GLOBALS['emulsify_locator_transients'] = array();
+	$unreadable_directory = $partial_child . '/dist/components/temporarily-unreadable';
+	chmod( $unreadable_directory, 0000 );
+	clearstatcache();
+	if ( ! is_readable( $unreadable_directory ) ) {
+		$partial_key_before = emulsify_locator_smoke_cache_key();
+		try {
+			$partial = ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
+			emulsify_locator_smoke_check(
+				array( 'healthy' ) === emulsify_locator_smoke_relatives( $partial ) && array() === $GLOBALS['emulsify_locator_transients'],
+				'Incomplete discovery must preserve readable components without persisting a partial index.'
+			);
+		} catch ( Throwable $exception ) {
+			emulsify_locator_smoke_check( false, 'Unreadable component subtree must not throw: ' . $exception->getMessage() );
+		} finally {
+			chmod( $unreadable_directory, 0700 );
+			clearstatcache();
+		}
+		$recovered = ( new Emulsify\Theme\Blocks\ComponentLocator() )->acf_components();
+		emulsify_locator_smoke_check(
+			$partial_key_before === emulsify_locator_smoke_cache_key()
+			&& array( 'healthy', 'temporarily-unreadable' ) === emulsify_locator_smoke_relatives( $recovered ),
+			'Restored directory access must recover components without a build token or version bump.'
+		);
+	} else {
+		chmod( $unreadable_directory, 0700 );
+		echo "Incomplete discovery case skipped: current user can read mode-000 directories.\n";
+	}
+
+	$metadata_warnings = array();
+	$unreadable_native = $work_root . '/unreadable/block.json';
+	$unreadable_acf = $work_root . '/unreadable/card.component.json';
+	emulsify_locator_smoke_write( $unreadable_native, '{"name":"fixture/unreadable"}' );
+	emulsify_locator_smoke_write( $unreadable_acf, '{"title":"Unreadable"}' );
+	chmod( $unreadable_native, 0000 );
+	chmod( $unreadable_acf, 0000 );
+	clearstatcache();
+	set_error_handler(
+		static function ( int $severity, string $message ) use ( &$metadata_warnings ): bool {
+			$metadata_warnings[] = $message;
+			return true;
+		}
+	);
+	try {
+		$native_name = ( new ReflectionMethod( Emulsify\Theme\Blocks\ComponentLocator::class, 'native_block_name' ) )
+			->invoke( new Emulsify\Theme\Blocks\ComponentLocator(), $work_root . '/removed/block.json' );
+		$acf_metadata = ( new ReflectionMethod( Emulsify\Theme\Blocks\AcfBlocks::class, 'metadata' ) )
+			->invoke( new Emulsify\Theme\Blocks\AcfBlocks(), $work_root . '/removed/card.component.json' );
+		if ( ! is_readable( $unreadable_native ) && ! is_readable( $unreadable_acf ) ) {
+			$native_unreadable = ( new ReflectionMethod( Emulsify\Theme\Blocks\ComponentLocator::class, 'native_block_name' ) )
+				->invoke( new Emulsify\Theme\Blocks\ComponentLocator(), $unreadable_native );
+			$acf_unreadable = ( new ReflectionMethod( Emulsify\Theme\Blocks\AcfBlocks::class, 'metadata' ) )
+				->invoke( new Emulsify\Theme\Blocks\AcfBlocks(), $unreadable_acf );
+			emulsify_locator_smoke_check(
+				'' === $native_unreadable && null === $acf_unreadable,
+				'Unreadable native and ACF metadata must be skipped.'
+			);
+		} else {
+			echo "Unreadable metadata case skipped: current user can read mode-000 files.\n";
+		}
+	} finally {
+		restore_error_handler();
+		chmod( $unreadable_native, 0600 );
+		chmod( $unreadable_acf, 0600 );
+	}
+	emulsify_locator_smoke_check(
+		'' === $native_name && null === $acf_metadata && array() === $metadata_warnings,
+		'Missing or unreadable metadata after discovery must be skipped without PHP read warnings.'
+	);
+
+	emulsify_locator_smoke_assert(
+		array() === $GLOBALS['emulsify_locator_failures'],
+		implode( "\n", $GLOBALS['emulsify_locator_failures'] )
+	);
 
 	echo "Component locator smoke checks passed.\n";
 } catch ( Throwable $throwable ) {

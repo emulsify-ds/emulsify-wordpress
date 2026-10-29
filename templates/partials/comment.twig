@@ -21,7 +21,7 @@
     <article {{ add_attributes(comment_attributes) }}>
         {% if comment.author.name|default(null) %}
             <header {{ add_attributes(comment_header_attributes) }}>
-                <h3 {{ add_attributes(comment_author_attributes) }}>{{ comment.author.name }}</h3>
+                <h3 {{ add_attributes(comment_author_attributes) }}>{{ comment.author.name|esc_html }}</h3>
             </header>
         {% endif %}
 

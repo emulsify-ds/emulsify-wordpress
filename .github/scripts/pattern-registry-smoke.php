@@ -14,6 +14,27 @@ $GLOBALS['emulsify_pattern_smoke_actions']    = array();
 $GLOBALS['emulsify_pattern_smoke_filters']    = array();
 $GLOBALS['emulsify_pattern_smoke_patterns']   = array();
 $GLOBALS['emulsify_pattern_smoke_categories'] = array();
+$GLOBALS['emulsify_pattern_smoke_registrations'] = array();
+
+final class WP_Block_Patterns_Registry {
+	public static function get_instance(): self {
+		static $instance;
+		return $instance ??= new self();
+	}
+	public function is_registered( string $name ): bool {
+		return isset( $GLOBALS['emulsify_pattern_smoke_patterns'][ $name ] );
+	}
+}
+
+final class WP_Block_Pattern_Categories_Registry {
+	public static function get_instance(): self {
+		static $instance;
+		return $instance ??= new self();
+	}
+	public function is_registered( string $name ): bool {
+		return isset( $GLOBALS['emulsify_pattern_smoke_categories'][ $name ] );
+	}
+}
 
 if ( ! function_exists( 'add_action' ) ) {
 	function add_action( string $hook, callable $callback, int $priority = 10, int $accepted_args = 1 ): bool {
@@ -96,6 +117,7 @@ if ( ! function_exists( 'get_template_directory' ) ) {
 if ( ! function_exists( 'register_block_pattern' ) ) {
 	function register_block_pattern( string $name, array $args ): bool {
 		$GLOBALS['emulsify_pattern_smoke_patterns'][ $name ] = $args;
+		$GLOBALS['emulsify_pattern_smoke_registrations'][] = 'pattern:' . $name;
 
 		return true;
 	}
@@ -104,6 +126,7 @@ if ( ! function_exists( 'register_block_pattern' ) ) {
 if ( ! function_exists( 'register_block_pattern_category' ) ) {
 	function register_block_pattern_category( string $name, array $args ): bool {
 		$GLOBALS['emulsify_pattern_smoke_categories'][ $name ] = $args;
+		$GLOBALS['emulsify_pattern_smoke_registrations'][] = 'category:' . $name;
 
 		return true;
 	}
@@ -364,6 +387,13 @@ try {
 	emulsify_pattern_smoke_assert(
 		in_array( 'filtered', $GLOBALS['emulsify_pattern_smoke_patterns']['extra/promo']['keywords'], true ),
 		'Pattern args filter should alter final registration args.'
+	);
+
+	$registrations = $GLOBALS['emulsify_pattern_smoke_registrations'];
+	$patterns->register_patterns();
+	emulsify_pattern_smoke_assert(
+		$registrations === $GLOBALS['emulsify_pattern_smoke_registrations'],
+		'Patterns and categories already in the native registries must not register twice.'
 	);
 
 	echo "Pattern registry smoke checks passed.\n";

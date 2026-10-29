@@ -456,15 +456,58 @@ try {
 			'title'  => 'Scanner Card',
 			'assets' => array(
 				'frontend' => array(
-					'css' => array( array( 'path' => 'card.css' ) ),
+					'css' => array( array( 'path' => 'card.css' ), array( 'path' => 'styles/./nested.css' ) ),
+					'js'  => array( array( 'path' => 'scripts//nested.js' ) ),
+				),
+				'editor'   => array(
+					'css' => array( array( 'path' => 'editor/./editor.css' ) ),
+					'js'  => array( array( 'path' => 'editor//editor.js' ) ),
 				),
 			),
 		)
 	);
 	emulsify_block_assets_smoke_write( $GLOBALS['emulsify_block_assets_smoke_child'] . '/dist/components/card/card.css', '.card{}' );
+	emulsify_block_assets_smoke_write( $GLOBALS['emulsify_block_assets_smoke_child'] . '/dist/components/card/styles/nested.css', '.nested{}' );
+	emulsify_block_assets_smoke_write( $GLOBALS['emulsify_block_assets_smoke_child'] . '/dist/components/card/scripts/nested.js', 'window.nested = true;' );
+	emulsify_block_assets_smoke_write( $GLOBALS['emulsify_block_assets_smoke_child'] . '/dist/components/card/editor/editor.css', '.editor{}' );
+	emulsify_block_assets_smoke_write( $GLOBALS['emulsify_block_assets_smoke_child'] . '/dist/components/card/editor/editor.js', 'window.editor = true;' );
 	emulsify_block_assets_smoke_write( $GLOBALS['emulsify_block_assets_smoke_child'] . '/dist/components/plain/plain.css', '.plain{}' );
+	$filtered_components = $work_root . '/filtered-components';
+	emulsify_block_assets_smoke_write_json(
+		$filtered_components . '/card/card.component.json',
+		array( 'assets' => array( 'css' => array( 'styles/filtered.css' ) ) )
+	);
+	emulsify_block_assets_smoke_write( $filtered_components . '/card/styles/filtered.css', '.filtered{}' );
+	add_filter(
+		'emulsify_theme_asset_directories',
+		static function ( array $roots, string $directory ) use ( $filtered_components ): array {
+			if ( 'dist/components' === $directory ) {
+				$roots[] = array( 'path' => $filtered_components, 'uri' => 'https://example.test/filtered-components' );
+			}
 
-	( new Emulsify\Theme\Runtime\Assets() )->styles();
+			return $roots;
+		},
+		10,
+		2
+	);
+
+	$scanner_assets = new Emulsify\Theme\Runtime\Assets();
+	$scanner_assets->styles();
+	$scanner_assets->frontend_scripts();
+
+	emulsify_block_assets_smoke_assert(
+		! isset( $GLOBALS['emulsify_block_assets_smoke_styles']['emulsify-component-card-styles-nested'] )
+		&& ! isset( $GLOBALS['emulsify_block_assets_smoke_styles']['emulsify-component-card-editor-editor'] )
+		&& ! isset( $GLOBALS['emulsify_block_assets_smoke_scripts']['emulsify-component-card-scripts-nested'] )
+		&& ! isset( $GLOBALS['emulsify_block_assets_smoke_script_modules']['emulsify-component-card-scripts-nested'] )
+		&& ! isset( $GLOBALS['emulsify_block_assets_smoke_scripts']['emulsify-component-card-editor-editor'] )
+		&& ! isset( $GLOBALS['emulsify_block_assets_smoke_script_modules']['emulsify-component-card-editor-editor'] ),
+		'Global component scanning must skip frontend and editor-only subfolder assets, including internal dots and repeated separators, without a manifest.'
+	);
+	emulsify_block_assets_smoke_assert(
+		! isset( $GLOBALS['emulsify_block_assets_smoke_styles']['emulsify-component-card-styles-filtered'] ),
+		'Scoped metadata in filtered asset-only roots must stay scoped without requiring a component-roots filter.'
+	);
 
 	emulsify_block_assets_smoke_assert(
 		! isset( $GLOBALS['emulsify_block_assets_smoke_styles']['emulsify-component-card-card'] ),

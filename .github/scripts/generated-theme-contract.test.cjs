@@ -27,6 +27,11 @@ const excludedCopySegments = new Set([
 const machineName = 'acme-site';
 const displayName = 'Acme Site';
 const description = 'Marketing site for Acme, Inc. (rebuild).';
+const guidanceFiles = [
+  'AGENTS.md',
+  'docs/wordpress-integration.md',
+  '.agents/skills/emulsify-wordpress-integration/SKILL.md',
+];
 
 function copyStarter(source, destination) {
   fs.mkdirSync(destination, { recursive: true });
@@ -82,13 +87,14 @@ function generateTheme() {
   return { workRoot, target };
 }
 
-function validate(target) {
+function validate(target, options = {}) {
   return validateGeneratedTheme({
     themeDir: target,
     machineName,
     displayName,
     description,
     sourceDir: starterRoot,
+    ...options,
   });
 }
 
@@ -115,6 +121,36 @@ test('accepts a freshly generated child theme', () => {
   });
 });
 
+test('freshly generated child themes inherit parent templates without local Twig files', () => {
+  withGeneratedTheme((target) => {
+    assert.equal(fs.existsSync(path.join(target, 'templates')), false);
+    assert.deepEqual(
+      fs.readdirSync(target, { recursive: true }).filter((file) => file.endsWith('.twig')),
+      [],
+    );
+  });
+});
+
+test('accepts a generated child theme without a local page template', () => {
+  withGeneratedTheme((target) => {
+    fs.rmSync(path.join(target, 'templates'), { recursive: true, force: true });
+    const result = validate(target);
+    assert.deepEqual(result.errors, [], result.format());
+  });
+});
+
+test('allows consumers to add an intentional page override after generation', () => {
+  withGeneratedTheme((target) => {
+    fs.mkdirSync(path.join(target, 'templates'), { recursive: true });
+    fs.writeFileSync(
+      path.join(target, 'templates/page.twig'),
+      "{% extends '@emulsify-tpl/page.twig' %}\n{% block content %}<div class=\"project-page\">{{ parent() }}</div>{% endblock %}\n",
+    );
+    const result = validate(target);
+    assert.deepEqual(result.errors, [], result.format());
+  });
+});
+
 test('requires the generated documentation set', () => {
   withGeneratedTheme((target) => {
     fs.rmSync(path.join(target, 'README.md'));
@@ -124,6 +160,129 @@ test('requires the generated documentation set', () => {
     assert.ok(result.errors.length > 0);
     assert.match(result.format(), /FAIL generation/);
     assert.match(result.format(), /missing required generated file "README\.md"/);
+  });
+});
+
+test('requires all generated AI guidance files', () => {
+  for (const file of guidanceFiles) {
+    withGeneratedTheme((target) => {
+      fs.rmSync(path.join(target, file));
+      const result = validate(target);
+      assert.match(result.format(), /FAIL AI guidance/);
+      assert.ok(result.errors.some((error) => error.includes(`missing required generated guidance file "${file}"`)), result.format());
+    });
+  }
+});
+
+test('preserves guidance bytes during generation and permits project edits after a build', () => {
+  withGeneratedTheme((target) => {
+    for (const file of guidanceFiles) {
+      assert.deepEqual(fs.readFileSync(path.join(target, file)), fs.readFileSync(path.join(starterRoot, file)));
+      fs.appendFileSync(path.join(target, file), '\nProject guidance customized by the team.\n');
+    }
+    const result = validate(target);
+    assert.match(result.format(), /FAIL AI guidance/);
+    for (const file of guidanceFiles) {
+      assert.ok(result.errors.some((error) => error.includes(`changed guidance file "${file}" during generation`)), result.format());
+    }
+    for (const directory of ['dist', 'node_modules', '.out', '.coverage']) {
+      fs.mkdirSync(path.join(target, directory));
+    }
+    const built = validate(target, { checkBuiltAssets: true });
+    assert.deepEqual(built.errors, [], built.format());
+    assert.match(built.format(), /PASS AI guidance/);
+
+    fs.mkdirSync(path.join(target, '.cli'));
+    const leftover = validate(target, { checkBuiltAssets: true });
+    assert.match(leftover.format(), /generation-only or build path "\.cli"/);
+  });
+});
+
+test('validates skill YAML after project customization with actionable errors', () => {
+  for (const [contents, expected] of [
+    ['Missing frontmatter\n', /expected YAML frontmatter/],
+    ['---\nname: [\n---\n', /invalid skill manifest/],
+    ['---\n- name: emulsify-wordpress-integration\n---\n', /name must match the skill directory/],
+    ['---\nname: another-skill\ndescription: Integration guidance\n---\n', /name must match the skill directory/],
+    ['---\nname: emulsify-wordpress-integration\ndescription: ""\n---\n', /description must be a nonempty string/],
+    ['---\nname: emulsify-wordpress-integration\ndescription: [Integration guidance]\n---\n', /description must be a nonempty string/],
+  ]) {
+    withGeneratedTheme((target) => {
+      fs.mkdirSync(path.join(target, 'dist'));
+      fs.writeFileSync(path.join(target, guidanceFiles[2]), contents);
+      const result = validate(target, { checkBuiltAssets: true });
+      assert.match(result.format(), /FAIL AI guidance/);
+      assert.match(result.format(), expected);
+    });
+  }
+});
+
+test('accepts a customized skill with folded YAML and local links', () => {
+  withGeneratedTheme((target) => {
+    fs.mkdirSync(path.join(target, 'dist'));
+    fs.writeFileSync(path.join(target, guidanceFiles[2]), '---\r\nname: "emulsify-wordpress-integration"\r\ndescription: >\r\n  Project integration\r\n  guidance.\r\n---\r\n[Integration guide](../../../docs/wordpress-integration.md)\r\n');
+    const result = validate(target, { checkBuiltAssets: true });
+    assert.deepEqual(result.errors, [], result.format());
+  });
+});
+
+test('validates guidance links after customization and rejects missing or escaping targets', () => {
+  withGeneratedTheme((target) => {
+    fs.mkdirSync(path.join(target, 'dist'));
+    const skill = path.join(target, guidanceFiles[2]);
+    fs.appendFileSync(skill, '\n[Integration guide](../../../docs/wordpress-integration.md)\n');
+    assert.deepEqual(validate(target, { checkBuiltAssets: true }).errors, []);
+
+    const outside = path.join(path.dirname(target), `${machineName}-external`);
+    fs.mkdirSync(outside);
+    fs.writeFileSync(path.join(outside, 'outside.md'), 'Outside the theme.\n');
+    fs.appendFileSync(skill, `\n[Missing guide](../../../docs/missing.md)\n[Outside theme](../../../../${machineName}-external/outside.md)\n`);
+    const result = validate(target, { checkBuiltAssets: true });
+    assert.match(result.format(), /FAIL AI guidance/);
+    assert.match(result.format(), /resolves to missing local path "docs\/missing\.md"/);
+    assert.match(result.format(), /resolves outside the generated child theme/);
+  });
+});
+
+test('checks npm commands in every generated guidance entry point', () => {
+  for (const file of guidanceFiles) {
+    withGeneratedTheme((target) => {
+      fs.mkdirSync(path.join(target, 'dist'));
+      fs.appendFileSync(path.join(target, file), '\nRun `npm run impossible-script` for this project.\n');
+      const result = validate(target, { checkBuiltAssets: true });
+      assert.match(result.format(), /FAIL AI guidance/);
+      assert.ok(result.errors.some((error) => error.includes(`${file}:`) && error.includes('documents npm run impossible-script')), result.format());
+      assert.match(result.format(), /has no "impossible-script" script/);
+    });
+  }
+});
+
+test('rejects guidance links through dependency symlinks outside the theme', () => {
+  withGeneratedTheme((target) => {
+    fs.mkdirSync(path.join(target, 'dist'));
+    fs.mkdirSync(path.join(target, 'node_modules'));
+    fs.symlinkSync(path.join(target, 'docs'), path.join(target, 'node_modules', 'local-docs'), 'dir');
+    fs.appendFileSync(path.join(target, 'AGENTS.md'), '\n[Local guide](node_modules/local-docs/development.md)\n');
+    assert.deepEqual(validate(target, { checkBuiltAssets: true }).errors, []);
+    const outside = path.join(path.dirname(target), 'external-package');
+    fs.mkdirSync(outside);
+    fs.writeFileSync(path.join(outside, 'outside.md'), 'Outside the theme.\n');
+    fs.symlinkSync(outside, path.join(target, 'node_modules', 'external-package'), 'dir');
+    fs.appendFileSync(path.join(target, 'AGENTS.md'), '\n[External package](node_modules/external-package/outside.md)\n');
+    const result = validate(target, { checkBuiltAssets: true });
+    assert.match(result.format(), /FAIL AI guidance/);
+    assert.match(result.format(), /resolves outside the generated child theme through a symbolic link/);
+  });
+});
+
+test('continues checking guidance for stale tokens and starter identity after customization', () => {
+  withGeneratedTheme((target) => {
+    fs.mkdirSync(path.join(target, 'dist'));
+    fs.appendFileSync(path.join(target, guidanceFiles[0]), '\n%%EMULSIFY_MACHINE_NAME%%\n');
+    fs.appendFileSync(path.join(target, guidanceFiles[2]), '\nnamespace: whiskHelper\n');
+    const result = validate(target, { checkBuiltAssets: true });
+    assert.match(result.format(), /stale documentation token/);
+    assert.match(result.format(), /stale starter machine name "whisk"/);
   });
 });
 
@@ -143,11 +302,10 @@ test('reports leftover documentation tokens', () => {
 
 test('reports a stale starter machine name', () => {
   withGeneratedTheme((target) => {
-    const templatePath = path.join(target, 'templates/page.twig');
-    fs.writeFileSync(
-      templatePath,
-      fs.readFileSync(templatePath, 'utf8').replace(`${machineName}-page`, 'whisk-page'),
-    );
+    const packagePath = path.join(target, 'package.json');
+    const packageJson = readJson(packagePath);
+    packageJson.name = 'whisk';
+    writeJson(packagePath, packageJson);
 
     const result = validate(target);
     assert.match(result.format(), /FAIL placeholder replacement/);

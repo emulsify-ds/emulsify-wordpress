@@ -81,6 +81,90 @@ Emulsify CLI uses the standalone `https://github.com/emulsify-ds/emulsify-wordpr
 
 This file may also hold Emulsify Core metadata such as `variant.structureImplementations`. `theme.json` remains the WordPress site and editor configuration surface, not a component-library or Twig namespace registry.
 
+## Sync log
+
+| Sister reference | WordPress target | Status |
+| --- | --- | --- |
+| Drupal [7.3.0 tag](https://github.com/emulsify-ds/emulsify-drupal/tree/7.3.0), [published release](https://github.com/emulsify-ds/emulsify-drupal/releases/tag/7.3.0) on 2026-10-28, pinned at [`1f0f679`](https://github.com/emulsify-ds/emulsify-drupal/commit/1f0f679f4c1acd510d68391e952b3f29a1817a69) | WordPress 2.1.0 | Implemented in [PR #47](https://github.com/emulsify-ds/emulsify-wordpress/pull/47); pending merge and release. |
+
+The published Drupal tag merges [PR #382](https://github.com/emulsify-ds/emulsify-drupal/pull/382)
+at [`adc588c`](https://github.com/emulsify-ds/emulsify-drupal/commit/adc588c54cbde80a32324c845f702f7d7467cdc8).
+This sync includes the 7.2.2 fixes and classifies all nine commits after the
+previous [`1bc8fb3`](https://github.com/emulsify-ds/emulsify-drupal/commit/1bc8fb3bb64ae7014f50349930216b863976a5b2)
+review pin. The WordPress work is collected in one release branch by maintainer decision.
+[PR #42](https://github.com/emulsify-ds/emulsify-wordpress/pull/42)'s audit-wrapper
+change is incorporated into PR #47; its separate PR is still open. These are
+implementation references; WordPress 2.1.0 still awaits merge and release.
+
+### Ported or adapted
+
+| Area | Classification and reason | Implementation |
+| --- | --- | --- |
+| Release-version contracts and stale release claims | Adapt: WordPress publishes prepared, committed version metadata, and semantic-release must calculate the same version. | [PR #47](https://github.com/emulsify-ds/emulsify-wordpress/pull/47); [release procedure](release-process.md). |
+| Root development-tool refresh ([`97eff27`](https://github.com/emulsify-ds/emulsify-drupal/commit/97eff270177f90726527cec674cd58de45f89d81)) | Adapt: refresh semantic-release, its GitHub plugin, commitlint, and lint-staged without changing theme runtime dependencies or WordPress's prepared-version model. | [PR #47](https://github.com/emulsify-ds/emulsify-wordpress/pull/47); [October 28 dependency audit](dependency-audit-2026-10-23.md#october-28-release-tooling-refresh). |
+| Core 4.5, lint/format exit status, ESM tests and coverage, audit JSON, and sandboxed accessibility runner | Port/adapt: shared frontend tooling retains WordPress's failures for empty test suites and empty accessibility audits. | [PR #47](https://github.com/emulsify-ds/emulsify-wordpress/pull/47), including [audit-wrapper PR #42](https://github.com/emulsify-ds/emulsify-wordpress/pull/42). |
+| Pager/menu current items, hidden Page prefix, and rendered accessibility audit | Adapt: Timber fallbacks and seven WordPress fixture routes replace Drupal render templates and routes. | [PR #47](https://github.com/emulsify-ds/emulsify-wordpress/pull/47); [accessibility contract](accessibility.md). |
+| Public Twig extension blocks and removal of the starter page override | Adapt: additive parent blocks preserve WordPress template inheritance and existing child overrides. | [PR #47](https://github.com/emulsify-ds/emulsify-wordpress/pull/47); [template extension contract](template-extension.md). |
+| Generated AI guidance and root contributor guidance | Adapt: library-neutral instructions describe Timber, WordPress hooks, blocks, and verification. | [PR #47](https://github.com/emulsify-ds/emulsify-wordpress/pull/47); [generated-theme contract](generated-child-theme-contract.md). |
+| PHP/JavaScript Twig helper characterization | Port/adapt: a shared corpus records intentional helper differences and catches runtime bugs without silently changing contracts. | [PR #47](https://github.com/emulsify-ds/emulsify-wordpress/pull/47); [Twig authoring](timber-and-twig-authoring.md). |
+| Action pins, blocking readiness matrix, dependency maintenance, and README assets | Port/adapt: shared validation policy uses WordPress versions and the supported PHP matrix. | [PR #47](https://github.com/emulsify-ds/emulsify-wordpress/pull/47); [dependency audit](dependency-audit-2026-10-23.md). |
+| Privacy video embeds | Adapt, implemented for 2.1.0: render-time oEmbed filters, overridable iframe `srcdoc`, and cached background Vimeo metadata replace Drupal's same-origin embed document. Both options default to off. | [PR #47](https://github.com/emulsify-ds/emulsify-wordpress/pull/47); [media embeds](media-embeds.md). |
+| Poster language and direction ([`dac2e49`](https://github.com/emulsify-ds/emulsify-drupal/commit/dac2e49), [`a2bcdc1`](https://github.com/emulsify-ds/emulsify-drupal/commit/a2bcdc1)) | Adapt: poster `lang` and `dir` follow the WordPress locale used for translated strings, with a non-default Arabic RTL regression and default-locale restoration. | [PR #47](https://github.com/emulsify-ds/emulsify-wordpress/pull/47); [poster override contract](media-embeds.md#poster-behavior-and-overrides). |
+
+The narrower settings help text in
+[`dac2e49`](https://github.com/emulsify-ds/emulsify-drupal/commit/dac2e49)
+needs no WordPress change: there is no media settings screen, and the
+[media guide](media-embeds.md) already limits these options to YouTube and Vimeo.
+
+WordPress companion fixes in the same PR align grouped component discovery with
+Core, raise the minimum WordPress version to 6.8 to match locked Timber, and
+correct fallback language markup and failing link-color declarations. See the
+[2.1.0 notes](release-notes-next.md) and [upgrade actions](../UPGRADE.md#upgrading-from-200-to-210).
+
+### Intentional differences
+
+| Sister feature | WordPress decision and reason |
+| --- | --- |
+| 24 px target-size rule and Drupal's parent asset build | Skip: the parent ships no stylesheet; its retained `theme.json` global styles are listed below, and projects own target size, `screen-reader-text`, and focus styles. Admin-only CSS is allowed. |
+| Regions: `status`, `breadcrumb`, `highlighted`, `sidebar_first`, `sidebar_second` | Skip: WordPress uses menus, block patterns, and template parts; the parent registers no widget areas. Maintainers may revisit this choice. |
+| Container and form template suggestions, inline form-error IDs, status-message/feed/progress template moves, and select option attributes | Skip: these belong to Drupal's render and Form APIs. |
+| Favicon dark-mode icons, SVG sanitization, and generated social share image | Skip: WordPress uses core Site Icon and `custom-logo`; SEO plugins own `og:image`. |
+| Social-share settings, previews, resizing, fallback metadata, and related favicon previews ([`b312b4c`](https://github.com/emulsify-ds/emulsify-drupal/commit/b312b4c5fe964d533b245fb2fbef6def6ea419f4), [`66ac7ab`](https://github.com/emulsify-ds/emulsify-drupal/commit/66ac7abf8baa9658b019bbaf177a33addd117fc5), [`1b0a439`](https://github.com/emulsify-ds/emulsify-drupal/commit/1b0a439c1c2fb0fced3be431e2096e3d6d799dcf), [`96695b9`](https://github.com/emulsify-ds/emulsify-drupal/commit/96695b988980d101fb3955dc3b26c41ab05172a6), [`bf6cc80`](https://github.com/emulsify-ds/emulsify-drupal/commit/bf6cc800e05b0c55490658073543e29099d2e186), [`dec4732`](https://github.com/emulsify-ds/emulsify-drupal/commit/dec47321958d094adc0dc0c6991c0c002f6b4ea4)) | Skip: SEO plugins own WordPress `og:image` and sharing metadata; core Site Icon owns the favicon behavior. The parent adds neither settings system. |
+| Favicon colors and clean-state notice ([`145c676`](https://github.com/emulsify-ds/emulsify-drupal/commit/145c67617be67336fbb8dd24eb4758bc69aed2d9)) | Skip: WordPress uses Site Icon, not Drupal's favicon settings and preview UI. |
+| Configured admin theme in the upgrade smoke ([`adc588c`](https://github.com/emulsify-ds/emulsify-drupal/commit/adc588c54cbde80a32324c845f702f7d7467cdc8)) | Skip: this tests Drupal's admin-theme configuration and has no WordPress equivalent. |
+| semantic-release-owned package version ([`97eff27`](https://github.com/emulsify-ds/emulsify-drupal/commit/97eff270177f90726527cec674cd58de45f89d81)) | Skip: Drupal uses `@semantic-release/npm` with `npmPublish: false`, then `@semantic-release/git`, to write and commit npm version metadata. By maintainer decision, WordPress keeps its prepared, committed `package.json` version and matching theme headers and starter lineage; semantic-release must compute that exact version. The commit's Drupal legacy-settings fixtures are also platform-specific. See the [release procedure](release-process.md). |
+| Default parent logo, library/breakpoint contract, Drupal.org channel-skew validation, Stable 9 parity, and the `dr` CLI | Skip: these are Drupal-only runtime and distribution contracts. |
+| Favicon SVG processing fixes ([`6cb1101`](https://github.com/emulsify-ds/emulsify-drupal/commit/6cb1101), [`16ecce0`](https://github.com/emulsify-ds/emulsify-drupal/commit/16ecce0), [`4a10b74`](https://github.com/emulsify-ds/emulsify-drupal/commit/4a10b74)) | Skip: WordPress uses core Site Icon. |
+| Favicon preview styling in dark admin themes ([`6b8b922`](https://github.com/emulsify-ds/emulsify-drupal/commit/6b8b922)) | Skip: WordPress has no favicon generator. |
+| PostCSS development dependency for parent asset tests ([`88bf3d9`](https://github.com/emulsify-ds/emulsify-drupal/commit/88bf3d9)) | Skip: the WordPress parent has no asset build. |
+| Wider strict-types check, favicon dark-mode test, and hook-contract documentation edits ([`1bc8fb3`](https://github.com/emulsify-ds/emulsify-drupal/commit/1bc8fb3bb64ae7014f50349930216b863976a5b2)) | Skip: these are Drupal-only conventions. |
+
+Although the parent ships no stylesheet, its `theme.json` produces WordPress
+global styles on the frontend: h1–h6 color and typography, visited-link color,
+root padding, button border radius/width and padding, and quote/cite typography
+and margins plus cite color. These remaining style rules are retained in 2.1.0
+and planned for removal in 3.0.0. Preset custom properties and `.has-*` classes
+are also generated; they style nothing until content uses them. Presets and
+editor configuration remain separate from that style-removal plan.
+
+The opt-in video poster is a separate iframe document with its own inline
+accessibility styles, as approved for that feature. It adds no stylesheet to
+the surrounding page; its CSP and override contract are documented in
+[media embeds](media-embeds.md#poster-behavior-and-overrides).
+
+## How to run a sync
+
+- [ ] Read the sister release's notes and upgrade guide from a full clone with
+  history and tags; record the exact tag and PR head used as the reference.
+- [ ] Classify every change as port, adapt, or skip, with a reason grounded in
+  the shared project model and native WordPress behavior.
+- [ ] Open one PR per area, link the source changes, and keep both child-theme
+  generators and their contracts aligned where applicable.
+- [ ] Run the relevant readiness checks, including the full WordPress fixture
+  for rendering or generation changes, and document consumer actions.
+- [ ] Update this sync log, release notes, and upgrade guide with implementation
+  links, intentional differences, and the actual merge/release status.
+
 ## Parity guardrails
 
 Use this contract when evaluating future changes:
@@ -90,4 +174,12 @@ Use this contract when evaluating future changes:
 - Keep Whisk small enough to work as a starter.
 - Keep generated child theme source aligned with Emulsify Core 4 conventions.
 - Keep WordPress-specific behavior explicit rather than hiding it behind Drupal naming or assumptions.
+- The parent ships no stylesheet, but its `theme.json` produces frontend
+  WordPress global styles: h1–h6 color and typography, visited-link color,
+  root padding, button border radius/width and padding, and quote/cite
+  typography and margins plus cite color. These rules are retained in 2.1.0
+  and planned for removal in 3.0.0. Preset custom properties and `.has-*`
+  classes style nothing until content uses them. Admin-only CSS is allowed;
+  projects own target size, `screen-reader-text`, and focus styles. Opt-in
+  video posters confine their accessibility styles to the iframe document.
 - Keep `project.emulsify.json` on `"platform": "wordpress"` and `generatedFrom: "emulsify-wordpress"` so generated child themes advertise the WordPress platform adapter and starter lineage.

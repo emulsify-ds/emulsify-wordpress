@@ -7,8 +7,13 @@
 const fs = require('fs');
 const path = require('path');
 const childProcess = require('child_process');
+const yaml = require('js-yaml');
+const { validateReleaseVersionContract } = require('./release-version-contract.cjs');
+const { validateReadinessMatrix, validateReleaseWorkflow, validateProjectsWorkflow } = require('./readiness-matrix-contract.cjs');
+const { validateThemeJsonStyles } = require('./theme-json-style-contract.cjs');
 
 const repoRoot = path.resolve(__dirname, '../..');
+const skipSmoke = process.argv.slice(2).includes('--skip-smoke');
 const results = [];
 
 function addResult(status, name, detail) {
@@ -33,6 +38,16 @@ function semver(value) {
   return /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(String(value));
 }
 
+function wordpressVersionAtLeast(version, minimum) {
+  const actualParts = version.split('.').map(Number);
+  const minimumParts = minimum.split('.').map(Number);
+  for (let index = 0; index < Math.max(actualParts.length, minimumParts.length); index += 1) {
+    const difference = (actualParts[index] || 0) - (minimumParts[index] || 0);
+    if (difference !== 0) return difference > 0;
+  }
+  return true;
+}
+
 function runStaticCheck(name, callback) {
   // Static checks intentionally inspect files as text. They catch packaging and
   // documentation regressions without needing a full WordPress install.
@@ -46,8 +61,8 @@ function runStaticCheck(name, callback) {
 }
 
 function runCommandCheck(name, command, args) {
-  // Command checks are reserved for smoke paths that already know how to skip
-  // when local prerequisites such as WP-CLI or MySQL are absent.
+  // Focused contract tests always run. Runtime smoke commands can also report
+  // missing local prerequisites such as WP-CLI or MySQL as an explicit skip.
   const result = childProcess.spawnSync(command, args, {
     cwd: repoRoot,
     encoding: 'utf8',
@@ -299,33 +314,21 @@ function runStaticChecks() {
   const license = readFile('LICENSE');
   const issueTemplate = readFile('.github/ISSUE_TEMPLATE.md');
   const pullRequestTemplate = readFile('.github/PULL_REQUEST_TEMPLATE.md');
-  const releaseGuardRejectContext = {
-    branch: { name: 'main' },
-    lastRelease: { version: '1.0.0' },
-    nextRelease: { version: '1.1.0' },
-  };
-  const releaseGuardAcceptContext = {
-    branch: { name: 'main' },
-    lastRelease: { version: '1.0.0' },
-    nextRelease: { version: '2.0.0' },
-  };
-  const releaseGuardFutureContext = {
-    branch: { name: 'main' },
-    lastRelease: { version: '2.0.0' },
-    nextRelease: { version: '2.0.1' },
-  };
-  const releaseAnalyzerAlphaContext = {
-    branch: { name: 'main' },
-    lastRelease: { version: '1.0.0-alpha.5' },
-  };
-  const releaseAnalyzerNoStableContext = {
-    branch: { name: 'main' },
-    lastRelease: {},
-  };
-
   runStaticCheck('Required files', () => {
     const requiredFiles = [
       '.github/scripts/release-check.cjs',
+      '.github/scripts/release-version-contract.cjs',
+      '.github/scripts/release-version-contract.test.cjs',
+      '.github/scripts/readiness-matrix-contract.cjs',
+      '.github/scripts/readiness-matrix-contract.test.cjs',
+      '.github/scripts/theme-json-style-contract.cjs',
+      '.github/scripts/theme-json-style-contract.test.cjs',
+      '.github/scripts/semantic-release.test.cjs',
+      '.github/scripts/fallback-navigation-smoke.php',
+      '.github/scripts/rendered-a11y.cjs',
+      '.github/scripts/rendered-a11y.test.cjs',
+      '.github/scripts/media-embed-smoke.php',
+      '.github/scripts/media-embed-browser.cjs',
       '.github/scripts/docs-command-check.cjs',
       '.github/scripts/pr-validation.cjs',
       '.github/scripts/semantic-release.cjs',
@@ -336,10 +339,12 @@ function runStaticChecks() {
       '.github/workflows/theme-readiness.yml',
       '.gitignore',
       '.nvmrc',
+      'AGENTS.md',
       'README.md',
       'UPGRADE.md',
       'docs/README.md',
       'docs/acf-local-json.md',
+      'docs/accessibility.md',
       'docs/acf-twig-blocks.md',
       'docs/asset-loading.md',
       'docs/block-patterns.md',
@@ -402,9 +407,15 @@ function runStaticChecks() {
       'templates/search.twig',
       'templates/single-password.twig',
       'templates/single.twig',
+      'docs/template-extension.md',
+      '.github/scripts/template-extension-smoke.php',
+      '.github/fixtures/template-extension/README.md',
       '.github/scripts/acf-local-json-smoke.php',
       '.github/scripts/asset-manifest-smoke.php',
       '.github/scripts/attribute-helper-smoke.php',
+      '.github/scripts/twig-helper-contract.cjs',
+      '.github/scripts/twig-helper-contract.php',
+      '.github/fixtures/twig-helper-contract.json',
       '.github/scripts/block-scoped-assets-smoke.php',
       '.github/scripts/bootstrap-loader-smoke.php',
       '.github/scripts/child-theme-generator-smoke.php',
@@ -413,6 +424,9 @@ function runStaticChecks() {
       '.github/scripts/editor-policy-smoke.php',
       '.github/scripts/pattern-registry-smoke.php',
       '.github/scripts/wordpress-starter-init-smoke.cjs',
+      '.github/scripts/lint-wrappers.test.cjs',
+      '.github/scripts/jest-project-smoke.cjs',
+      '.github/scripts/a11y-runner.test.cjs',
       '.github/scripts/theme-filters-smoke.php',
       '.github/scripts/twig-autoescape-smoke.php',
       '.github/scripts/twig-project-namespace-smoke.php',
@@ -421,6 +435,9 @@ function runStaticChecks() {
       'whisk/.cli/init.js',
       'whisk/.gitignore',
       'whisk/.nvmrc',
+      'whisk/AGENTS.md',
+      'whisk/docs/wordpress-integration.md',
+      'whisk/.agents/skills/emulsify-wordpress-integration/SKILL.md',
       'whisk/config/emulsify-core/a11y.config.js',
       'whisk/config/emulsify-core/run-a11y.js',
       'whisk/config/jest.config.js',
@@ -431,17 +448,23 @@ function runStaticChecks() {
       'whisk/config/acf-json/.gitkeep',
       'whisk/patterns/.gitkeep',
       'whisk/src/components/.gitkeep',
-      'whisk/templates/page.twig',
     ];
     const missingFiles = requiredFiles.filter((file) => !fs.existsSync(path.join(repoRoot, file)));
     ensure(missingFiles.length === 0, `Missing required files: ${missingFiles.join(', ')}.`);
     return `Found ${requiredFiles.length} required release files.`;
   });
 
+  runStaticCheck('Release version contract', () => {
+    const { errors, packageVersion, latestStableTag, releasePrepared } = validateReleaseVersionContract({ repoRoot });
+    ensure(errors.length === 0, errors.join('\n'));
+    return releasePrepared
+      ? `Prepared version ${packageVersion} follows latest stable tag ${latestStableTag}.`
+      : `Package version ${packageVersion} matches latest stable tag ${latestStableTag}; no release is prepared.`;
+  });
+
   runStaticCheck('Root release metadata', () => {
     ensure(rootPackage.name === 'emulsify-wordpress', 'package.json name should be emulsify-wordpress.');
     ensure(semver(rootPackage.version), 'package.json version must be a valid semver string.');
-    ensure(rootPackage.version === releaseConfig.expectedStableRelease, `package.json version should prepare the ${releaseConfig.expectedStableRelease} release.`);
     ensure(rootPackage.description, 'package.json description is required.');
     ensureParentThemeLanguage('package.json description', rootPackage.description);
     ensureNoTitleCaseBuildPhrase('package.json description', rootPackage.description);
@@ -452,6 +475,9 @@ function runStaticChecks() {
     ensure(rootPackage.scripts['pr:check'] === 'node .github/scripts/pr-validation.cjs', 'package.json should expose npm run pr:check.');
     ensure(rootPackage.scripts['release:check'] === 'node .github/scripts/release-check.cjs', 'package.json should expose npm run release:check.');
     ensure(rootPackage.scripts['docs:check-commands'] === 'node .github/scripts/docs-command-check.cjs', 'package.json should expose npm run docs:check-commands.');
+    ensure(rootPackage.scripts['test:lint-wrappers'] === 'node --test .github/scripts/lint-wrappers.test.cjs', 'package.json should expose the lint wrapper regression tests.');
+    ensure(rootPackage.scripts['smoke:jest-project'] === 'node .github/scripts/jest-project-smoke.cjs', 'package.json should expose generated project ESM/coverage smoke coverage.');
+    ensure(rootPackage.scripts['test:a11y-runner'] === 'node --test .github/scripts/a11y-runner.test.cjs', 'package.json should expose the Core accessibility wrapper tests.');
     ensure(rootPackage.scripts['build:dist'] === 'bash scripts/build-dist.sh', 'package.json should expose npm run build:dist.');
     ensure(rootPackage.scripts['lint:php'].includes('vendor/bin/phpcs -q'), 'package.json lint:php should run PHPCS.');
     ensure(rootPackage.scripts['lint:php'].includes('vendor/bin/phpstan analyse --no-progress'), 'package.json lint:php should run PHPStan.');
@@ -470,6 +496,7 @@ function runStaticChecks() {
     ensure(rootPackage.scripts['smoke:theme-filters'] === 'php .github/scripts/theme-filters-smoke.php', 'package.json should expose npm run smoke:theme-filters.');
     ensure(rootPackage.scripts['smoke:twig-switch'] === 'php .github/scripts/twig-switch-smoke.php', 'package.json should expose npm run smoke:twig-switch.');
     ensure(rootPackage.scripts['smoke:twig-project-namespace'] === 'php .github/scripts/twig-project-namespace-smoke.php', 'package.json should expose npm run smoke:twig-project-namespace.');
+    ensure(rootPackage.scripts['smoke:template-extension'] === 'php .github/scripts/template-extension-smoke.php', 'package.json should expose the exact-byte template extension smoke.');
     ensure(rootPackage.scripts['whisk:install'], 'package.json should expose npm run whisk:install.');
     ensure(rootPackage.scripts['whisk:build'] === 'npm --prefix whisk run build', 'package.json should expose npm run whisk:build.');
     ensure(!rootPackage.devDependencies['@semantic-release/changelog'], 'package.json should not declare unused @semantic-release/changelog tooling.');
@@ -503,8 +530,6 @@ function runStaticChecks() {
     ensure(rootThemeHeader.Version === releaseVersion, `style.css Version should match the ${releaseVersion} release line.`);
     ensure(rootThemeHeader.License === 'GPL-2.0-only', 'style.css License should be GPL-2.0-only.');
     ensure(rootThemeHeader['License URI'] === 'https://www.gnu.org/licenses/old-licenses/gpl-2.0.html', 'style.css License URI should point to GPLv2.');
-    ensure(rootThemeHeader['Requires at least'] === '6.7', 'style.css Requires at least should stay aligned to the WordPress baseline.');
-    ensure(rootThemeHeader['Tested up to'] === '6.7', 'style.css Tested up to should stay aligned to the WordPress baseline.');
     ensure(rootThemeHeader['Requires PHP'] === '8.3', 'style.css Requires PHP should stay aligned to the release baseline.');
     ensureParentThemeLanguage('style.css Description', rootThemeHeader.Description);
     ensure(whiskThemeHeader['Theme Name'] === 'Whisk', 'whisk/style.css Theme Name should be Whisk.');
@@ -516,6 +541,25 @@ function runStaticChecks() {
     ensure(whiskThemeHeader['License URI'] === 'https://www.gnu.org/licenses/old-licenses/gpl-2.0.html', 'whisk/style.css License URI should point to GPLv2.');
     ensureGeneratedChildThemeLanguage('whisk/style.css Description', whiskThemeHeader.Description);
     return 'Parent and Whisk WordPress theme headers are coherent with package metadata.';
+  });
+
+  runStaticCheck('WordPress minimum compatibility', () => {
+    const minimum = rootThemeHeader['Requires at least'];
+    ensure(minimum === '6.8', 'style.css Requires at least must be 6.8 for this release.');
+    const timberPath = 'vendor/timber/timber/src/Timber.php';
+    ensure(fs.existsSync(path.join(repoRoot, timberPath)), 'Installed Timber source is required to verify its WordPress minimum; run composer install.');
+    const timberMinimum = readFile(timberPath).match(/\bMINIMUM_WP_VERSION\s*=\s*['"](\d+\.\d+(?:\.\d+)?)['"]/);
+    ensure(timberMinimum, 'Unable to read installed Timber MINIMUM_WP_VERSION; run composer install and review Timber compatibility.');
+    ensure(wordpressVersionAtLeast(minimum, timberMinimum[1]), `style.css Requires at least (${minimum}) is below installed Timber MINIMUM_WP_VERSION (${timberMinimum[1]}); raise the theme minimum before releasing.`);
+    return `Theme minimum ${minimum} supports installed Timber's WordPress minimum ${timberMinimum[1]}.`;
+  });
+
+  runStaticCheck('WordPress tested compatibility', () => {
+    const tested = rootThemeHeader['Tested up to'];
+    const minimum = rootThemeHeader['Requires at least'];
+    ensure(/^\d+\.\d+(?:\.\d+)?$/.test(tested), 'style.css Tested up to must name a stable WordPress version verified by the blocking fixture.');
+    ensure(wordpressVersionAtLeast(tested, minimum), 'style.css Tested up to must not be lower than Requires at least.');
+    return `Tested up to ${tested} covers theme minimum ${minimum}; the current stable WordPress fixture is blocking.`;
   });
 
   runStaticCheck('PHP analysis scope', () => {
@@ -562,6 +606,16 @@ function runStaticChecks() {
     return 'Attribute helper runtime and smoke fixture are wired.';
   });
 
+  runStaticCheck('Twig helper characterization', () => {
+    ensure(rootPackage.scripts['test:twig-helpers'] === 'node .github/scripts/twig-helper-contract.cjs', 'Root package should expose the PHP/JavaScript Twig helper characterization.');
+    const prValidation = readFile('.github/scripts/pr-validation.cjs');
+    const install = prValidation.indexOf("run('Install Whisk dependencies'");
+    const compare = prValidation.indexOf("['run', 'test:twig-helpers']");
+    ensure(install >= 0 && compare > install, 'PR validation must compare both helper runtimes after installing Whisk/Core.');
+    ensure(docs.twig.includes('## Helper characterization'), 'Twig authoring docs must explain the characterization and recorded differences.');
+    return 'The PR gate compares exact PHP and installed Core helper output against one explicit-difference corpus.';
+  });
+
   runStaticCheck('Twig HTML autoescaping', () => {
     const twig = readFile('includes/Runtime/Twig.php');
     const smoke = readFile('.github/scripts/twig-autoescape-smoke.php');
@@ -570,7 +624,7 @@ function runStaticChecks() {
     ensure(twig.includes("$options['autoescape'] = 'html'"), 'Timber integration should enable HTML autoescaping.');
     ensure(smoke.includes('{{ fields.heading }}'), 'Twig autoescape smoke should render a field value.');
     ensure(smoke.includes('<script>alert(1)</script>'), 'Twig autoescape smoke should use a hostile script fixture.');
-    ensure(smoke.includes("$definition['is_safe']"), 'Twig autoescape smoke should register helper safety metadata.');
+    ensure(smoke.includes("$definition['options']"), 'Twig autoescape smoke should register the same helper options as Timber.');
     return 'Twig HTML autoescaping is registered and covered by a behavioral smoke test.';
   });
 
@@ -616,12 +670,12 @@ function runStaticChecks() {
     ensure(cli.includes("replace_theme_header( $contents, 'Theme Name'"), 'Child theme generator should update Theme Name explicitly.');
     ensure(cli.includes("replace_theme_header( $contents, 'Text Domain'"), 'Child theme generator should update Text Domain explicitly.');
     ensure(cli.includes("replace_theme_header( $contents, 'Template'"), 'Child theme generator should update Template explicitly.');
-    ensure(cli.includes("data['project']['name']"), 'Child theme generator should update project.emulsify.json project.name.');
-    ensure(cli.includes("data['project']['machineName']"), 'Child theme generator should update project.emulsify.json project.machineName.');
-    ensure(cli.includes("data['project']['generatedFrom']"), 'Child theme generator should update project.emulsify.json generatedFrom.');
-    ensure(cli.includes("data['project']['generatedFromVersion']"), 'Child theme generator should update project.emulsify.json generatedFromVersion.');
+    ensure(/\$data->project->name\s*=\s*\$theme_label/.test(cli), 'Child theme generator should update project.emulsify.json project.name.');
+    ensure(/\$data->project->machineName\s*=\s*\$machine_name/.test(cli), 'Child theme generator should update project.emulsify.json project.machineName.');
+    ensure(/\$data->project->generatedFrom\s*=\s*self::GENERATED_FROM/.test(cli), 'Child theme generator should update project.emulsify.json generatedFrom.');
+    ensure(/\$data->project->generatedFromVersion\s*=\s*\$version/.test(cli), 'Child theme generator should update project.emulsify.json generatedFromVersion.');
     ensure(cli.includes("$this->join_path( dirname( $source ), 'style.css' ), 'Version'"), 'Child theme generator should read release lineage from installed WordPress theme metadata.');
-    ensure(cli.includes("data['name'] = $machine_name"), 'Child theme generator should update package.json name.');
+    ensure(/\$data->name\s*=\s*\$machine_name/.test(cli), 'Child theme generator should update package.json name.');
     ensure(cli.includes('collect_pattern_updates'), 'Child theme generator should update starter pattern namespaces.');
     ensure(cli.includes('sanitize_label_for_source'), 'Child theme generator should sanitize human labels before writing source comments.');
     ensure(cli.includes("replace_theme_header( $contents, 'Theme Name', $source_label )"), 'Child theme generator should use a source-safe label in style.css.');
@@ -671,6 +725,7 @@ function runStaticChecks() {
     const locator = readFile('includes/Blocks/ComponentLocator.php');
     const fileDiscovery = readFile('includes/Support/FileDiscovery.php');
     const registry = readFile('includes/Blocks/Registry.php');
+    const bootstrap = readFile('includes/Bootstrap.php');
     const acfBlocks = readFile('includes/Blocks/AcfBlocks.php');
     const nativeBlocks = readFile('includes/Blocks/NativeBlocks.php');
     const smoke = readFile('.github/scripts/component-locator-smoke.php');
@@ -691,7 +746,15 @@ function runStaticChecks() {
     ensure(locator.includes('clear_discovery_cache') && locator.includes('delete_transient'), 'Component locator should provide a clear method for the active discovery cache key.');
     ensure(locator.includes('stylesheet_version') && locator.includes('template_version') && locator.includes('manifest_file_signature'), 'Component locator cache key should include theme versions and manifest filemtime.');
     ensure(locator.includes('wp_get_environment_type') && locator.includes('WP_DEBUG'), 'Component locator should keep active development uncached unless explicitly enabled.');
-    ensure(registry.includes('$components = new ComponentLocator()'), 'Block registry should share one ComponentLocator instance.');
+    ensure(
+      /\$components\s*=\s*new Blocks\\ComponentLocator\(\)/.test(bootstrap)
+      && bootstrap.includes('new Assets( $asset_manifest, $components )')
+      && bootstrap.includes('new Blocks\\Registry( $asset_manifest, $components )')
+      && registry.includes('$this->components = $components ?? new ComponentLocator()')
+      && registry.includes('new AcfBlocks( $this->components, $this->manifest )')
+      && registry.includes('new NativeBlocks( $this->components )'),
+      'Bootstrap should share one ComponentLocator across runtime assets and ACF/Twig/native block registration.'
+    );
     ensure(acfBlocks.includes('$this->components->acf_components()'), 'ACF/Twig block discovery should use ComponentLocator.');
     ensure(!acfBlocks.includes("$args['data']['twig_template'] ="), 'ACF/Twig block registration should not persist template paths in editor block data.');
     ensure(
@@ -812,6 +875,7 @@ function runStaticChecks() {
     ensure(editorPolicySmoke.includes('Editor policy smoke checks passed'), 'Editor policy smoke should have a clear success message.');
     ensure(patternSmoke.includes('Pattern registry smoke checks passed'), 'Pattern registry smoke should have a clear success message.');
     ensure(fileDiscovery.includes('function theme_roots'), 'File discovery helper should create child-first theme roots.');
+    ensure(fileDiscovery.includes('function filtered_theme_roots') && fileDiscovery.includes('self::theme_roots( $directory, true )') && fileDiscovery.includes('apply_filters( $hook, $roots, $directory )'), 'Asset root discovery should preserve child-first roots and service-specific directory filters.');
     ensure(fileDiscovery.includes('function normalize_roots'), 'File discovery helper should normalize readable unique roots.');
     ensure(fileDiscovery.includes('function file_records'), 'File discovery helper should create file records for service-specific filtering.');
     ensure(fileDiscovery.includes('function recursive_files'), 'File discovery helper should support recursive scans.');
@@ -821,10 +885,10 @@ function runStaticChecks() {
     ensure(assetManifest.includes('dist/emulsify-assets.json'), 'Asset manifest helper should default to dist/emulsify-assets.json.');
     ensure(assetManifest.includes('emulsify_theme_asset_manifest_path') && assetManifest.includes('emulsify_theme_asset_manifest_data'), 'Asset manifest helper should expose path and parsed data filters.');
     ensure(assets.includes("'global'") && editorEnhancements.includes("'editor'") && assetManifest.includes("'components'") && assetManifest.includes("'blocks'"), 'Asset manifest support should cover global, editor, component, and block-specific sections.');
-    ensure(assets.includes('FileDiscovery::theme_roots') && assets.includes('FileDiscovery::file_records'), 'Runtime assets should use shared filesystem discovery helpers.');
+    ensure(assets.includes("FileDiscovery::filtered_theme_roots( $directory, 'emulsify_theme_asset_directories' )") && assets.includes('FileDiscovery::file_records') && assets.includes('AssetRecord::from_discovered_files'), 'Runtime assets should use shared root discovery and asset record helpers.');
     ensure(assets.includes('AssetManifest') && assets.includes('manifest_asset_files') && assets.includes("enqueue_scripts( 'emulsify-global', 'dist/global' )"), 'Runtime assets should support manifest-backed global and component assets.');
-    ensure(assets.includes('is_scoped_component_asset') && assets.includes('*.component.json'), 'Runtime assets should skip component files declared as block-scoped metadata.');
-    ensure(editorEnhancements.includes('FileDiscovery::theme_roots') && editorEnhancements.includes('FileDiscovery::file_records'), 'Editor assets should use shared filesystem discovery helpers.');
+    ensure(assets.includes('is_scoped_component_asset') && assets.includes('$this->components->component_metadata_files()') && assets.includes('metadata_asset_paths'), 'Runtime assets should skip component files declared as block-scoped metadata.');
+    ensure(editorEnhancements.includes("FileDiscovery::filtered_theme_roots( $directory, 'emulsify_theme_editor_asset_directories' )") && editorEnhancements.includes('FileDiscovery::file_records') && editorEnhancements.includes('AssetRecord::from_discovered_files'), 'Editor assets should use shared root discovery and asset record helpers.');
     ensure(editorEnhancements.includes('AssetManifest') && editorEnhancements.includes("asset_records( 'editor'"), 'Editor assets should support manifest-backed editor assets.');
     ensure(acfBlocks.includes('scoped_asset_records') && acfBlocks.includes('enqueue_assets') && acfBlocks.includes('emulsify_theme_acf_block_asset_records'), 'ACF/Twig blocks should support metadata-driven scoped assets.');
     ensure(nativeBlocks.includes("register_block_type( (string) $component['path'] )"), 'Native blocks should delegate block.json asset fields to WordPress register_block_type().');
@@ -869,8 +933,10 @@ function runStaticChecks() {
     ensure(fs.existsSync(path.join(repoRoot, 'whisk/.nvmrc')), 'Whisk should use .nvmrc for Node version tooling.');
     ensure(!fs.existsSync(path.join(repoRoot, 'whisk/.nvm')), 'Whisk should not use the legacy .nvm filename.');
     ensure(fs.existsSync(path.join(repoRoot, 'whisk/config/jest.config.js')), 'Whisk should provide the Jest config referenced by package scripts.');
-    ensure(scripts.test === 'jest --coverage --passWithNoTests --config ./config/jest.config.js', 'whisk/package.json test script should point at the checked-in Jest config.');
+    ensure(scripts.test === 'node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage --config ./config/jest.config.js', 'whisk/package.json test should execute native project ESM and fail when no tests exist.');
+    ensure(scripts.twatch === 'node --experimental-vm-modules node_modules/jest/bin/jest.js --no-coverage --watch --verbose --config ./config/jest.config.js', 'whisk/package.json twatch should use the same native ESM runner.');
     ensure(jestConfig.includes("testEnvironment: 'node'"), 'whisk/config/jest.config.js should define a node test environment.');
+    ensure(jestConfig.includes('transform: {}') && jestConfig.includes("coverageProvider: 'v8'") && jestConfig.includes('collectCoverageFrom'), 'Whisk Jest config should execute ESM directly and collect project coverage.');
     ensure(initHook.includes('sanitizeLabelForSource'), 'Whisk init hook should sanitize human labels before writing source comments.');
     ensure(initHook.includes("replaceThemeHeader(contents, 'Theme Name', sourceLabel)"), 'Whisk init hook should update style.css with a source-safe Theme Name.');
     ensure(initHook.includes("replaceThemeHeader(contents, 'Text Domain', machineName)"), 'Whisk init hook should update style.css Text Domain.');
@@ -889,7 +955,7 @@ function runStaticChecks() {
     ensure(starterInitSmoke.includes("style.Template === 'emulsify'"), 'Starter init smoke should validate Template: emulsify.');
     ensure(starterInitSmoke.includes('*/ echo 1; /*'), 'Starter init smoke should cover hostile source-comment labels.');
     ensure(starterInitSmoke.includes('node_modules') && starterInitSmoke.includes('dist'), 'Starter init smoke should validate copied build and dependency output is absent.');
-    ensure(starterInitSmoke.includes("['--prefix', 'whisk', 'run', 'test']"), 'Starter init smoke should verify the starter npm test script works after Whisk dependencies are installed.');
+    ensure(starterInitSmoke.includes('No tests found'), 'Starter init smoke should verify an empty starter fails its npm test script.');
     ensure(starterInitSmoke.includes("['run', 'inspect:components', '--', '--json']"), 'Starter init smoke should run the component inspector JSON command from the generated theme root.');
     ensure(starterInitSmoke.includes('JSON.parse') && starterInitSmoke.includes('Array.isArray(report.components)'), 'Starter init smoke should validate the component inspector JSON report, including an empty components array.');
     ensure(fs.existsSync(path.join(repoRoot, 'whisk/src/components/.gitkeep')), 'whisk/src/components should remain as an empty optional component placeholder.');
@@ -907,14 +973,14 @@ function runStaticChecks() {
     ensure(!fs.existsSync(path.join(repoRoot, 'whisk/whisk.info.yml')), 'Whisk should not add Drupal-style .info.yml metadata.');
     ensure(!fs.existsSync(path.join(repoRoot, 'whisk/scripts/vite-if-inputs.mjs')), 'Whisk should not wrap Emulsify Core Vite build errors.');
     ensure(whiskPackage.dependencies && whiskPackage.dependencies['@emulsify/core'], 'whisk/package.json must declare @emulsify/core.');
-    // Accept any caret range on Core 4 at or above the component-inspector
-    // minimum, so a patch or minor Core bump does not require editing this file.
+    // Accept any caret range at or above Core 4.5, so a patch or minor Core
+    // bump does not require editing this file.
     const coreRange = whiskPackage.dependencies['@emulsify/core'];
     const coreRangeMatch = /^\^4\.(\d+)\.(\d+)$/.exec(coreRange);
     ensure(coreRangeMatch, `whisk/package.json should target a caret range within Emulsify Core 4; found ${coreRange}.`);
     ensure(
-      Number(coreRangeMatch[1]) > 3 || (Number(coreRangeMatch[1]) === 3 && Number(coreRangeMatch[2]) >= 0),
-      `whisk/package.json should target Emulsify Core ^4.3.0 or newer within Core 4; found ${coreRange}.`,
+      Number(coreRangeMatch[1]) >= 5,
+      `whisk/package.json should target Emulsify Core ^4.5.0 or newer within Core 4; found ${coreRange}.`,
     );
     ensure(scripts['inspect:components'] === 'emulsify-inspect-components', 'whisk/package.json should expose the published Emulsify Core component inspector binary.');
     ensure(!scripts['inspect:components'].includes('node_modules/'), 'whisk/package.json should not deep-link to the component inspector implementation.');
@@ -924,9 +990,10 @@ function runStaticChecks() {
     ensure(whiskA11yConfig.includes("storybookBuildDir: '.out'"), 'Whisk accessibility config should target the generated theme Storybook output relative to the consuming project root.');
     ensure(whiskA11yConfig.includes('wait: 1000'), 'Whisk accessibility config should wait for the selected Storybook story to mount.');
     ensure(whiskA11yRunner.includes('resolvePa11yStoryIds') && whiskA11yRunner.includes('storyIds.length === 0'), 'Whisk accessibility runner should discover stories and reject an empty audit.');
-    ensure(whiskA11yRunner.includes('http.createServer') && whiskA11yRunner.includes('await pa11y') && whiskA11yRunner.includes('logReport'), 'Whisk accessibility runner should serve the static build over HTTP and report real Pa11y results.');
-    ensure(whiskA11yRunner.includes("process.env.CI === 'true' && process.platform === 'linux'") && whiskA11yRunner.includes('pa11yOptions.chromeLaunchConfig') && whiskA11yRunner.includes("'--no-sandbox'") && whiskA11yRunner.includes("'--disable-setuid-sandbox'"), 'Whisk accessibility runner should launch Chrome without its unavailable sandbox on isolated Linux CI runners.');
-    ensure(whiskA11yRunner.includes('if (hasIssues)') && whiskA11yRunner.includes('process.exitCode = 1'), 'Whisk accessibility runner should fail when Pa11y reports a non-ignored violation.');
+    ensure(whiskA11yRunner.includes('resolveProjectA11yConfig') && whiskA11yRunner.includes('applyProjectA11yConfig'), 'Whisk accessibility wrapper should load the consuming project config through Core.');
+    ensure(whiskA11yRunner.includes('startStorybookServer') && whiskA11yRunner.includes('lintReportAndExit') && whiskA11yRunner.includes('finally'), 'Whisk accessibility wrapper should delegate HTTP serving, bounded checks, failure reporting, and cleanup to Core.');
+    ensure(!whiskA11yRunner.includes('http.createServer') && !whiskA11yRunner.includes('await pa11y'), 'Whisk should not ship a copied accessibility engine.');
+    ensure(!whiskA11yRunner.includes('--no-sandbox') && !whiskA11yRunner.includes('--disable-setuid-sandbox'), 'Whisk accessibility code must keep Chrome sandboxing enabled.');
     ensure(!scriptText.includes('vite-if-inputs'), 'whisk/package.json scripts should not wrap missing-input build errors.');
     ensure(scripts.develop && scripts.develop.includes('npm:vite'), 'whisk/package.json develop script should run the Vite watcher.');
     ensure(!scripts.webpack, 'whisk/package.json should not expose a webpack script.');
@@ -946,7 +1013,6 @@ function runStaticChecks() {
     const projectComponentLoader = readFile('includes/Twig/ProjectComponentLoader.php');
     const twigNamespaceSmoke = readFile('.github/scripts/twig-project-namespace-smoke.php');
     const childFunctions = readFile('whisk/functions.php');
-    const childPageTemplate = readFile('whisk/templates/page.twig');
     const parentTemplateFiles = listFilesRecursive('templates', (file) => file.endsWith('.twig')).sort();
     const childTemplateFiles = listFilesRecursive('whisk/templates', (file) => file.endsWith('.twig')).sort();
     const expectedParentFallbacks = [
@@ -959,26 +1025,18 @@ function runStaticChecks() {
       'templates/single-password.twig',
       'templates/single.twig',
     ];
-    const unexpectedChildTemplates = childTemplateFiles.filter((file) => file !== 'whisk/templates/page.twig');
-    const duplicateChildTemplates = childTemplateFiles.filter((file) => {
-      const parentFile = file.replace(/^whisk\//, '');
-      const parentPath = path.join(repoRoot, parentFile);
-      return fs.existsSync(parentPath) && readFile(file) === readFile(parentFile);
-    });
     const childTemplatePathIndex = twigIntegration.indexOf("'path'      => get_stylesheet_directory() . '/templates'");
     const parentTemplatePathIndex = twigIntegration.indexOf("'path'      => get_template_directory() . '/templates'");
-    const childComponentSrcPathIndex = twigIntegration.indexOf("'path'      => get_stylesheet_directory() . '/src/components'");
-    const childComponentLegacyPathIndex = twigIntegration.indexOf("'path'      => get_stylesheet_directory() . '/components'");
-    const parentComponentSrcPathIndex = twigIntegration.indexOf("'path'      => get_template_directory() . '/src/components'");
-    const parentComponentLegacyPathIndex = twigIntegration.indexOf("'path'      => get_template_directory() . '/components'");
+    const childComponentSrcPathIndex = twigIntegration.indexOf("get_stylesheet_directory() . '/src/components'");
+    const childComponentLegacyPathIndex = twigIntegration.indexOf("get_stylesheet_directory() . '/components'");
+    const parentComponentSrcPathIndex = twigIntegration.indexOf("get_template_directory() . '/src/components'");
+    const parentComponentLegacyPathIndex = twigIntegration.indexOf("get_template_directory() . '/components'");
 
     for (const fallback of expectedParentFallbacks) {
       ensure(parentTemplateFiles.includes(fallback), `${fallback} should exist as a parent fallback.`);
     }
-    ensure(unexpectedChildTemplates.length === 0, `Whisk should not duplicate parent fallback templates: ${unexpectedChildTemplates.join(', ')}.`);
-    ensure(duplicateChildTemplates.length === 0, `Whisk templates should not be byte-identical parent copies: ${duplicateChildTemplates.join(', ')}.`);
-    ensure(childPageTemplate.includes("{% extends '@emulsify-tpl/page.twig' %}"), 'whisk/templates/page.twig should extend the parent-only page fallback.');
-    ensure(childPageTemplate.includes('{{ parent() }}'), 'whisk/templates/page.twig should demonstrate wrapping parent fallback output.');
+    ensure(childTemplateFiles.length === 0, `Whisk ships no Twig templates; remove ${childTemplateFiles.join(', ')} and see docs/template-extension.md for intentional child overrides.`);
+    ensure(!fs.existsSync(path.join(repoRoot, 'whisk/templates')), 'Whisk should omit the templates directory; see docs/template-extension.md before adding project overrides.');
     ensure(childTemplatePathIndex !== -1, 'Twig integration should register child @templates path.');
     ensure(parentTemplatePathIndex !== -1, 'Twig integration should register parent @templates path.');
     ensure(childTemplatePathIndex < parentTemplatePathIndex, 'Twig integration should register child @templates before parent @templates.');
@@ -994,8 +1052,8 @@ function runStaticChecks() {
     ensure(twigIntegration.includes('project_structure_namespaces') && twigIntegration.includes('structureImplementations'), 'Twig integration should honor Emulsify Core structureImplementations for configured namespaces.');
     ensure(twigIntegration.includes('emulsify_theme_project_component_roots'), 'Twig integration should expose a focused project component roots filter.');
     ensure(twigIntegration.includes('new ProjectComponentLoader') && projectComponentLoader.includes('implements \\Twig\\Loader\\LoaderInterface'), 'Twig integration should wrap the loader for machineName:component references.');
-    ensure(twigIntegration.includes('machineName:component'), 'Twig integration should document the project component reference intent in code comments.');
-    ensure(twigNamespaceSmoke.includes('@custom/teaser.twig') && twigNamespaceSmoke.includes('variant.structureImplementations'), 'Twig namespace smoke should verify configured Core structure namespaces.');
+    ensure(twigIntegration.includes('component_root_records') && twigIntegration.includes("$loader->getPaths( 'components' )"), 'Twig component aliases should use the selected, filtered component namespace roots.');
+    ensure(twigNamespaceSmoke.includes('@custom/teaser.twig') && twigNamespaceSmoke.includes('structureImplementations'), 'Twig namespace smoke should verify configured Core structure namespaces.');
     ensure(!fs.existsSync(path.join(repoRoot, 'whisk/includes/twig-namespaces.php')), 'Whisk should rely on the parent Twig namespace integration by default.');
     ensure(!childFunctions.includes('twig-namespaces.php'), 'whisk/functions.php should not require a duplicate Twig namespace file.');
     ensure(childFunctions.includes('project_machine_name:component_name') && childFunctions.includes('@components for compatible component libraries'), 'whisk/functions.php should document generic project machine-name component references while preserving @components compatibility.');
@@ -1016,13 +1074,45 @@ function runStaticChecks() {
     ensure(wordpressFixtureSmoke.includes('assertGeneratedChildTheme'), 'WordPress fixture smoke should validate generated child theme metadata and copied Whisk files.');
     ensure(wordpressFixtureSmoke.includes("project.project?.generatedFrom !== 'emulsify-wordpress'"), 'WordPress fixture smoke should validate generatedFrom metadata.');
     ensure(wordpressFixtureSmoke.includes('project.project?.generatedFromVersion !== expectedGeneratedFromVersion'), 'WordPress fixture smoke should derive the expected generatedFromVersion from root package metadata instead of a literal.');
-    ensure(wordpressFixtureSmoke.includes('${themeSlug}-page'), 'WordPress fixture smoke should prove the generated child page template renders through Timber.');
+    ensure(wordpressFixtureSmoke.includes('Generated child theme should not include Twig templates by default.') && wordpressFixtureSmoke.includes('entry__content'), 'WordPress fixture smoke should prove parent page rendering without a generated child Twig override.');
+    ensure(wordpressFixtureSmoke.includes('Child block extension must preserve every surrounding byte.') && wordpressFixtureSmoke.includes("{% extends '@emulsify-tpl/page.twig' %}") && wordpressFixtureSmoke.includes('finally'), 'WordPress fixture smoke should prove one-block child inheritance and restore the temporary override; see docs/template-extension.md.');
     ensure(wordpressFixtureSmoke.includes('checkGeneratedAssets'), 'WordPress fixture smoke should fetch generated child theme built assets.');
     ensure(wordpressFixtureSmoke.includes('runAcfDiscoveryWithoutAcf'), 'WordPress fixture smoke should check ACF/Twig discovery when ACF is absent.');
     ensure(wordpressFixtureSmoke.includes('installAcfStub'), 'WordPress fixture smoke should provide a fixture-only ACF stub.');
     ensure(wordpressFixtureSmoke.includes('runAcfDiscoveryWithStub'), 'WordPress fixture smoke should check ACF/Twig registration with the ACF stub.');
     ensure(wordpressFixtureSmoke.includes('emulsify/smoke-native'), 'WordPress fixture smoke should check native block.json discovery and registration.');
-    return 'Parent owns route fallbacks and default Twig namespaces; Whisk ships only the page override example.';
+    return 'Parent owns route fallbacks and default Twig namespaces; Whisk ships no Twig templates.';
+  });
+
+  runStaticCheck('Template extension contract', () => {
+    const base = readFile('templates/layouts/base.twig');
+    const extensionDocs = readFile('docs/template-extension.md');
+    for (const block of ['head', 'header', 'content', 'footer', 'site_header', 'main', 'page_title']) {
+      ensure(base.includes(`{% block ${block} %}`) && extensionDocs.includes('`' + block + '`'), `Preserve the public ${block} block and boundary documented in docs/template-extension.md.`);
+    }
+    const goldens = listFilesRecursive('.github/fixtures/template-extension', (file) => file.endsWith('.html'));
+    ensure(goldens.length >= 10, 'Keep the pre-extension output captures; see docs/template-extension.md.');
+    ensure(readFile('.github/scripts/pr-validation.cjs').includes('smoke:template-extension'), 'PR validation should compare exact template bytes and child extension boundaries.');
+    for (const file of ['README.md', 'docs/README.md', 'docs/timber-and-twig-authoring.md']) {
+      ensure(readFile(file).includes('template-extension.md'), `${file} should link to the public template extension contract.`);
+    }
+    return 'Seven public layout blocks retain ten golden outputs, tested child inheritance, and documented boundaries.';
+  });
+
+  runStaticCheck('Rendered WordPress accessibility', () => {
+    const { wcagTags, disabledRules } = require('./rendered-a11y.cjs');
+    ensure(JSON.stringify(wcagTags) === JSON.stringify(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']), 'Rendered WordPress axe audit must select all five WCAG tags.');
+    ensure(JSON.stringify(disabledRules) === JSON.stringify(['target-size']), 'Only target-size may be disabled for the unstyled parent fixture.');
+    const fixtureJob = themeReadinessWorkflow.slice(themeReadinessWorkflow.indexOf('  wordpress-fixture:'), themeReadinessWorkflow.indexOf('  extended-whisk:'));
+    ensure(fixtureJob.includes('Select and verify runner Chrome') && fixtureJob.includes('--headless --dump-dom about:blank'), 'WordPress fixture job must verify sandboxed runner Chrome.');
+    ensure(fixtureJob.includes("WP_SMOKE_A11Y: '1'") && fixtureJob.includes('WP_SMOKE_A11Y_OUTPUT:'), 'WordPress fixture job must enable the rendered browser audit and retain its reports.');
+    ensure(fixtureJob.includes('wordpress-rendered-a11y-') && fixtureJob.includes('if: always()'), 'WordPress accessibility reports must upload on success and failure.');
+    ensure(wordpressFixtureSmoke.includes('Verify rendered accessibility failure gates'), 'WordPress fixture must exercise the browser audit negative controls.');
+    ensure(wordpressFixtureSmoke.includes('archiveCount < 12') && wordpressFixtureSmoke.includes("['option', 'update', 'posts_per_page', '1']"), 'Rendered archive audit needs at least 12 posts and one post per page.');
+    const guide = readFile('docs/accessibility.md');
+    ensure(guide.includes('target-size') && guide.includes('screen-reader-text') && guide.includes('focus'), 'Accessibility guide must document the sole rule exception and project styling responsibilities.');
+    ensure(wordpressFixtureSmoke.includes("name: 'media-embeds'") && wordpressFixtureSmoke.includes('media-embed-smoke.php') && wordpressFixtureSmoke.includes('verifyMediaEmbeds'), 'The fixture must test media transforms and audit the rendered YouTube/Vimeo posters.');
+    return 'Seven rendered routes use sandboxed Chrome, full WCAG tags, strict navigation/media assertions, and retained HTML/axe reports; only target-size is excluded.';
   });
 
   runStaticCheck('Generated child theme documentation', () => {
@@ -1139,6 +1229,30 @@ function runStaticChecks() {
     return 'Generated docs cover project ownership, frontend workflows, upgrades, and sanitized support collection.';
   });
 
+  runStaticCheck('Generated AI guidance', () => {
+    const guidancePaths = [
+      'AGENTS.md',
+      'docs/wordpress-integration.md',
+      '.agents/skills/emulsify-wordpress-integration/SKILL.md',
+    ];
+    for (const relativePath of guidancePaths) {
+      const sourcePath = `whisk/${relativePath}`;
+      const contents = readFile(sourcePath);
+      ensure(!/%%EMULSIFY_[A-Z_]+%%|whisk/i.test(contents), `${sourcePath} must be token-free and contain no starter identity so generators copy it unchanged.`);
+      ensure(generatedThemeContract.includes(`'${relativePath}'`), `Generated theme contract should require ${relativePath}.`);
+      ensure(docsCommandCheck.includes(`'${relativePath}'`), `Documentation command checks should cover ${relativePath}.`);
+      ensure(distBuilder.includes(`"${sourcePath}"`), `Distribution build should require staged ${sourcePath}.`);
+    }
+
+    const attributes = childProcess.spawnSync('git', [
+      'check-attr', 'export-ignore', '--',
+      'AGENTS.md', ...guidancePaths.map((file) => `whisk/${file}`),
+    ], { cwd: repoRoot, encoding: 'utf8' });
+    ensure(attributes.status === 0, `Unable to check guidance Git distribution attributes: ${attributes.stderr}`);
+    ensure(!/: export-ignore: (?:set|true)\s*$/m.test(attributes.stdout), 'Git distributions must retain contributor and generated AI guidance, including hidden skills.');
+    return 'Portable guidance is required, copied without replacement, command-checked, and retained in ZIP/Git distributions.';
+  });
+
   runStaticCheck('Generated child theme contract', () => {
     ensure(rootPackage.scripts['test:generated-theme'] === 'node --test .github/scripts/generated-theme-contract.test.cjs', 'package.json should expose the focused generated child theme contract tests.');
     ensure(rootPackage.scripts['smoke:generation-parity'] === 'node .github/scripts/generation-parity-smoke.cjs', 'package.json should expose the generation parity smoke.');
@@ -1208,65 +1322,26 @@ function runStaticChecks() {
     const analyzerOptions = getReleasePluginOptions(releaseConfig, '@semantic-release/commit-analyzer');
     const notesOptions = getReleasePluginOptions(releaseConfig, '@semantic-release/release-notes-generator');
     const githubOptions = getReleasePluginOptions(releaseConfig, '@semantic-release/github');
-    const releaseAnalyzer = releaseConfig.plugins.find((plugin) => plugin && typeof plugin.analyzeCommits === 'function');
     const releaseGuard = releaseConfig.plugins.find((plugin) => plugin && typeof plugin.verifyRelease === 'function');
-    const readinessJobStart = semanticReleaseWorkflow.indexOf('  release-readiness:');
-    const releaseJobStart = semanticReleaseWorkflow.indexOf('  semantic-release:');
-    const readinessJob = semanticReleaseWorkflow.slice(readinessJobStart, releaseJobStart);
-    const releaseJob = semanticReleaseWorkflow.slice(releaseJobStart);
-    const buildStep = releaseJob.indexOf('npm run build:dist');
-    const publishStep = releaseJob.indexOf('npm run publish');
     const releaseAsset = Array.isArray(githubOptions.assets)
       ? githubOptions.assets.find((asset) => asset.path === 'dist-artifact/emulsify.zip')
       : null;
-    ensure(releaseConfig.expectedStableRelease === '2.0.0', 'release.config.js should declare 2.0.0 as the expected stable release.');
-    ensure(releaseConfig.initialStableBaseline === '1.0.0', 'release.config.js should declare the temporary 1.0.0 stable baseline.');
     ensure(releaseConfig.tagFormat === '${version}', 'release.config.js should emit non-prefixed semver tags.');
     ensure(releaseConfig.repositoryUrl === 'git@github.com:emulsify-ds/emulsify-wordpress.git', 'release.config.js should publish against emulsify-wordpress.');
     ensure(Array.isArray(releaseConfig.branches), 'release.config.js branches must be an array.');
     ensure(releaseConfig.branches.length === 1 && releaseConfig.branches[0] === 'main', 'release.config.js should publish only from main.');
-    ensure(releaseAnalyzer, 'release.config.js should force the first stable release to a major release type.');
-    ensure(releaseGuard, 'release.config.js should guard the first stable release version.');
+    ensure(!releaseConfig.plugins.some((plugin) => ['@semantic-release/npm', '@semantic-release/git'].includes(Array.isArray(plugin) ? plugin[0] : plugin)), 'release.config.js must not rewrite committed versions through @semantic-release/npm or @semantic-release/git.');
+    ensure(releaseGuard, 'release.config.js should require the computed release version to match the prepared package version.');
     ensure(rootPackage.scripts.publish.startsWith('node .github/scripts/semantic-release.cjs '), 'The publish script should prepare semantic-release through the guarded runner.');
     ensure(rootPackage.scripts['publish-test'].startsWith('node .github/scripts/semantic-release.cjs '), 'The publish-test script should use the same guarded semantic-release runner.');
-    ensure(semanticReleaseRunner.includes("git(['tag', initialStableBaseline, sourceSha])"), 'The semantic-release runner should expose the latest prerelease commit as a temporary stable baseline.');
-    ensure(semanticReleaseRunner.includes('finally') && semanticReleaseRunner.includes('removeStableBaseline(temporaryBaseline)'), 'The semantic-release runner should always clean up its temporary baseline tag.');
-    ensure(releaseGuard.verifyRelease.toString().includes('removeSyntheticBaseline'), 'The stable release guard should remove the temporary baseline before semantic-release pushes tags.');
-    ensure(typeof notesOptions.writerOpts?.finalizeContext === 'function', 'Release notes should suppress the inaugural compare link to the temporary baseline tag.');
     ensure(releaseAsset, 'release.config.js should attach dist-artifact/emulsify.zip to GitHub releases.');
     ensure(releaseAsset.label === 'Emulsify WordPress theme (with dependencies)', 'release.config.js should give the installable ZIP a clear release label.');
     ensureBreakingParser('@semantic-release/commit-analyzer', analyzerOptions.parserOpts);
     ensureBreakingParser('@semantic-release/release-notes-generator', notesOptions.parserOpts);
-    ensure(readinessJobStart >= 0, 'semantic-release.yml should run release-readiness before publishing.');
-    ensure(semanticReleaseWorkflow.includes('needs: release-readiness'), 'semantic-release.yml release job should wait for release readiness.');
-    ensure(semanticReleaseWorkflow.includes('contents: write'), 'semantic-release.yml should grant GitHub release permissions explicitly.');
-    ensure(semanticReleaseWorkflow.includes('id: semantic'), 'semantic-release.yml should expose the semantic-release step as steps.semantic.');
-    ensure(semanticReleaseWorkflow.includes('npm run release:check'), 'semantic-release.yml should run local release readiness checks.');
-    ensure(semanticReleaseWorkflow.includes('wp-cli'), 'semantic-release.yml should install WP-CLI for the WordPress smoke fixture.');
-    ensure(semanticReleaseWorkflow.includes('mysql:'), 'semantic-release.yml should provide a MySQL service for the WordPress smoke fixture.');
-    ensure(semanticReleaseWorkflow.includes('WP_SMOKE_DB_HOST'), 'semantic-release.yml should pass WordPress smoke database settings.');
-    ensure(readinessJob.includes('- name: Build tested installable theme archive') && readinessJob.includes('run: npm run build:dist'), 'Release readiness should build the archive before the WordPress fixture.');
-    ensure(readinessJob.includes('WP_SMOKE_THEME_ARCHIVE: dist-artifact/emulsify.zip'), 'Release readiness should test the built archive in WordPress.');
-    ensure(releaseJobStart >= 0, 'semantic-release.yml should define the semantic-release job.');
-    ensure(releaseJob.includes("php-version: '8.3'"), 'semantic-release.yml release job should set up PHP 8.3.');
-    ensure(releaseJob.includes('tools: composer:v2'), 'semantic-release.yml release job should install Composer.');
-    ensure(buildStep >= 0, 'semantic-release.yml release job should build the installable theme archive.');
-    ensure(publishStep >= 0 && buildStep < publishStep, 'semantic-release.yml should build the installable theme archive before publishing.');
-    try {
-      releaseGuard.verifyRelease({}, releaseGuardRejectContext);
-      throw new Error('release.config.js release guard should reject pre-2.0.0 releases.');
-    }
-    catch (error) {
-      const expectedMessage = error.message.includes('Expected semantic-release to prepare 2.0.0');
-      ensure(expectedMessage, 'release.config.js release guard should explain the expected 2.0.0 release.');
-    }
-    releaseGuard.verifyRelease({}, releaseGuardAcceptContext);
-    releaseGuard.verifyRelease({}, releaseGuardFutureContext);
-    ensure(releaseAnalyzer.analyzeCommits({}, releaseAnalyzerAlphaContext) === 'major', 'release.config.js should force a major release from the latest alpha tag.');
-    ensure(releaseAnalyzer.analyzeCommits({}, releaseAnalyzerNoStableContext) === 'major', 'release.config.js should force a major release when semantic-release finds no previous stable release.');
-    ensure(releaseAnalyzer.analyzeCommits({}, releaseGuardRejectContext) === 'major', 'release.config.js should force a major release before 2.0.0 exists.');
-    ensure(releaseAnalyzer.analyzeCommits({}, releaseGuardFutureContext) === null, 'release.config.js should use normal commit analysis after 2.0.0 exists.');
-    return 'Semantic release is configured for non-prefixed tags, main-only publishing, a forced 2.0.0 stable release, and the installable ZIP asset.';
+    validateReleaseWorkflow(semanticReleaseWorkflow, themeReadinessWorkflow);
+    validateProjectsWorkflow(readFile('.github/workflows/addtoprojects.yml'));
+    ensure(semanticReleaseRunner.includes('Refusing to publish local-only stable tag(s)'), 'The guarded runner should refuse to push unpublished local stable tags.');
+    return 'Semantic release requires a prepared package version, non-prefixed tags, main-only publishing, and the tested installable ZIP asset.';
   });
 
   runStaticCheck('Installable release artifact', () => {
@@ -1279,7 +1354,7 @@ function runStaticChecks() {
     ensure(distBuilder.includes('"docs"') && distBuilder.includes('"includes"') && distBuilder.includes('"templates"') && distBuilder.includes('"src"'), 'Distribution build should include user documentation and parent runtime directories.');
     ensure(distBuilder.includes('"UPGRADE.md"') && distBuilder.includes('"docs/wp-cli-child-theme-generation.md"'), 'Distribution build should retain the documentation linked from its README.');
     ensure(distBuilder.includes('"functions.php"') && distBuilder.includes('"style.css"') && distBuilder.includes('"theme.json"'), 'Distribution build should include required WordPress theme files.');
-    ensure(distBuilder.includes('copy_tracked_directory "whisk"'), 'Distribution build should include the tracked Whisk generator payload.');
+    ensure(distBuilder.includes('copy_committed_directory "whisk"'), 'Distribution build should include the committed Whisk generator payload.');
     ensure(distBuilder.includes('"whisk/project.emulsify.json"') && distBuilder.includes('"whisk/style.css"'), 'Distribution build should verify required Whisk generator files.');
     ensure(distBuilder.includes('"whisk/.cache"') && distBuilder.includes('"whisk/.cli"') && distBuilder.includes('"whisk/node_modules"'), 'Distribution build should reject Whisk caches, generation tooling, and dependencies.');
     ensure(distBuilder.includes('find emulsify -type f -print') && distBuilder.includes('zip -X'), 'Distribution build should archive the staged emulsify/ tree reproducibly.');
@@ -1321,8 +1396,11 @@ function runStaticChecks() {
     ensure(themeReadinessWorkflow.includes('npm run lint:php'), 'theme-readiness.yml should run PHP lint.');
     ensure(themeReadinessWorkflow.includes('npm run pr:check'), 'theme-readiness.yml should delegate project smoke checks to npm run pr:check.');
     ensure(themeReadinessWorkflow.includes('npm run release:check'), 'theme-readiness.yml should run release readiness checks.');
+    ensure(practicalJob.includes('fetch-depth: 0') && wordpressFixtureJob.includes('fetch-depth: 0'), 'Readiness jobs running the release version contract should fetch full history and tags.');
     ensure(practicalJob.includes("- name: Build installable theme archive\n        if: matrix.php-version == '8.3'\n        run: npm run build:dist"), 'The PHP 8.3 practical lane should build the client-testable release archive.');
-    ensure(practicalJob.includes("- name: Upload installable theme archive\n        if: matrix.php-version == '8.3'\n        uses: actions/upload-artifact@v7"), 'The PHP 8.3 practical lane should use direct-file artifact upload.');
+    const readinessJobs = yaml.load(themeReadinessWorkflow).jobs;
+    const archiveUpload = readinessJobs.practical.steps.find((step) => step.name === 'Upload installable theme archive');
+    ensure(archiveUpload?.if === "matrix.php-version == '8.3'" && /^actions\/upload-artifact@[a-f0-9]{40}$/.test(archiveUpload.uses), 'The PHP 8.3 practical lane should use a pinned artifact upload.');
     ensure(practicalJob.includes('path: dist-artifact/emulsify.zip') && practicalJob.includes('archive: false') && practicalJob.includes('overwrite: true'), 'Theme readiness should upload the installable ZIP directly and support workflow reruns.');
     ensure(practicalJob.includes('if-no-files-found: error') && practicalJob.includes('retention-days: 14'), 'The client-testable artifact should be required and retained for 14 days.');
     ensure(practicalStart >= 0 && phpLintStart > practicalStart && wordpressFixtureStart > phpLintStart && extendedWhiskStart > wordpressFixtureStart, 'theme-readiness.yml should define practical, PHP, WordPress fixture, and Whisk accessibility jobs.');
@@ -1335,22 +1413,29 @@ function runStaticChecks() {
     ensure(wordpressFixtureJob.includes('mysql:'), 'WordPress fixture job should provide MySQL.');
     ensure(wordpressFixtureJob.includes('wp-cli'), 'WordPress fixture job should install WP-CLI.');
     ensure(wordpressFixtureJob.includes("WP_SMOKE_REQUIRED: '1'"), 'WordPress fixture job should require the fixture instead of allowing a skip.');
-    ensure(wordpressFixtureJob.includes('- name: Build installable theme archive') && wordpressFixtureJob.includes('run: npm run build:dist'), 'WordPress fixture job should build the installable archive.');
+    ensure(wordpressFixtureJob.includes('- name: Download tested release bundle') && !wordpressFixtureJob.includes('run: npm run build:dist'), 'WordPress fixture job should use the archive built by practical readiness.');
     ensure(wordpressFixtureJob.includes('WP_SMOKE_THEME_ARCHIVE: dist-artifact/emulsify.zip'), 'WordPress fixture job should test the built archive instead of the source tree.');
+    ensure(wordpressFixtureSmoke.includes("['core', 'version']") && wordpressFixtureSmoke.includes('WordPress version: requested') && wordpressFixtureSmoke.includes('resolved ${resolvedWordpressVersion}'), 'WordPress fixture smoke should log the actual downloaded core version, including latest and nightly resolution.');
+    ensure(wordpressFixtureSmoke.includes('log(`WordPress ${resolvedWordpressVersion} (requested ${wordpressVersion}): Generated'), 'The fixture success summary must expose resolved WordPress versions in captured CI output.');
     ensure(themeReadinessWorkflow.includes('extended_checks'), 'theme-readiness.yml should expose optional extended checks.');
     ensure(extendedWhiskJob.includes(releaseTargetedPrGate), 'Whisk accessibility job should run on release-targeted pull requests.');
     ensure(extendedWhiskJob.includes("github.event_name == 'schedule'"), 'Whisk accessibility job should run on the schedule.');
     ensure(extendedWhiskJob.includes("(github.event_name == 'workflow_dispatch' && inputs.extended_checks)"), 'Whisk accessibility job should honor its manual input.');
     ensure(extendedWhiskJob.includes('cp -R .github/fixtures/whisk-a11y/. whisk/src/components/'), 'Whisk accessibility job should seed the CI-only component fixture.');
-    ensure(extendedWhiskJob.includes('id: setup-chrome') && extendedWhiskJob.includes('uses: browser-actions/setup-chrome@v2'), 'Whisk accessibility job should install Chrome explicitly.');
-    ensure(extendedWhiskJob.includes('PUPPETEER_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}'), 'Whisk accessibility job should use the Chrome path provided by setup-chrome.');
+    ensure(extendedWhiskJob.includes('Select and verify runner Chrome') && extendedWhiskJob.includes('command -v google-chrome'), 'Whisk accessibility job should use the runner-installed Chrome.');
+    ensure(extendedWhiskJob.includes('"$chrome_path" --version') && extendedWhiskJob.includes('"$chrome_path" --headless --dump-dom about:blank') && extendedWhiskJob.includes('PUPPETEER_EXECUTABLE_PATH=%s') && extendedWhiskJob.includes('"$GITHUB_ENV"'), 'Whisk accessibility job should verify a sandboxed Chrome launch and export its path.');
+    ensure(!extendedWhiskJob.includes('browser-actions/setup-chrome') && !extendedWhiskJob.includes('--no-sandbox') && !extendedWhiskJob.includes('--disable-setuid-sandbox'), 'Whisk accessibility CI must preserve the installed browser sandbox.');
+    ensure(extendedWhiskJob.includes("PUPPETEER_SKIP_DOWNLOAD: 'true'"), 'Whisk CI should skip redundant Puppeteer browser downloads.');
+    ensure(extendedWhiskJob.includes('npm --prefix whisk run test -- --runInBand'), 'Whisk CI should execute real seeded project tests before the accessibility audit.');
     ensure(extendedWhiskJob.includes('npm --prefix whisk run a11y'), 'Whisk accessibility job should build Storybook and run the real audit.');
-    ensure(!extendedWhiskJob.includes('continue-on-error: true'), 'Whisk accessibility violations should fail the job.');
     ensure(whiskA11yEntry.includes('ciReadinessFixture'), 'CI-only Whisk fixture should provide a Vite entry.');
     ensure(whiskA11yStory.includes("title: 'CI/Readiness fixture'") && whiskA11yStory.includes("import template from './ci-readiness.twig'"), 'CI-only Whisk fixture should provide a discoverable Twig story.');
     ensure(whiskA11yTemplate.includes('<main>') && whiskA11yTemplate.includes('<article') && whiskA11yTemplate.includes('<h2') && whiskA11yTemplate.includes('<a href='), 'CI-only Whisk story should use native semantic landmarks, headings, and links.');
     ensure(prValidationScript.includes('composer') && prValidationScript.includes('validate'), 'PR validation should validate Composer metadata.');
     ensure(prValidationScript.includes('docs:check-commands'), 'PR validation should validate documented npm commands.');
+    for (const script of ['test:lint-wrappers', 'smoke:jest-project', 'test:a11y-runner']) {
+      ensure(prValidationScript.includes(script), `PR validation should run ${script}.`);
+    }
     ensure(prValidationScript.includes('composer') && prValidationScript.includes('install'), 'PR validation should install Composer dependencies for Twig smoke coverage.');
     ensure(!prValidationScript.includes("'lint:php'"), 'PR validation should leave PHP analysis to its dedicated status check.');
     ensure(prValidationScript.includes('smoke:acf-json'), 'PR validation should run the ACF Local JSON smoke test.');
@@ -1375,6 +1460,50 @@ function runStaticChecks() {
     return 'Theme readiness runs fast checks on every configured pull request and extended checks for release targets, schedules, and manual dispatches.';
   });
 
+  runStaticCheck('Readiness matrix contract', () => {
+    const entries = validateReadinessMatrix(themeReadinessWorkflow, {
+      minimumWordPress: rootThemeHeader['Requires at least'],
+    });
+    return `Blocking WordPress minimum and latest, advisory nightly, and ${entries.practical.filter((entry) => !entry.experimental).length} blocking PHP legs are required.`;
+  });
+
+  runStaticCheck('Pinned workflow actions and validation credentials', () => {
+    const files = listFilesRecursive('.github/workflows', (file) => /\.ya?ml$/.test(file));
+    for (const file of files) {
+      const source = readFile(file);
+      for (const line of source.split(/\r?\n/)) {
+        if (!/^\s*(?:-\s*)?uses:\s*/.test(line)) continue;
+        // A local reusable workflow runs from the caller's commit, not a tag.
+        if (/^\s*uses:\s*\.\/\.github\/workflows\/theme-readiness\.yml\s*$/.test(line)) continue;
+        ensure(/^\s*(?:-\s*)?uses:\s*[\w.-]+\/[\w./-]+@[a-f0-9]{40}\s+#\s*v\d+\.\d+\.\d+(?:[\w.+-]*)?\s*$/.test(line),
+          `${file} must pin every action to a full commit SHA with its release version comment: ${line.trim()}`);
+        if (line.includes('actions/upload-artifact@')) ensure(/#\s*v7\./.test(line), `${file} must use the Node 24 upload-artifact v7 release.`);
+      }
+      const workflow = yaml.load(source);
+      ensure(workflow.permissions?.contents === 'read' && Object.keys(workflow.permissions).length === 1,
+        `${file} must default to exactly contents: read.`);
+      ensure(!Object.hasOwn(workflow.on || {}, 'pull_request_target'), `${file} must not run untrusted pull requests with pull_request_target credentials.`);
+      for (const [jobName, job] of Object.entries(workflow.jobs || {})) {
+        const publishingJob = file === '.github/workflows/semantic-release.yml' && jobName === 'semantic-release';
+        if (publishingJob) {
+          ensure(job.permissions?.contents === 'write' && job.permissions?.issues === 'write'
+            && job.permissions?.['pull-requests'] === 'write' && Object.keys(job.permissions).length === 3,
+          'The semantic-release publishing job must request exactly contents, issues, and pull-requests write permissions.');
+        }
+        else {
+          ensure(job.permissions === undefined || (typeof job.permissions === 'object'
+            && Object.values(job.permissions).every((value) => value === 'read' || value === 'none')),
+          `${file} ${jobName} validation permissions must remain read-only.`);
+        }
+        for (const step of job.steps || []) {
+          if (!step.uses?.startsWith('actions/checkout@')) continue;
+          ensure(step.with?.['persist-credentials'] === false, `${file} ${jobName} checkout must disable persisted credentials.`);
+        }
+      }
+    }
+    return 'All workflow actions use full SHA pins with version comments, and validation checkouts do not retain credentials.';
+  });
+
   runStaticCheck('Release documentation', () => {
     const expectedDocLinks = [
       'docs/README.md',
@@ -1396,7 +1525,7 @@ function runStaticChecks() {
       'docs/post-2x-optimization-roadmap.md',
     ];
 
-    ensure(readme.includes('Emulsify WordPress 2.0.0 is a Timber-first WordPress parent theme'), 'README.md should describe the 2.0.0 Timber-first parent theme.');
+    ensure(readme.includes('Emulsify WordPress is a Timber-first WordPress parent theme'), 'README.md should describe the Timber-first parent theme.');
     ensure(readme.includes('Emulsify WordPress is licensed under GPL-2.0-only'), 'README.md should document the GPL-2.0-only license.');
     ensure(readme.includes('[LICENSE](LICENSE)'), 'README.md should link to the repository license file.');
     ensure(readme.includes('## Requirements'), 'README.md should keep requirements visible.');
@@ -1534,7 +1663,7 @@ function runStaticChecks() {
     ensure(docs.cli.includes('Force replacement safety') && docs.cli.includes('Emulsify-generated child theme markers'), 'WP-CLI doc should document force replacement safety.');
     ensure(docs.cli.includes('Upgrade and support diagnostics') && docs.cli.includes('generatedFromVersion'), 'WP-CLI doc should document generated child theme lineage diagnostics.');
     ensure(docs.cli.includes('Ignored dependency, cache, Storybook, and Vite output directories are not copied'), 'WP-CLI doc should explain that generated themes do not inherit build output.');
-    ensure(docs.release.includes('release-2.x') && docs.release.includes('2.0.0'), 'Release process doc should document the release-2.x target release.');
+    ensure(docs.release.includes('## Release PR procedure') && docs.release.includes('prepared version'), 'Release process doc should explain preparing a version in a release PR.');
     ensure(docs.release.includes('Packagist lists `emulsify-ds/emulsify-wordpress-theme` as maintained'), 'Release process doc should require the published Composer package to be un-abandoned.');
     ensure(docs.release.includes('WordPress Theme Readiness workflow'), 'Release process doc should document the theme readiness workflow.');
     ensure(docs.index.includes('## Continuous integration') && docs.index.includes('dedicated PHPCS/PHPStan job') && docs.index.includes('Pull requests targeting `main` or `release-2.x` additionally run'), 'Docs index should summarize fast and release-targeted pull-request readiness coverage.');
@@ -1611,7 +1740,7 @@ function runStaticChecks() {
     ensure(issueTemplate.includes('emulsify-wordpress/releases'), 'Issue template should link to WordPress theme releases.');
     ensure(pullRequestTemplate.includes('emulsify-wordpress/issues/1'), 'Pull request template should link to WordPress theme issues.');
     ensure(!/emulsify-drupal/.test(`${issueTemplate}\n${pullRequestTemplate}`), 'GitHub templates should not link to the Drupal repository.');
-    return 'README, docs, and GitHub templates match the WordPress 2.0.0 release story.';
+    return 'README, docs, and GitHub templates match the WordPress parent theme release process.';
   });
 
   runStaticCheck('License metadata', () => {
@@ -1654,7 +1783,23 @@ function runStaticChecks() {
     return 'No .DS_Store files were found outside .git.';
   });
 
-  runCommandCheck('WordPress fixture smoke', process.execPath, ['.github/scripts/wordpress-fixture-smoke.cjs']);
+  runStaticCheck('Theme JSON styles', () => {
+    const errors = validateThemeJsonStyles(readJson('theme.json'));
+    ensure(errors.length === 0, errors.join('\n'));
+    return 'Style values are scalar where required and WordPress preset references resolve to settings.';
+  });
+
+  runCommandCheck('Theme JSON style contract tests', process.execPath, ['--test', '.github/scripts/theme-json-style-contract.test.cjs']);
+  runCommandCheck('Release version contract tests', process.execPath, ['--test', '.github/scripts/release-version-contract.test.cjs']);
+  runCommandCheck('Readiness matrix contract tests', process.execPath, ['--test', '.github/scripts/readiness-matrix-contract.test.cjs']);
+  runCommandCheck('Semantic release guard tests', process.execPath, ['--test', '.github/scripts/semantic-release.test.cjs', '.github/scripts/release-config.test.cjs']);
+
+  if (skipSmoke) {
+    addResult('SKIP', 'WordPress fixture smoke', 'Skipped by --skip-smoke.');
+  }
+  else {
+    runCommandCheck('WordPress fixture smoke', process.execPath, ['.github/scripts/wordpress-fixture-smoke.cjs']);
+  }
 }
 
 function printSummary() {

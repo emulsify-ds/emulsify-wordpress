@@ -18,19 +18,19 @@
         {% block media %}
             {% if post.thumbnail|default(null) and post.thumbnail.src|default(null) %}
                 <div {{ add_attributes(teaser_media_attributes) }}>
-                    <img src="{{ post.thumbnail.src }}" alt="{{ post.thumbnail.alt|default(post.title) }}" />
+                    <img src="{{ post.thumbnail.src }}" alt="{{ function('wp_strip_all_tags', post.thumbnail.alt|default(post.title))|esc_attr }}" />
                 </div>
             {% endif %}
         {% endblock %}
 
         {% block title %}
             <h2 {{ add_attributes(teaser_title_attributes) }}>
-                <a href="{{ post.link|default('#') }}">{{ post.title|default(function('__', 'Untitled', 'emulsify')) }}</a>
+                <a href="{{ post.link|default('#') }}">{{ post.title|default(function('__', 'Untitled', 'emulsify'))|wp_kses_post }}</a>
             </h2>
         {% endblock %}
 
         {% block summary %}
-            {% if post.excerpt|default(null) %}
+            {% if not post.password_required and post.excerpt|default(null) %}
                 <div {{ add_attributes(teaser_summary_attributes) }}>{{ post.excerpt|raw }}</div>
             {% endif %}
         {% endblock %}

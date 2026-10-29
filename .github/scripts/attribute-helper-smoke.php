@@ -5,6 +5,7 @@
  * @package Emulsify
  */
 
+require_once __DIR__ . '/wordpress-attribute-test-adapter.php';
 require_once __DIR__ . '/../../includes/Support/AttributeBag.php';
 require_once __DIR__ . '/../../includes/Support/FileDiscovery.php';
 require_once __DIR__ . '/../../includes/Runtime/Twig.php';
@@ -38,10 +39,7 @@ function emulsify_attribute_helper_assert_same( string $label, $expected, $actua
  */
 function emulsify_register_smoke_twig_functions( \Twig\Environment $environment, Twig $helpers ): void {
 	foreach ( $helpers->functions( array() ) as $name => $definition ) {
-		$options = array(
-			'is_safe'       => $definition['is_safe'] ?? array(),
-			'needs_context' => $definition['needs_context'] ?? false,
-		);
+		$options = $definition['options'] ?? array();
 
 		$environment->addFunction( new \Twig\TwigFunction( $name, $definition['callable'], $options ) );
 	}
@@ -54,6 +52,8 @@ function emulsify_register_smoke_twig_functions( \Twig\Environment $environment,
  * @return void
  */
 function emulsify_register_smoke_wordpress_twig_shims( \Twig\Environment $environment ): void {
+	require_once __DIR__ . '/wordpress-text-test-adapter.php';
+	emulsify_register_wordpress_text_test_filters( $environment );
 	$environment->addFunction(
 		new \Twig\TwigFunction(
 			'function',
@@ -145,7 +145,68 @@ function emulsify_attribute_helper_parse_parent_templates( Twig $helpers, string
 	return $checked;
 }
 
+require_once __DIR__ . '/attribute-hardening-test-cases.php';
+
+$hardening_failures = array();
+foreach ( emulsify_attribute_hardening_cases() as $label => list( $expected, $actual ) ) {
+	if ( $expected !== $actual ) {
+		$hardening_failures[] = $label . ': expected ' . var_export( $expected, true ) . ', got ' . var_export( $actual, true );
+	}
+}
+if ( $hardening_failures ) {
+	fwrite( STDERR, implode( "\n", $hardening_failures ) . "\n" );
+	exit( 1 );
+}
+
 $helpers = new Twig();
+$private_post = (object) array( 'post_password' => 'secret' );
+foreach ( array( $helpers->add_attributes( $private_post ), $helpers->add_attributes( array( 'attributes' => $private_post ), array( 'data-ok' => '1' ) ), $helpers->bem( array( 'attributes' => $private_post ), 'card' ), $helpers->bem( (object) array( 'block' => 'card', 'attributes' => $private_post ) ) ) as $bag ) {
+	if ( array_key_exists( 'post_password', $bag->toArray() ) ) {
+		fwrite( STDERR, "Helper must not turn a post-like object's public properties into HTML attributes.\n" );
+		exit( 1 );
+	}
+}
+
+
+$event_attributes = array(
+	'onclick'     => 'x()',
+	'onMouseOver' => 'y()',
+	'ONFOCUS'     => 'z()',
+	'on'          => 'ignored',
+	'once'        => 'ignored',
+	'data-onload' => 'allowed',
+	'data-ok'     => '1',
+);
+$set_bag          = new AttributeBag();
+
+foreach ( $event_attributes as $name => $value ) {
+	$set_bag->set( $name, $value );
+}
+
+$merge_bag = new AttributeBag();
+$merge_bag->merge( $event_attributes );
+
+foreach (
+	array(
+		'constructor' => new AttributeBag( $event_attributes ),
+		'set'         => $set_bag,
+		'merge'       => $merge_bag,
+	) as $operation => $event_bag
+) {
+	emulsify_attribute_helper_assert_same(
+		'AttributeBag ' . $operation . ' drops event-handler names from its map',
+		array(
+			'data-onload' => 'allowed',
+			'data-ok'     => '1',
+		),
+		$event_bag->toArray()
+	);
+	emulsify_attribute_helper_assert_same(
+		'AttributeBag ' . $operation . ' does not serialize event-handler names',
+		'data-onload="allowed" data-ok="1"',
+		(string) $event_bag
+	);
+}
 
 emulsify_attribute_helper_assert_same(
 	'bem positional syntax',

@@ -32,7 +32,18 @@ const writeTextIfChanged = (filePath, contents) => {
   }
 };
 
-const readJson = (filePath) => JSON.parse(readText(filePath));
+const readJson = (filePath) => {
+  let data;
+  try {
+    data = JSON.parse(readText(filePath));
+  } catch (error) {
+    throw new Error(`Starter JSON file must contain a valid JSON object: ${path.relative(ROOT, filePath)}`, { cause: error });
+  }
+  if (!isPlainObject(data)) {
+    throw new Error(`Starter JSON file must contain a valid JSON object: ${path.relative(ROOT, filePath)}`);
+  }
+  return data;
+};
 
 const writeJsonIfChanged = (filePath, data) => {
   const contents = `${JSON.stringify(data, null, 2)}\n`;
@@ -44,6 +55,17 @@ const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // Generated values land in Markdown table cells and prose, where a newline
 // would break the surrounding structure.
 const oneLine = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+
+// WordPress removes percent-encoded octets from plain-text metadata. Match that
+// rule here; HTML is rejected rather than approximating PHP's strip_tags().
+const sanitizeTextField = (value) => {
+  const trim = (text) => text.replace(/^[\0\t\n\v\r ]+|[\0\t\n\v\r ]+$/g, '');
+  let text = trim(String(value).replace(/[\r\n\t ]+/g, ' '));
+  while (/%[a-f0-9]{2}/i.test(text)) {
+    text = trim(text.replace(/%[a-f0-9]{2}/gi, '').replace(/ +/g, ' '));
+  }
+  return text;
+};
 
 const readThemeHeader = (contents, field) => {
   const match = contents.match(
@@ -94,6 +116,18 @@ const getProjectConfig = () => {
     throw new Error('project.emulsify.json project.machineName must be a non-empty string.');
   }
 
+  for (const [field, value] of Object.entries({ name, description: config.project.description })) {
+    if (typeof value === 'string' && value.includes('<')) {
+      throw new Error(`project.${field} must be plain text without '<'. Remove HTML and re-run Emulsify CLI; this hook does not emulate WordPress's HTML stripping.`);
+    }
+  }
+
+  const canonical = machineName.replace(/[A-Z]/g, (letter) => letter.toLowerCase()).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if (machineName !== canonical || canonical === '') {
+    const advice = canonical ? ` Re-run Emulsify CLI with --machineName ${canonical}.` : '';
+    throw new Error(`project.machineName must be canonical: lowercase letters, digits and single hyphens, with no leading or trailing hyphen.${advice} The CLI chooses the project directory before this hook runs.`);
+  }
+
   return config;
 };
 
@@ -123,7 +157,8 @@ const getDescription = (config) => {
   const declared = config.project.description;
 
   if (typeof declared === 'string' && declared.trim() !== '') {
-    return oneLine(declared);
+    const sanitized = sanitizeTextField(declared);
+    if (sanitized !== '') return oneLine(sanitized);
   }
 
   const starter = readThemeHeader(
@@ -243,22 +278,12 @@ const updateFunctionsPhp = ({ sourceLabel }) => {
   writeTextIfChanged(filePath, contents);
 };
 
-const updatePageTemplate = ({ machineName }) => {
-  const filePath = path.join(ROOT, 'templates/page.twig');
-  const contents = readText(filePath).replaceAll(
-    `${STARTER_SLUG}-page`,
-    `${machineName}-page`,
-  );
-
-  writeTextIfChanged(filePath, contents);
-};
-
 const walkJsonFiles = (directory) => {
   if (!fs.existsSync(directory)) {
     return [];
   }
 
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+  return fs.readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name)).flatMap((entry) => {
     const filePath = path.join(directory, entry.name);
 
     if (entry.isDirectory()) {
@@ -269,10 +294,8 @@ const walkJsonFiles = (directory) => {
   });
 };
 
-const updatePatternNamespaces = ({ machineName }) => {
-  for (const filePath of walkJsonFiles(path.join(ROOT, 'patterns'))) {
-    const data = readJson(filePath);
-
+const updatePatternNamespaces = ({ machineName }, patterns) => {
+  for (const { filePath, data } of patterns) {
     if (typeof data.name === 'string' && data.name.startsWith(`${STARTER_SLUG}/`)) {
       data.name = `${machineName}/${data.name.slice(STARTER_SLUG.length + 1)}`;
     }
@@ -285,9 +308,12 @@ const updatePatternNamespaces = ({ machineName }) => {
 
 const main = () => {
   const config = getProjectConfig();
+  const name = sanitizeTextField(config.project.name) || 'New Theme';
+  // Validate every pattern before rewriting any generated files.
+  const patterns = walkJsonFiles(path.join(ROOT, 'patterns')).map((filePath) => ({ filePath, data: readJson(filePath) }));
   const project = {
-    name: config.project.name,
-    sourceLabel: sanitizeLabelForSource(config.project.name),
+    name,
+    sourceLabel: sanitizeLabelForSource(name),
     machineName: config.project.machineName,
     generatedFromVersion: getGeneratedFromVersion(),
     description: getDescription(config),
@@ -303,8 +329,7 @@ const main = () => {
   updateLockfile('npm-shrinkwrap.json', project);
   updateProjectConfig(config, project);
   updateFunctionsPhp(project);
-  updatePageTemplate(project);
-  updatePatternNamespaces(project);
+  updatePatternNamespaces(project, patterns);
 
   // Generation-only tooling should not linger in a project repository. Removing
   // it last keeps the hook available if any step above throws, and keeps this

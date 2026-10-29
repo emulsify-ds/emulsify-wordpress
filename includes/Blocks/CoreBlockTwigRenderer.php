@@ -13,6 +13,34 @@ namespace Emulsify\Theme\Blocks;
 final class CoreBlockTwigRenderer {
 
 	/**
+	 * Global context reused by the request's shared renderer.
+	 *
+	 * @var array|null
+	 */
+	private $base_context;
+
+	/**
+	 * Last filtered map and its normalized result.
+	 *
+	 * @var array|null
+	 */
+	private $filtered_template_map;
+
+	/**
+	 * Normalized map for the last filter result.
+	 *
+	 * @var array
+	 */
+	private $normalized_template_map = array();
+
+	/**
+	 * Whether this renderer is already resolving or compiling a mapped block.
+	 *
+	 * @var bool
+	 */
+	private $rendering = false;
+
+	/**
 	 * Registers block rendering hooks when explicitly enabled.
 	 *
 	 * @return void
@@ -34,40 +62,47 @@ final class CoreBlockTwigRenderer {
 	 * @return string Rendered block content.
 	 */
 	public function render_block( string $block_content, array $block, $instance = null ): string {
+		if ( $this->rendering ) {
+			return $block_content;
+		}
+
 		$block_name = $this->block_name( $block );
 
 		if ( '' === $block_name ) {
 			return $block_content;
 		}
 
-		$template = $this->template_for_block( $block_name, $block );
-
-		if ( '' === $template ) {
-			// Unmapped blocks keep WordPress' original HTML, which protects block
-			// validation and frontend output unless a project opts in block-by-block.
-			return $block_content;
-		}
-
-		if ( ! class_exists( '\Timber\Timber' ) ) {
-			return $this->render_error( $block_content, $this->translate( 'Timber is not available for mapped block rendering.', 'emulsify' ), $block, $template );
-		}
-
+		$this->rendering = true;
+		$template        = '';
 		try {
+			$template = $this->template_for_block( $block_name, $block );
+
+			if ( '' === $template ) {
+				// Unmapped blocks keep every byte of WordPress' original markup.
+				return $block_content;
+			}
+
+			if ( ! class_exists( '\Timber\Timber' ) ) {
+				return $this->render_error( $block_content, $this->translate( 'Timber is not available for mapped block rendering.', 'emulsify' ), $block, $template );
+			}
+
 			$context = $this->context( $block, $block_content, $instance, $template );
 			$html    = \Timber\Timber::compile( $template, $context );
+
+			if ( ! is_string( $html ) || '' === $html ) {
+				return $block_content;
+			}
+
+			return $this->cleanup_classes_enabled( $block, $template )
+				? $this->cleanup_classes( $html, $block )
+				: $html;
 		} catch ( \Throwable $throwable ) {
 			// Rendering failures should not blank content. Editors get diagnostics
 			// when allowed; visitors continue to receive WordPress' rendered block.
 			return $this->render_error( $block_content, $throwable->getMessage(), $block, $template );
+		} finally {
+			$this->rendering = false;
 		}
-
-		if ( ! is_string( $html ) || '' === $html ) {
-			return $block_content;
-		}
-
-		return $this->cleanup_classes_enabled( $block, $template )
-			? $this->cleanup_classes( $html, $block )
-			: $html;
 	}
 
 	/**
@@ -97,11 +132,21 @@ final class CoreBlockTwigRenderer {
 	 * @return array Twig context.
 	 */
 	private function context( array $block, string $block_content, $instance, string $template ): array {
-		$context = array();
+		if ( null === $this->base_context ) {
+			$timber_context     = \Timber\Timber::context_global();
+			$this->base_context = is_array( $timber_context ) ? $timber_context : array();
+		}
 
-		if ( class_exists( '\Timber\Timber' ) ) {
-			$timber_context = \Timber\Timber::context();
-			$context        = is_array( $timber_context ) ? $timber_context : array();
+		$context       = $this->base_context;
+		$block_context = is_object( $instance ) && isset( $instance->context ) && is_array( $instance->context ) ? $instance->context : array();
+
+		// Do not call setup(): it resets WordPress' loop globals and fires the_post.
+		// Always replace any post cached by a global Timber context filter.
+		if ( array_key_exists( 'postId', $block_context ) ) {
+			$post_id         = $block_context['postId'];
+			$context['post'] = is_numeric( $post_id ) && (int) $post_id > 0 ? \Timber\Timber::get_post( (int) $post_id ) : null;
+		} else {
+			$context['post'] = \Timber\Timber::get_post( $GLOBALS['post'] ?? false );
 		}
 
 		$attributes = isset( $block['attrs'] ) && is_array( $block['attrs'] ) ? $block['attrs'] : array();
@@ -109,18 +154,22 @@ final class CoreBlockTwigRenderer {
 		// Keep WordPress' original rendered content available to Twig templates so
 		// mapped blocks can wrap or progressively replace markup instead of being
 		// forced into an all-or-nothing rewrite.
-		$context['block']          = $block;
-		$context['block_metadata'] = $block;
-		$context['block_name']     = $this->block_name( $block );
-		$context['attributes']     = $attributes;
-		$context['content']        = $block_content;
-		$context['inner_content']  = $this->inner_content( $block, $block_content );
-		$context['inner_blocks']   = isset( $block['innerBlocks'] ) && is_array( $block['innerBlocks'] ) ? $block['innerBlocks'] : array();
-		$context['wp_block']       = $instance;
-		$context['twig_template']  = $template;
+		$context['block']            = $block;
+		$context['block_metadata']   = $block;
+		$context['block_name']       = $this->block_name( $block );
+		$context['block_attributes'] = $attributes;
+		$context['attributes']       = array();
+		$context['content']          = $block_content;
+		$context['inner_content']    = $this->inner_content( $block, $block_content );
+		$context['inner_blocks']     = isset( $block['innerBlocks'] ) && is_array( $block['innerBlocks'] ) ? $block['innerBlocks'] : array();
+		$context['wp_block']         = $instance;
+		$context['twig_template']    = $template;
 
 		/**
 		 * Filters Twig context for mapped block rendering.
+		 *
+		 * The attributes array is reserved for HTML attributes only and must
+		 * never hold block data or user input. Read block_attributes for block data.
 		 *
 		 * @param array  $context       Twig context.
 		 * @param array  $block         Parsed block metadata.
@@ -148,6 +197,12 @@ final class CoreBlockTwigRenderer {
 		$content = '';
 
 		foreach ( $block['innerContent'] as $piece ) {
+			if ( null === $piece ) {
+				// Children have already rendered. Their final filtered output cannot
+				// be recovered from parsed fragments without rendering them again.
+				return $block_content;
+			}
+
 			if ( is_scalar( $piece ) ) {
 				$content .= (string) $piece;
 			}
@@ -208,6 +263,12 @@ final class CoreBlockTwigRenderer {
 			return array();
 		}
 
+		// Keep callbacks dynamic and honor late registration/removal. Reuse only
+		// normalization when their result is unchanged, not the filter invocation.
+		if ( $filtered === $this->filtered_template_map ) {
+			return $this->normalized_template_map;
+		}
+
 		$map = array();
 
 		foreach ( $filtered as $block_name => $template ) {
@@ -223,7 +284,16 @@ final class CoreBlockTwigRenderer {
 			}
 		}
 
-		return $map;
+		// Snapshot values, including scalars returned by reference from a filter.
+		$this->filtered_template_map   = array_map(
+			static function ( $value ) {
+				return $value;
+			},
+			$filtered
+		);
+		$this->normalized_template_map = $map;
+
+		return $this->normalized_template_map;
 	}
 
 	/**
@@ -241,7 +311,8 @@ final class CoreBlockTwigRenderer {
 		}
 
 		foreach ( $this->theme_roots() as $root ) {
-			if ( is_readable( rtrim( $root, '/\\' ) . '/' . $template ) ) {
+			$path = rtrim( $root, '/\\' ) . '/' . $template;
+			if ( is_file( $path ) && is_readable( $path ) ) {
 				// Return the theme-relative path because Timber resolves templates
 				// through its configured child/parent loaders.
 				return $template;

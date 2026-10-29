@@ -21,9 +21,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 $templates = array( '@templates/index.twig' );
 
 if ( is_home() ) {
-	// Prefer WordPress' blog/front-page Twig names before the generic index
-	// fallback, matching the PHP template hierarchy without duplicate files.
-	array_unshift( $templates, '@templates/front-page.twig', '@templates/home.twig' );
+	array_unshift( $templates, '@templates/home.twig' );
+}
+
+if ( is_front_page() ) {
+	// A separate posts page is home, but only the site's front page gets this.
+	array_unshift( $templates, '@templates/front-page.twig' );
 }
 
 $context = Timber::context();

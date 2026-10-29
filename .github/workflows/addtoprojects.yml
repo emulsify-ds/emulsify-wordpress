@@ -9,14 +9,20 @@ on:
       - opened
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   add-to-project:
     name: Add issue to project
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/add-to-project@v0.3.0
+      - uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0
         with:
           # You can target a repository in a different organization
           # to the issue
           project-url: https://github.com/orgs/emulsify-ds/projects/6
-          token: ${{ secrets.ADD_TO_PROJECT_PAT }}
+          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
