@@ -271,8 +271,8 @@ project still requires the configured Projects token. See the
 [dated dependency audit](dependency-audit-2026-10-23.md) for remaining
 development-tool findings and their owners.
 
-The Whisk job creates an ephemeral lock snapshot after installation and logs
-`npm audit` findings without blocking readiness. This covers its selected
+The Whisk job creates an ephemeral lock during its dependency install and logs
+`npm audit` findings without blocking readiness. This covers the installed
 dependency tree; `whisk:install` intentionally does not commit a starter lockfile.
 Every concrete release job has an explicit timeout. The reusable-workflow call
 uses the limits on its called jobs, since GitHub does not accept a timeout on a

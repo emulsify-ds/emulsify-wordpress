@@ -347,12 +347,8 @@ jobs:
       - name: Install Whisk dependencies
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
-        run: npm run whisk:install
-
-      # whisk:install deliberately does not persist a generated-project lock.
-      # Create a CI-only snapshot so npm audit covers the installed tool tree.
-      - name: Snapshot Whisk dependencies for audit
-        run: npm --prefix whisk install --package-lock-only --ignore-scripts
+        # Keep this job's resolved tree for the informational audit below.
+        run: npm run whisk:install -- --package-lock=true
 
       - name: Audit Whisk dependencies
         continue-on-error: true

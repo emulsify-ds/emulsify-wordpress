@@ -231,9 +231,27 @@ test('rejects missing or failure-tolerant shipped Composer audit and unlogged Wh
       assert.throws(() => validateRelease(workflow));
     }
   }
-  for (const name of ['Audit Whisk dependencies', 'Snapshot Whisk dependencies for audit']) {
-    const workflow = releaseFixture();
-    workflow.readiness.jobs['extended-whisk'].steps = workflow.readiness.jobs['extended-whisk'].steps.filter((step) => step.name !== name);
-    assert.throws(() => validateRelease(workflow));
-  }
+  const workflow = releaseFixture();
+  workflow.readiness.jobs['extended-whisk'].steps = workflow.readiness.jobs['extended-whisk'].steps.filter((step) => step.name !== 'Audit Whisk dependencies');
+  assert.throws(() => validateRelease(workflow));
+});
+
+test('Whisk audit uses the lock emitted by its existing dependency install', () => {
+  const job = releaseFixture().readiness.jobs['extended-whisk'];
+  assert.equal(job.steps.find((step) => step.name === 'Install Whisk dependencies').run,
+    'npm run whisk:install -- --package-lock=true');
+  assert.ok(!job.steps.some((step) => step.run?.includes('--package-lock-only')),
+    'An informational audit must not add a separate dependency-resolution gate.');
+});
+
+test('rejects Whisk audit without an installed lock or before its dependency install', () => {
+  const noLock = releaseFixture();
+  noLock.readiness.jobs['extended-whisk'].steps.find((step) => step.name === 'Install Whisk dependencies').run = 'npm run whisk:install';
+  assert.throws(() => validateRelease(noLock));
+
+  const reordered = releaseFixture();
+  const steps = reordered.readiness.jobs['extended-whisk'].steps;
+  const auditIndex = steps.findIndex((step) => step.name === 'Audit Whisk dependencies');
+  steps.unshift(...steps.splice(auditIndex, 1));
+  assert.throws(() => validateRelease(reordered));
 });
